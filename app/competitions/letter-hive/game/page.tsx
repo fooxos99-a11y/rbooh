@@ -1,12 +1,10 @@
 "use client";
-
 export const dynamic = "force-dynamic";
-
 import { useSearchParams } from "next/navigation";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import { getNextQuestionForAccount } from "../get-next-question";
 
-// قائمة الحروف الأساسية
+// قائمة الحروف الأساسية (كلها بهمزة: أ)
 const BASE_LETTERS = [
   "ص","ح","خ","م","د","ز","ع","و","هـ","ط",
   "ج","ض","ل","ك","ي","س","أ","ت","ش","ق",
@@ -29,8 +27,7 @@ function getNeighbors(i: number): number[] {
   return neighbors;
 }
 
-// مكون المحتوى الذي يستخدم useSearchParams
-function GameContent() {
+export default function LetterHiveGame() {
   const searchParams = useSearchParams();
   const team1 = searchParams?.get("team1") || "الأحمر";
   const team2 = searchParams?.get("team2") || "الأخضر";
@@ -47,8 +44,11 @@ function GameContent() {
   const [showWinModal, setShowWinModal] = useState(false);
   const [winMessage, setWinMessage] = useState("");
   const [targetHex, setTargetHex] = useState<number | null>(null);
+  // متغير لتخزين رقم السؤال الحالي (debug)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number | null>(null);
-  const [currentQuestionDebugIdx, setCurrentQuestionDebugIdx] = useState<number | null>(null);
+  const [currentQuestionDebugIdx, setCurrentQuestionDebugIdx] = useState<number | null>(null); // المؤشر الفعلي
+  
+  // حالة التحكم في علامة التعجب والظهور
   const [isHovered, setIsHovered] = useState(false);
 
   useEffect(() => {
@@ -60,8 +60,10 @@ function GameContent() {
     setTargetHex(i);
     setShowAnswer(false);
     setCurrentAnswer(null);
+    // جلب رقم الحساب من الباراميتر أو ثابت مؤقت (يجب ربطه بحساب المستخدم لاحقًا)
     const accountNumber = Number(searchParams?.get("account") || 1);
     const letter = randomLetters[i];
+    // تعديل: جلب المؤشر الفعلي من الدالة (نعدل الدالة لإرجاعه)
     const qa = await getNextQuestionForAccount(accountNumber, letter);
     if (qa) {
       setCurrentQuestion(qa.question);
@@ -76,7 +78,7 @@ function GameContent() {
     }
     setShowQuestionModal(true);
   };
-
+  // إظهار الإجابة أولاً، ثم نافذة الفريق
   const handleShowAnswer = () => setShowAnswer(true);
   const handleAnswered = () => {
     setShowQuestionModal(false);
@@ -188,29 +190,29 @@ function GameContent() {
       const y = row * 87;
 
       return (
-        <g key={i} transform={`translate(${x},${y})`} onClick={() => handleHexClick(i)} style={{ cursor: status ? "default" : "pointer" }}>
-          <polygon
-            points="50,0 100,29 100,87 50,116 0,87 0,29"
-            fill={status === "red" ? "#e20000" : status === "green" ? "#00e224" : "#ffffff"}
-            stroke="#2c3e50"
-            strokeWidth={3}
-            style={{ transition: "fill 0.3s ease" }}
-          />
-          <text
-            x="50"
-            y="58"
-            style={{
-              fontSize: 38,
-              fontWeight: "bold",
-              fill: status === "red" ? "#ffffff" : status === "green" ? "#ffffff" : "#2c3e50",
-              pointerEvents: "none",
-              dominantBaseline: "middle",
-              textAnchor: "middle",
-              fontFamily: "Arial"
-            }}
-          >
-            {randomLetters[i]}
-          </text>
+            <g key={i} transform={`translate(${x},${y})`} onClick={() => handleHexClick(i)} style={{ cursor: status ? "default" : "pointer" }}>
+              <polygon
+                points="50,0 100,29 100,87 50,116 0,87 0,29"
+                fill={status === "red" ? "#e20000" : status === "green" ? "#00e224" : "#ffffff"}
+                stroke="#2c3e50"
+                strokeWidth={3}
+                style={{ transition: "fill 0.3s ease" }}
+              />
+              <text
+                x="50"
+                y="58"
+                style={{
+                  fontSize: 38,
+                  fontWeight: "bold",
+                  fill: status === "red" ? "#e20000" : status === "green" ? "#00e224" : "#2c3e50",
+                  pointerEvents: "none",
+                  dominantBaseline: "middle",
+                  textAnchor: "middle",
+                  fontFamily: "Arial"
+                }}
+              >
+                {randomLetters[i]}
+              </text>
         </g>
       );
     });
@@ -219,37 +221,72 @@ function GameContent() {
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", position: "relative" }}>
       
+      {/* أيقونة الإرشاد المحدثة */}
       <div 
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        style={{ position: "absolute", top: "20px", right: "20px", zIndex: 50 }}
+        style={{
+          position: "absolute",
+          top: "20px",
+          right: "20px",
+          zIndex: 50
+        }}
       >
         <div style={{
-          width: "24px", height: "24px", background: "#F5F5DC", border: "2px solid #d2d2b4", borderRadius: "50%",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", color: "#8b8b7a",
-          cursor: "pointer", fontWeight: "bold", boxShadow: "0 2px 5px rgba(0,0,0,0.1)", transition: "transform 0.2s ease"
+          width: "24px",
+          height: "24px",
+          background: "#F5F5DC",
+          border: "2px solid #d2d2b4",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "14px",
+          color: "#8b8b7a",
+          cursor: "pointer",
+          fontWeight: "bold",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
+          transition: "transform 0.2s ease"
         }}>
           {"!"}
         </div>
+
+        {/* التلميح (Tooltip) بتصميم الموقع */}
         {isHovered && (
           <div style={{
-            position: "absolute", top: "30px", right: "0", whiteSpace: "nowrap", background: "rgba(255, 255, 255, 0.95)",
-            backdropFilter: "blur(5px)", padding: "8px 15px", borderRadius: "12px", border: "1px solid #d2d2b4",
-            boxShadow: "0 10px 20px rgba(0,0,0,0.1)", fontSize: "0.85rem", color: "#555", fontWeight: "bold"
+            position: "absolute",
+            top: "30px",
+            right: "0",
+            whiteSpace: "nowrap",
+            background: "rgba(255, 255, 255, 0.95)",
+            backdropFilter: "blur(5px)",
+            padding: "8px 15px",
+            borderRadius: "12px",
+            border: "1px solid #d2d2b4",
+            boxShadow: "0 10px 20px rgba(0,0,0,0.1)",
+            fontSize: "0.85rem",
+            color: "#555",
+            fontWeight: "bold",
+            pointerEvents: "none"
           }}>
-            اضغط على زر <span style={{ color: "#2c3e50" }}>F11</span> لملء الشاشة
+            اضغط على زر <span style={{ color: "#2c3e50" }}>F11</span> لملء الشاشة<br />
+            <span style={{ fontSize: '0.82rem', color: '#888', fontWeight: 'normal' }}>ملاحظة: اختيار الحرف الأول يكون عشوائي وبعدها الفائز بالحرف هو من يحدد الحرف التالي</span>
           </div>
         )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", maxWidth: "1300px", gap: "40px" }}>
+        
         <TeamScoreCard name={team2} score={scoreGreen} color="#00e224" side="left" />
+
         <div style={{ flex: "1", position: "relative", display: "flex", justifyContent: "center" }}>
           <div style={{ width: "100%", maxWidth: "650px", filter: "drop-shadow(0 20px 30px rgba(0,0,0,0.1))" }}>
             <svg viewBox="-70 -70 690 605" style={{ width: "100%", height: "auto", overflow: "visible" }}>
               <foreignObject x="-80" y="-80" width="710" height="624">
                 <div style={{
-                  width: '100%', height: '100%', borderRadius: '30px',
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: '30px',
                   background: 'conic-gradient(from -45deg, #00e224 90deg, #e20000 90deg 180deg, #00e224 180deg 270deg, #e20000 270deg)',
                   boxShadow: 'inset 0 0 0 5px rgba(0,0,0,0.05)'
                 }} />
@@ -259,25 +296,44 @@ function GameContent() {
             </svg>
           </div>
         </div>
+
         <TeamScoreCard name={team1} score={scoreRed} color="#e20000" side="right" />
+
       </div>
 
+      {/* نافذة السؤال مع الإجابة */}
       {showQuestionModal && (
         <div
           style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(5px)",
-            display: "flex", justifyContent: "center", alignItems: "center", zIndex: 110
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 110,
+            transition: "opacity 0.25s cubic-bezier(.4,0,.2,1)",
+            opacity: showQuestionModal ? 1 : 0,
+            pointerEvents: showQuestionModal ? 'auto' : 'none',
           }}
           onClick={() => setShowQuestionModal(false)}
         >
           <div
             style={{
-              background: "white", padding: "40px 30px", borderRadius: "25px", textAlign: "center",
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2)", minWidth: 320
+              background: "white",
+              padding: "40px 30px",
+              borderRadius: "25px",
+              textAlign: "center",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+              minWidth: 320,
+              transform: showQuestionModal ? 'scale(1)' : 'scale(0.95)',
+              transition: "transform 0.25s cubic-bezier(.4,0,.2,1)",
             }}
             onClick={e => e.stopPropagation()}
           >
             <h3 style={{ marginBottom: 24, fontSize: "1.3rem", color: "#2c3e50" }}>{currentQuestion}</h3>
+            {/* تم حذف debug الخاص برقم السؤال والمؤشر بناءً على طلب المستخدم */}
             {!showAnswer && currentAnswer && (
               <button onClick={handleShowAnswer} style={{ padding: "13px 38px", background: "#2c3e50", color: "white", border: "none", borderRadius: "12px", cursor: "pointer", fontWeight: "bold", fontSize: "1.1rem", marginBottom: 16 }}>الإجابة</button>
             )}
@@ -294,18 +350,33 @@ function GameContent() {
         </div>
       )}
 
+      {/* مودال اختيار الفريق */}
       {showTeamModal && (
         <div
           style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", backdropFilter: "blur(5px)",
-            display: "flex", justifyContent: "center", alignItems: "center", zIndex: 100
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            backdropFilter: "blur(5px)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 100,
+            transition: "opacity 0.25s cubic-bezier(.4,0,.2,1)",
+            opacity: showTeamModal ? 1 : 0,
+            pointerEvents: showTeamModal ? 'auto' : 'none',
           }}
           onClick={() => setShowTeamModal(false)}
         >
           <div
             style={{
-              background: "white", padding: "40px", borderRadius: "25px", textAlign: "center",
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2)"
+              background: "white",
+              padding: "40px",
+              borderRadius: "25px",
+              textAlign: "center",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+              transform: showTeamModal ? 'scale(1)' : 'scale(0.95)',
+              transition: "transform 0.25s cubic-bezier(.4,0,.2,1)",
             }}
             onClick={e => e.stopPropagation()}
           >
@@ -318,6 +389,7 @@ function GameContent() {
         </div>
       )}
 
+      {/* مودال الفوز */}
       {showWinModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 200 }}>
           <div style={{ background: "white", padding: "50px", borderRadius: "30px", textAlign: "center", maxWidth: "400px" }}>
@@ -329,14 +401,5 @@ function GameContent() {
         </div>
       )}
     </div>
-  );
-}
-
-// التصدير الأساسي مغلف بـ Suspense
-export default function LetterHiveGame() {
-  return (
-    <Suspense fallback={<div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>جاري تحميل اللعبة...</div>}>
-      <GameContent />
-    </Suspense>
   );
 }
