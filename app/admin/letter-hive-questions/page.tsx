@@ -1,6 +1,7 @@
 "use client";
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
+import { Plus, Trash2, BookOpen, LayoutGrid } from "lucide-react"; // تأكد من تثبيت lucide-react
 
 const ARABIC_LETTERS = [
   "أ","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش","ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","هـ","و","ي"
@@ -13,6 +14,8 @@ export default function LetterHiveQuestionsAdmin() {
   const [newQuestion, setNewQuestion] = useState("");
   const [newAnswer, setNewAnswer] = useState("");
   const supabase = createClient();
+
+  const PRIMARY_COLOR = "#cc994b";
 
   useEffect(() => {
     fetchQuestions();
@@ -34,7 +37,11 @@ export default function LetterHiveQuestionsAdmin() {
 
   async function addQuestion() {
     if (!selectedLetter || !newQuestion || !newAnswer) return;
-    const { error } = await supabase.from("letter_hive_questions").insert({ letter: selectedLetter, question: newQuestion, answer: newAnswer });
+    const { error } = await supabase.from("letter_hive_questions").insert({ 
+        letter: selectedLetter, 
+        question: newQuestion, 
+        answer: newAnswer 
+    });
     if (!error) {
       setNewQuestion("");
       setNewAnswer("");
@@ -48,59 +55,117 @@ export default function LetterHiveQuestionsAdmin() {
   }
 
   return (
-    <div style={{ padding: 32, maxWidth: 800, margin: "0 auto" }}>
-      <h2 style={{ fontSize: 28, fontWeight: "bold", marginBottom: 24 }}>إدارة أسئلة خلية الحروف</h2>
-      {loading ? <div>جاري التحميل...</div> : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 32 }}>
-          {ARABIC_LETTERS.map((ltr) => (
-            <button
-              key={ltr}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 8,
-                border: selectedLetter === ltr ? "2px solid #e20000" : "1px solid #ccc",
-                background: selectedLetter === ltr ? "#ffeaea" : "#fff",
-                fontWeight: "bold",
-                fontSize: 22,
-                cursor: "pointer"
-              }}
-              onClick={() => setSelectedLetter(ltr)}
-            >
-              {ltr}
-            </button>
-          ))}
+    <div dir="rtl" className="min-h-screen bg-[#faf9f6] text-[#3d3d3d] p-4 md:p-8 font-sans">
+      {/* Header Section */}
+      <header className="max-w-6xl mx-auto mb-12 text-center">
+        <div className="inline-block p-3 rounded-full bg-[#cc994b]/10 mb-4">
+            <LayoutGrid size={40} color={PRIMARY_COLOR} />
         </div>
-      )}
-      {selectedLetter && (
-        <div style={{ marginBottom: 32 }}>
-          <h3 style={{ fontSize: 22, marginBottom: 12 }}>أسئلة حرف "{selectedLetter}"</h3>
-          <ul style={{ marginBottom: 16 }}>
-            {(questions[selectedLetter] || []).map((q, idx) => (
-              <li key={q.question+idx} style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
-                <span><b>س:</b> {q.question} <b>ج:</b> {q.answer}</span>
-                <button onClick={() => deleteQuestion(selectedLetter, q.question)} style={{ color: "#e20000", border: "none", background: "none", cursor: "pointer" }}>حذف</button>
-              </li>
+        <h1 className="text-4xl font-black mb-2 tracking-tight">إدارة خلية الحروف</h1>
+        <p className="text-gray-500 text-lg">تحكم بأسئلة وتحديات الحروف العربية بكل سهولة</p>
+      </header>
+
+      <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        {/* Letters Selection Grid */}
+        <section className="lg:col-span-5 bg-white p-6 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
+          <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+            <span className="w-2 h-8 rounded-full bg-[#cc994b]"></span>
+            اختر الحرف
+          </h2>
+          
+          <div className="grid grid-cols-5 sm:grid-cols-7 gap-3">
+            {ARABIC_LETTERS.map((ltr) => (
+              <button
+                key={ltr}
+                onClick={() => setSelectedLetter(ltr)}
+                className={`
+                  aspect-square flex items-center justify-center text-xl font-bold rounded-xl transition-all duration-300
+                  ${selectedLetter === ltr 
+                    ? "bg-[#cc994b] text-white scale-110 shadow-lg shadow-[#cc994b]/40" 
+                    : "bg-gray-50 text-gray-400 hover:bg-[#cc994b]/10 hover:text-[#cc994b]"}
+                `}
+              >
+                {ltr}
+              </button>
             ))}
-          </ul>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              type="text"
-              value={newQuestion}
-              onChange={e => setNewQuestion(e.target.value)}
-              placeholder="أضف سؤال جديد لهذا الحرف"
-              style={{ flex: 2, padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 18 }}
-            />
-            <input
-              type="text"
-              value={newAnswer}
-              onChange={e => setNewAnswer(e.target.value)}
-              placeholder="الإجابة"
-              style={{ flex: 1, padding: 8, borderRadius: 6, border: "1px solid #ccc", fontSize: 18 }}
-            />
-            <button onClick={addQuestion} style={{ background: "#e20000", color: "#fff", border: "none", borderRadius: 6, padding: "8px 18px", fontWeight: "bold", fontSize: 18, cursor: "pointer" }}>إضافة</button>
           </div>
-        </div>
-      )}
+        </section>
+
+        {/* Questions Management Area */}
+        <section className="lg:col-span-7 space-y-6">
+          {!selectedLetter ? (
+            <div className="h-full flex flex-col items-center justify-center p-12 bg-white rounded-3xl border-2 border-dashed border-gray-200 text-gray-400">
+              <BookOpen size={64} className="mb-4 opacity-20" />
+              <p className="text-xl">يرجى اختيار حرف من القائمة للبدء</p>
+            </div>
+          ) : (
+            <>
+              {/* Add New Question Form */}
+              <div className="bg-[#cc994b] p-6 rounded-3xl shadow-lg shadow-[#cc994b]/20 text-white">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                   إضافة سؤال جديد لحرف ({selectedLetter})
+                </h3>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <input
+                    type="text"
+                    value={newQuestion}
+                    onChange={e => setNewQuestion(e.target.value)}
+                    placeholder="اكتب السؤال هنا..."
+                    className="flex-[2] p-3 rounded-xl text-white placeholder-white focus:ring-2 focus:ring-white outline-none bg-transparent"
+                  />
+                  <input
+                    type="text"
+                    value={newAnswer}
+                    onChange={e => setNewAnswer(e.target.value)}
+                    placeholder="الإجابة"
+                    className="flex-1 p-3 rounded-xl text-white placeholder-white focus:ring-2 focus:ring-white outline-none bg-transparent"
+                  />
+                  <button 
+                    onClick={addQuestion}
+                    className="bg-white text-[#cc994b] px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Plus size={20} /> إضافة
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Questions */}
+              <div className="bg-white p-6 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 min-h-[400px]">
+                <h3 className="text-xl font-bold mb-6 text-gray-700">الأسئلة الحالية</h3>
+                
+                {loading ? (
+                    <div className="flex justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#cc994b]"></div>
+                    </div>
+                ) : (questions[selectedLetter] || []).length === 0 ? (
+                  <p className="text-center py-12 text-gray-400">لا توجد أسئلة مضافة لهذا الحرف بعد.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {(questions[selectedLetter] || []).map((q, idx) => (
+                      <div key={idx} className="group flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 hover:border-[#cc994b]/30 transition-all">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-xs font-bold text-[#cc994b] uppercase tracking-wider">السؤال:</span>
+                          <span className="text-lg text-gray-800 font-medium">{q.question}</span>
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="bg-[#cc994b]/10 text-[#cc994b] text-xs px-2 py-1 rounded-md font-bold">الإجابة: {q.answer}</span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => deleteQuestion(selectedLetter, q.question)}
+                          className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                        >
+                          <Trash2 size={22} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
