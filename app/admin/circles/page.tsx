@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,7 +16,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Trash2, ArrowRight, Users, BookOpen, Eye, UserX, Info } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { TeacherAttendanceModal } from "@/components/teacher-attendance-modal"
@@ -30,7 +28,7 @@ interface Circle {
 interface Student {
   id: string
   name: string
-  national_id: string
+  id_number: string
   rank: number
   halaqah: string
   created_at: string
@@ -50,22 +48,13 @@ export default function CircleManagement() {
   const [circles, setCircles] = useState<Circle[]>([])
   const [showTeacherAttendance, setShowTeacherAttendance] = useState(true)
   const router = useRouter()
+
   const confirmDialog = useConfirmDialog()
   const showAlert = useAlertDialog()
 
-  useEffect(() => {
-    const loggedIn = localStorage.getItem("isLoggedIn") === "true"
-    const userRole = localStorage.getItem("userRole")
-    if (!loggedIn || userRole !== "admin") {
-      router.push("/login")
-    } else {
-      fetchCircles()
-    }
-  }, [router])
-
   const fetchCircles = async () => {
     try {
-      const response = await fetch("/api/circles")
+      const response = await fetch(`/api/circles?t=${Date.now()}`, { cache: "no-store" })
       const data = await response.json()
       if (data.circles) {
         setCircles(data.circles)
@@ -76,6 +65,10 @@ export default function CircleManagement() {
       setIsLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchCircles()
+  }, [])
 
   const handleAddCircle = async () => {
     if (newCircleName.trim()) {
@@ -113,10 +106,8 @@ export default function CircleManagement() {
         })
 
         if (response.ok) {
-          // امسح الكاش المحلي للحلقات
           localStorage.removeItem("circlesCache")
           localStorage.removeItem("circlesCacheTime")
-          // أرسل حدث لتحديث الهيدر في كل الصفحات المفتوحة
           window.dispatchEvent(new Event("circlesChanged"))
           await showAlert(`تم إزالة ${name} بنجاح`, "نجاح")
           fetchCircles()
@@ -185,185 +176,161 @@ export default function CircleManagement() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+    <div className="min-h-screen flex flex-col bg-[#fafaf9]" dir="rtl">
       <Header />
 
-      {/* تم إزالة نافذة التحضير للمعلمين */}
+      <main className="flex-1 py-10 px-4">
+        <div className="container mx-auto max-w-4xl space-y-8">
 
-      <main className="flex-1 py-6 md:py-12 px-3 md:px-4">
-        <div className="container mx-auto max-w-7xl">
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 md:mb-8 gap-3">
-            <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto">
-              <Button onClick={() => router.back()} variant="outline" size="sm" className="md:h-auto">
-                <ArrowRight className="w-4 md:w-5 h-4 md:h-5 ml-1 md:ml-2" />
-              </Button>
-              <div>
-                <h1 className="text-2xl md:text-4xl font-bold text-[#1a2332]">إدارة الحلقات</h1>
-                <p className="text-sm md:text-lg text-[#1a2332]/70 mt-0.5 md:mt-1">إضافة وإدارة حلقات التحفيظ</p>
+          <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => router.back()}
+                className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
+              >
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-[#D4AF37]" />
               </div>
+              <h1 className="text-2xl font-bold text-[#1a2332]">إدارة الحلقات</h1>
             </div>
+
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold text-sm md:text-lg py-4 md:py-6 px-4 md:px-8 w-full md:w-auto">
-                  <Plus className="w-4 md:w-6 h-4 md:h-6 ml-1 md:ml-2" />
+                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors">
+                  <Plus className="w-4 h-4" />
                   إضافة حلقة
-                </Button>
+                </button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
+              <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader>
-                  <DialogTitle className="text-2xl text-[#1a2332]">إضافة حلقة جديدة</DialogTitle>
-                  <DialogDescription className="text-base">أضف حلقة تحفيظ جديدة إلى النظام</DialogDescription>
+                  <DialogTitle className="text-xl text-[#1a2332]">إضافة حلقة جديدة</DialogTitle>
+                  <DialogDescription className="text-sm text-neutral-500">أضف حلقة تحفيظ جديدة إلى النظام</DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                   <div className="space-y-2">
-                    <Label htmlFor="circleName" className="text-base font-semibold text-[#1a2332]">
-                      اسم الحلقة
-                    </Label>
+                    <Label htmlFor="circleName" className="text-sm font-semibold text-[#1a2332]">اسم الحلقة</Label>
                     <Input
                       id="circleName"
                       value={newCircleName}
                       onChange={(e) => setNewCircleName(e.target.value)}
                       placeholder="مثال: حلقة أبو بكر الصديق"
-                      className="text-base"
+                      onKeyDown={(e) => e.key === "Enter" && handleAddCircle()}
                     />
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="font-bold">
-                    إلغاء
-                  </Button>
-                  <Button
-                    onClick={handleAddCircle}
-                    className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold"
-                  >
-                    حفظ
-                  </Button>
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
+                  <Button onClick={handleAddCircle} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
-            {circles.map((circle) => (
-              <Card key={circle.name} className="border-2 border-[#D4AF37]/20 shadow-lg hover:shadow-xl transition-all">
-                <CardContent className="pt-3 md:pt-6 p-3 md:p-6">
-                  <div className="space-y-2 md:space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1 md:mb-2">
-                          <BookOpen className="w-4 md:w-6 h-4 md:h-6 text-[#d8a355]" />
-                          <h3 className="text-lg md:text-2xl font-bold text-[#1a2332]">{circle.name}</h3>
-                        </div>
+          {circles.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-16 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-4">
+                <BookOpen className="w-7 h-7 text-[#D4AF37]" />
+              </div>
+              <p className="text-lg font-semibold text-neutral-500">لا يوجد حلقات حالياً</p>
+              <p className="text-sm text-neutral-400 mt-1">قم بإضافة حلقة جديدة للبدء</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-[#D4AF37]" />
+                </div>
+                <h2 className="text-base font-bold text-[#1a2332]">قائمة الحلقات</h2>
+                <span className="mr-auto text-sm text-neutral-400">{circles.length} حلقة</span>
+              </div>
+              <div className="divide-y divide-[#D4AF37]/20">
+                {circles.map((circle) => (
+                  <div key={circle.name} className="flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/3 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-5 h-5 text-[#D4AF37]" />
+                      </div>
+                      <div>
+                        <p className="text-base font-bold text-[#1a2332]">{circle.name}</p>
                       </div>
                     </div>
-
-                    <div className="space-y-2 md:space-y-3 pt-2 md:pt-4 border-t-2 border-gray-100">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs md:text-sm font-semibold text-[#1a2332]/70">عدد الطلاب:</span>
-                        <div className="flex items-center gap-1 md:gap-2">
-                          <Users className="w-4 md:w-5 h-4 md:h-5 text-[#d8a355]" />
-                          <span className="text-base md:text-lg font-bold text-[#1a2332]">{circle.studentCount}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-2 md:pt-4">
-                      <Button
+                    <div className="flex items-center gap-2">
+                      <button
                         onClick={() => handleViewCircle(circle)}
-                        size="sm"
-                        className="flex-1 bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold text-xs md:text-base"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] text-sm font-medium transition-colors"
                       >
-                        <Eye className="w-3 md:w-5 h-3 md:h-5 ml-1 md:ml-2" />
+                        <Eye className="w-3.5 h-3.5" />
                         عرض الطلاب
-                      </Button>
-                      <Button
+                      </button>
+                      <button
                         onClick={() => handleRemoveCircle(circle.name)}
-                        variant="outline"
-                        size="sm"
-                        className="border-2 border-red-500 text-red-600 hover:bg-red-50 font-bold"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
                       >
-                        <Trash2 className="w-3 md:w-5 h-3 md:h-5" />
-                      </Button>
+                        <Trash2 className="w-3.5 h-3.5" />
+                        إزالة
+                      </button>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {circles.length === 0 && (
-            <Card className="border-2 border-[#D4AF37]/20 shadow-lg">
-              <CardContent className="pt-6">
-                <div className="text-center py-12">
-                  <BookOpen className="w-16 h-16 text-[#1a2332]/20 mx-auto mb-4" />
-                  <p className="text-xl text-[#1a2332]/60">لا يوجد حلقات حالياً</p>
-                  <p className="text-base text-[#1a2332]/40 mt-2">قم بإضافة حلقة جديدة للبدء</p>
-                </div>
-              </CardContent>
-            </Card>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </main>
 
       <Dialog open={isStudentsDialogOpen} onOpenChange={setIsStudentsDialogOpen}>
-        <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl text-[#1a2332]">طلاب {selectedCircle?.name}</DialogTitle>
-            <DialogDescription className="text-base">إدارة طلاب الحلقة - عرض المعلومات وإزالة الطلاب</DialogDescription>
+            <DialogTitle className="text-xl text-[#1a2332]">طلاب {selectedCircle?.name}</DialogTitle>
+            <DialogDescription className="text-sm text-neutral-500">عرض الطلاب وإدارتهم</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-2 py-2">
             {isLoadingStudents ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#D4AF37] mx-auto mb-4"></div>
-                <p className="text-lg text-[#1a2332]/60">جاري تحميل الطلاب...</p>
+              <div className="flex justify-center py-12">
+                <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
               </div>
             ) : circleStudents.length > 0 ? (
-              circleStudents.map((student) => (
-                <Card key={student.id} className="border-2 border-[#D4AF37]/20">
-                  <CardContent className="pt-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#C9A961] flex items-center justify-center text-white font-bold text-lg">
-                          {student.rank || "-"}
-                        </div>
-                        <div>
-                          <h4 className="text-lg font-bold text-[#1a2332]">{student.name}</h4>
-                          <p className="text-sm text-[#1a2332]/60">{student.national_id}</p>
-                        </div>
+              <div className="divide-y divide-[#D4AF37]/20 rounded-xl border border-[#D4AF37]/40 overflow-hidden">
+                {circleStudents.map((student) => (
+                  <div key={student.id} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-[#D4AF37]/3 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shrink-0">
+                        <span className="text-sm font-bold text-[#D4AF37]">{student.rank || "-"}</span>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleViewStudentInfo(student)}
-                          size="sm"
-                          className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold"
-                        >
-                          <Info className="w-4 h-4 ml-1" />
-                          عرض
-                        </Button>
-                        <Button
-                          onClick={() => handleRemoveStudent(student.id, student.name)}
-                          size="sm"
-                          variant="outline"
-                          className="border-2 border-red-500 text-red-600 hover:bg-red-50 font-bold"
-                        >
-                          <UserX className="w-4 h-4" />
-                        </Button>
+                      <div>
+                        <p className="text-sm font-bold text-[#1a2332]">{student.name}</p>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleViewStudentInfo(student)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] text-xs font-medium transition-colors"
+                      >
+                        <Info className="w-3 h-3" /> عرض
+                      </button>
+                      <button
+                        onClick={() => handleRemoveStudent(student.id, student.name)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 text-xs font-medium transition-colors"
+                      >
+                        <UserX className="w-3 h-3" /> إزالة
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div className="text-center py-8">
-                <Users className="w-16 h-16 text-[#1a2332]/20 mx-auto mb-4" />
-                <p className="text-lg text-[#1a2332]/60">لا يوجد طلاب في هذه الحلقة</p>
+              <div className="text-center py-12 text-neutral-400">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                <p>لا يوجد طلاب في هذه الحلقة</p>
               </div>
             )}
           </div>
@@ -371,49 +338,27 @@ export default function CircleManagement() {
       </Dialog>
 
       <Dialog open={isStudentInfoDialogOpen} onOpenChange={setIsStudentInfoDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[460px]" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl text-[#1a2332]">معلومات الطالب</DialogTitle>
-            <DialogDescription className="text-base">البيانات الشخصية للطالب</DialogDescription>
+            <DialogTitle className="text-xl text-[#1a2332]">معلومات الطالب</DialogTitle>
+            <DialogDescription className="text-sm text-neutral-500">البيانات الشخصية للطالب</DialogDescription>
           </DialogHeader>
           {selectedStudent && (
             <>
-              <div className="space-y-4 py-4">
-                <div className="flex items-center justify-center mb-6">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-r from-[#D4AF37] to-[#C9A961] flex items-center justify-center text-white font-bold text-3xl">
-                    {selectedStudent.rank}
+              <div className="space-y-3 py-2">
+                {[
+                  { label: "الاسم", value: selectedStudent.name },
+                  { label: "رقم الهوية", value: selectedStudent.id_number || "—" },
+                  { label: "الحلقة", value: selectedStudent.halaqah },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between items-center px-4 py-3 bg-[#fafaf9] rounded-xl border border-[#D4AF37]/20">
+                    <span className="text-sm font-semibold text-neutral-500">{label}</span>
+                    <span className="text-sm font-bold text-[#1a2332]">{value}</span>
                   </div>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center p-3 bg-[#f5f1e8] rounded-lg">
-                    <span className="font-semibold text-[#1a2332]">الاسم:</span>
-                    <span className="text-[#1a2332]/80">{selectedStudent.name}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-[#f5f1e8] rounded-lg">
-                    <span className="font-semibold text-[#1a2332]">رقم الهوية:</span>
-                    <span className="text-[#1a2332]/80 font-mono">{selectedStudent.national_id}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-[#f5f1e8] rounded-lg">
-                    <span className="font-semibold text-[#1a2332]">المرتبة:</span>
-                    <Badge className="bg-[#D4AF37] text-white text-base px-3 py-1">#{selectedStudent.rank}</Badge>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-[#f5f1e8] rounded-lg">
-                    <span className="font-semibold text-[#1a2332]">الحلقة:</span>
-                    <span className="text-[#1a2332]/80">{selectedStudent.halaqah}</span>
-                  </div>
-                  <div className="flex justify-between items-center p-3 bg-[#f5f1e8] rounded-lg">
-                    <span className="font-semibold text-[#1a2332]">تاريخ الانضمام:</span>
-                    <span className="text-[#1a2332]/80">
-                      {new Date(selectedStudent.created_at).toLocaleDateString("ar-SA")}
-                    </span>
-                  </div>
-                </div>
+                ))}
               </div>
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => setIsStudentInfoDialogOpen(false)}
-                  className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold"
-                >
+              <div className="flex justify-end pt-2">
+                <Button onClick={() => setIsStudentInfoDialogOpen(false)} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">
                   إغلاق
                 </Button>
               </div>
