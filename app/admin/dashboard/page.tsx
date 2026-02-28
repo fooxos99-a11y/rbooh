@@ -1115,7 +1115,8 @@ export default function AdminDashboard() {
                   </Button>
                   <Button
                     onClick={handleSavePoints}
-                    className="bg-[#1a2332] hover:bg-[#243040] text-white text-sm h-9 rounded-lg font-medium"
+                    variant="outline"
+                    className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
                     disabled={!editingStudentPoints || !newPoints || isSubmitting}
                   >
                     {isSubmitting ? "جاري الحفظ..." : "حفظ النقاط"}
