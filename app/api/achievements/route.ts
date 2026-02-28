@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
       achievement_type: achievement_type || "student",
     };
     if (student_name) achievementData.student_name = student_name;
-    if (category) achievementData.category = category;
+    achievementData.category = category || "";
     if (student_id) achievementData.student_id = student_id;
 
     const { data, error } = await supabase
