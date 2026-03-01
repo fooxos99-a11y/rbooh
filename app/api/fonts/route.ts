@@ -1,84 +1,105 @@
-import { put, list, del } from "@vercel/blob"
 import { type NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
-const FONTS_BLOB_KEY = "student-fonts"
+const getSupabase = () =>
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[v0] Fetching fonts from Blob")
-    const { blobs } = await list({ prefix: FONTS_BLOB_KEY })
+    const supabase = getSupabase()
+    const { searchParams } = new URL(request.url)
+    const studentId = searchParams.get("studentId")
 
-    console.log(
-      "[v0] Found blobs:",
-      blobs.length,
-      blobs.map((b) => ({ url: b.url, uploadedAt: b.uploadedAt })),
-    )
+    if (studentId) {
+      const { data, error } = await supabase
+        .from("student_preferences")
+        .select("active_font")
+        .eq("student_id", studentId)
+        .single()
 
-    if (blobs.length === 0) {
-      console.log("[v0] No fonts found, returning empty")
+      if (error || !data) {
+        return NextResponse.json({ fonts: {} })
+      }
+      const fonts: Record<string, string> = {}
+      if (data.active_font) fonts[studentId] = data.active_font
+      return NextResponse.json({ fonts })
+    }
+
+    // جلب كل الخطوط
+    const { data, error } = await supabase
+      .from("student_preferences")
+      .select("student_id, active_font")
+
+    if (error || !data) {
       return NextResponse.json({ fonts: {} })
     }
 
-    const latestBlob = blobs.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0]
-
-    console.log("[v0] Using latest blob:", latestBlob.url)
-
-    const timestamp = Date.now()
-    const response = await fetch(`${latestBlob.url}?t=${timestamp}`)
-    const fonts = await response.json()
-
-    console.log("[v0] Loaded fonts from Blob:", fonts)
+    const fonts: Record<string, string> = {}
+    for (const row of data) {
+      if (row.active_font) fonts[row.student_id] = row.active_font
+    }
 
     return NextResponse.json({ fonts })
   } catch (error) {
-    console.error("[v0] Error fetching fonts:", error)
+    console.error("[fonts] Error fetching fonts:", error)
     return NextResponse.json({ fonts: {} })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { student_id, font_id } = body
+    const supabase = getSupabase()
+    const { student_id, font_id } = await request.json()
 
     if (!student_id || !font_id) {
       return NextResponse.json({ error: "Missing student_id or font_id" }, { status: 400 })
     }
 
-    let fonts: Record<string, string> = {}
+    const { error } = await supabase
+      .from("student_preferences")
+      .upsert(
+        { student_id, active_font: font_id },
+        { onConflict: "student_id" }
+      )
 
-    console.log("[v0] Loading existing fonts before save")
-    const { blobs } = await list({ prefix: FONTS_BLOB_KEY })
-    console.log("[v0] Found existing blobs:", blobs.length)
-
-    if (blobs.length > 0) {
-      const latestBlob = blobs.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())[0]
-      const response = await fetch(latestBlob.url)
-      fonts = await response.json()
-      console.log("[v0] Loaded existing fonts:", fonts)
-
-      console.log("[v0] Deleting old blobs")
-      for (const blob of blobs) {
-        await del(blob.url)
-      }
+    if (error) {
+      console.error("[fonts] Error saving font:", error)
+      return NextResponse.json({ error: "Failed to save font" }, { status: 500 })
     }
 
-    fonts[student_id] = font_id
-
-    console.log("[v0] Saving updated fonts:", fonts)
-    const blob = await put(`${FONTS_BLOB_KEY}.json`, JSON.stringify(fonts), {
-      access: "public",
-      contentType: "application/json",
-      addRandomSuffix: true,
-    })
-
-    console.log("[v0] Font saved to blob:", blob.url)
-
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-
+    const fonts: Record<string, string> = { [student_id]: font_id }
     return NextResponse.json({ success: true, fonts })
   } catch (error) {
-    console.error("[v0] Error saving font:", error)
+    console.error("[fonts] Error saving font:", error)
     return NextResponse.json({ error: "Failed to save font" }, { status: 500 })
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = getSupabase()
+    const { student_id } = await request.json()
+
+    if (!student_id) {
+      return NextResponse.json({ error: "Missing student_id" }, { status: 400 })
+    }
+
+    const { error } = await supabase
+      .from("student_preferences")
+      .update({ active_font: null })
+      .eq("student_id", student_id)
+
+    if (error) {
+      console.error("[fonts] Error clearing font:", error)
+      return NextResponse.json({ error: "Failed to clear font" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[fonts] Error in DELETE /api/fonts:", error)
+    return NextResponse.json({ error: "Failed to clear font" }, { status: 500 })
   }
 }
