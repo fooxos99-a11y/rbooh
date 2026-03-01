@@ -85,12 +85,18 @@ export default function FramesPage() {
 
   const fetchPurchases = async (studentId: string) => {
     try {
-      const purchases = localStorage.getItem(`frame_purchases_${studentId}`)
-      if (purchases) {
-        setPurchases(JSON.parse(purchases))
+      // Load from database so purchases sync across devices
+      const response = await fetch(`/api/purchases?student_id=${studentId}`)
+      const data = await response.json()
+      if (data.purchases) {
+        const framePurchases = data.purchases.filter((id: string) => id.startsWith('frame_'))
+        setPurchases(framePurchases)
+        localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(framePurchases))
       }
     } catch (error) {
       console.error("Error fetching purchases:", error)
+      const cached = localStorage.getItem(`frame_purchases_${studentId}`)
+      if (cached) setPurchases(JSON.parse(cached))
     }
   }
 
@@ -114,17 +120,26 @@ export default function FramesPage() {
     }
 
     try {
-      const newPoints = studentPoints - framePrice
-      setStudentPoints(newPoints)
-
-      const updatedPurchases = [...purchases, frameId]
-      setPurchases(updatedPurchases)
-      localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(updatedPurchases))
-
-      toast({
-        title: "تم الشراء بنجاح!",
-        description: "تم إضافة الإطار إلى ملفك الشخصي",
+      const response = await fetch("/api/purchases", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ student_id: studentId, product_id: frameId, price: framePrice }),
       })
+
+      if (response.ok) {
+        const result = await response.json()
+        setStudentPoints(result.remaining_points)
+        const updatedPurchases = [...purchases, frameId]
+        setPurchases(updatedPurchases)
+        localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(updatedPurchases))
+        toast({
+          title: "تم الشراء بنجاح!",
+          description: "تم إضافة الإطار إلى ملفك الشخصي",
+        })
+      } else {
+        const err = await response.json()
+        toast({ title: "خطأ", description: err.error || "حدث خطأ أثناء الشراء", variant: "destructive" })
+      }
     } catch (error) {
       console.error("Error purchasing frame:", error)
       toast({
