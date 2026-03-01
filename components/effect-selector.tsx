@@ -223,16 +223,17 @@ export function EffectSelector({ studentId }: EffectSelectorProps) {
   const loadFromDB = async () => {
     if (!studentId) return
     try {
-      // Load owned effects from purchases API (synced across devices)
+      // Load owned effects from purchases API (merge with cache)
       const purchasesRes = await fetch(`/api/purchases?student_id=${studentId}`)
       const purchasesData = await purchasesRes.json()
-      if (purchasesData.purchases) {
-        const effects = (purchasesData.purchases as string[])
-          .filter((id) => id.startsWith("effect_"))
-          .map((id) => id.replace("effect_", ""))
-        setOwnedEffects(["default", ...effects])
-        localStorage.setItem(`effect_purchases_${studentId}`, JSON.stringify(purchasesData.purchases.filter((id: string) => id.startsWith("effect_"))))
-      }
+      const cachedEffects: string[] = JSON.parse(localStorage.getItem(`effect_purchases_${studentId}`) || '[]')
+      const dbEffects: string[] = Array.isArray(purchasesData.purchases)
+        ? purchasesData.purchases.filter((id: string) => id.startsWith("effect_"))
+        : []
+      const mergedEffects = [...new Set([...cachedEffects, ...dbEffects])]
+      const effects = mergedEffects.map((id: string) => id.replace("effect_", ""))
+      setOwnedEffects(["default", ...effects])
+      localStorage.setItem(`effect_purchases_${studentId}`, JSON.stringify(mergedEffects))
 
       // Load active effect from effects API (synced across devices)
       const effectRes = await fetch(`/api/effects?studentId=${studentId}`)
