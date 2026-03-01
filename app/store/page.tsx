@@ -298,6 +298,7 @@ export default function StorePage() {
                                       product_id: prod.id,
                                       product_name: prod.name,
                                       price: prod.price,
+                                      theme_key: prod.theme_key,
                                     })
                                   })
                                   const data = await res.json()
