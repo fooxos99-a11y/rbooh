@@ -135,27 +135,25 @@ export default function BackgroundsPage() {
   }
 
   const fetchPurchases = async (studentId: string) => {
+    // Always start with localStorage cache so purchases are never lost
+    const cached: string[] = JSON.parse(localStorage.getItem(`purchases_${studentId}`) || '[]')
+    const notActivatedCached: string[] = JSON.parse(localStorage.getItem(`bg_not_activated_${studentId}`) || '[]')
     try {
-      // Load from database so purchases sync across devices
       const response = await fetch(`/api/purchases?student_id=${studentId}`)
       const data = await response.json()
-      if (data.purchases) {
-        setPurchases(data.purchases)
-        localStorage.setItem(`purchases_${studentId}`, JSON.stringify(data.purchases))
-      }
-      const notActivated = localStorage.getItem(`bg_not_activated_${studentId}`)
-      if (notActivated) {
-        // Only keep items that haven't been officially added to purchases yet
-        const pending = JSON.parse(notActivated).filter((id: string) => !data.purchases?.includes(id))
-        setPurchasedNotActivated(pending)
-      }
+      // Merge DB + cache (union) so neither source can erase the other
+      const dbPurchases: string[] = Array.isArray(data.purchases) ? data.purchases : []
+      const merged = [...new Set([...cached, ...dbPurchases])]
+      setPurchases(merged)
+      localStorage.setItem(`purchases_${studentId}`, JSON.stringify(merged))
+      // Items waiting activation: in cache but not yet in merged DB purchases
+      const pending = notActivatedCached.filter((id: string) => !merged.includes(id) || !dbPurchases.includes(id))
+      setPurchasedNotActivated(pending)
     } catch (error) {
       console.error("[v0] Error fetching purchases:", error)
-      // Fallback: use localStorage cache
-      const cached = localStorage.getItem(`purchases_${studentId}`)
-      if (cached) setPurchases(JSON.parse(cached))
-      const notActivated = localStorage.getItem(`bg_not_activated_${studentId}`)
-      if (notActivated) setPurchasedNotActivated(JSON.parse(notActivated))
+      // Fallback: use localStorage cache as-is
+      setPurchases(cached)
+      setPurchasedNotActivated(notActivatedCached)
     }
   }
 
@@ -293,13 +291,16 @@ export default function BackgroundsPage() {
         setPurchasedNotActivated(updatedNotActivated)
         localStorage.setItem(`bg_not_activated_${studentId}`, JSON.stringify(updatedNotActivated))
 
-        // Refresh purchases from DB to keep in sync
-        const res = await fetch(`/api/purchases?student_id=${studentId}`)
-        const data = await res.json()
-        if (data.purchases) {
-          setPurchases(data.purchases)
-          localStorage.setItem(`purchases_${studentId}`, JSON.stringify(data.purchases))
-        }
+        // Sync with DB but MERGE (never overwrite) local cache
+        try {
+          const res = await fetch(`/api/purchases?student_id=${studentId}`)
+          const data = await res.json()
+          const currentCached: string[] = JSON.parse(localStorage.getItem(`purchases_${studentId}`) || '[]')
+          const dbPurchases: string[] = Array.isArray(data.purchases) ? data.purchases : []
+          const merged = [...new Set([...currentCached, ...dbPurchases])]
+          setPurchases(merged)
+          localStorage.setItem(`purchases_${studentId}`, JSON.stringify(merged))
+        } catch (_) { /* keep existing state on error */ }
 
         setActiveTheme(product.themeValue)
         console.log("[v0] Theme activated:", product.themeValue)
