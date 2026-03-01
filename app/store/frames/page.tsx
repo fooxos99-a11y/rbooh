@@ -84,19 +84,19 @@ export default function FramesPage() {
   }
 
   const fetchPurchases = async (studentId: string) => {
+    const cached: string[] = JSON.parse(localStorage.getItem(`frame_purchases_${studentId}`) || '[]')
     try {
-      // Load from database so purchases sync across devices
       const response = await fetch(`/api/purchases?student_id=${studentId}`)
       const data = await response.json()
-      if (data.purchases) {
-        const framePurchases = data.purchases.filter((id: string) => id.startsWith('frame_'))
-        setPurchases(framePurchases)
-        localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(framePurchases))
-      }
+      const dbPurchases: string[] = Array.isArray(data.purchases)
+        ? data.purchases.filter((id: string) => id.startsWith('frame_'))
+        : []
+      const merged = [...new Set([...cached, ...dbPurchases])]
+      setPurchases(merged)
+      localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(merged))
     } catch (error) {
       console.error("Error fetching purchases:", error)
-      const cached = localStorage.getItem(`frame_purchases_${studentId}`)
-      if (cached) setPurchases(JSON.parse(cached))
+      setPurchases(cached)
     }
   }
 
