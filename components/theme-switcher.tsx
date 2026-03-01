@@ -112,38 +112,25 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
   const loadOwnedThemes = async () => {
     if (!studentId) return
 
+    // Always start from localStorage cache
+    const cached: string[] = JSON.parse(localStorage.getItem(`purchases_${studentId}`) || '[]')
     try {
-      // Load from database so purchases sync across devices
       const response = await fetch(`/api/purchases?student_id=${studentId}`)
       const data = await response.json()
-      if (data.purchases) {
-        const themes = (data.purchases as string[])
-          .filter((id) => id.startsWith("theme_"))
-          .map((id) => id.replace("theme_", ""))
-        setOwnedThemes([...new Set(["beige_default", ...themes])] as string[])
-        // Update local cache
-        localStorage.setItem(`purchases_${studentId}`, JSON.stringify(data.purchases))
-        return
-      }
+      const dbPurchases: string[] = Array.isArray(data.purchases) ? data.purchases : []
+      // Merge DB + cache so neither erases the other
+      const merged = [...new Set([...cached, ...dbPurchases])]
+      localStorage.setItem(`purchases_${studentId}`, JSON.stringify(merged))
+      const themes = merged
+        .filter((id: string) => id.startsWith("theme_"))
+        .map((id: string) => id.replace("theme_", ""))
+      setOwnedThemes([...new Set(["beige_default", ...themes])] as string[])
     } catch (error) {
       console.error("[v0] Error loading purchases from API, falling back to cache:", error)
-    }
-
-    // Fallback: use cached localStorage
-    const purchases = localStorage.getItem(`purchases_${studentId}`)
-    if (purchases) {
-      try {
-        const purchaseList = JSON.parse(purchases)
-        const themes = purchaseList
-          .filter((id: string) => id.startsWith("theme_"))
-          .map((id: string) => id.replace("theme_", ""))
-        setOwnedThemes([...new Set(["beige_default", ...themes])])
-      } catch (error) {
-        console.error("[v0] Error parsing purchases:", error)
-        setOwnedThemes(["beige_default"])
-      }
-    } else {
-      setOwnedThemes(["beige_default"])
+      const themes = cached
+        .filter((id: string) => id.startsWith("theme_"))
+        .map((id: string) => id.replace("theme_", ""))
+      setOwnedThemes([...new Set(["beige_default", ...themes])])
     }
   }
 
