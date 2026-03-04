@@ -695,6 +695,27 @@ export function Header() {
             </div>
           )}
 
+          {isLoggedIn && userRole === "student" && (
+            <div className="px-2 mt-2 mb-0">
+              <NavItem
+                icon={Map}
+                label="المسار"
+                onClick={() => handleNav("/pathways")}
+              />
+              <NavItem
+                icon={Target}
+                label="التحدي اليومي"
+                onClick={() => handleNav("/daily-challenge")}
+                gold={!dailyChallengePlayedToday}
+              />
+              <NavItem
+                icon={Store}
+                label="المتجر"
+                onClick={() => handleNav("/store")}
+              />
+            </div>
+          )}
+
           <SectionHeader title="المعلومات العامة" />
 
           <div className="px-2 mb-2">
@@ -745,29 +766,6 @@ export function Header() {
                 ))
               )}
             </CollapseSection>
-
-            {isLoggedIn && userRole === "student" && (
-              <>
-                <NavItem
-                  icon={Map}
-                  label="المسار"
-                  onClick={() => handleNav("/pathways")}
-                />
-
-                <NavItem
-                  icon={Target}
-                  label="التحدي اليومي"
-                  onClick={() => handleNav("/daily-challenge")}
-                  gold={!dailyChallengePlayedToday}
-                />
-
-                <NavItem
-                  icon={Store}
-                  label="المتجر"
-                  onClick={() => handleNav("/store")}
-                />
-              </>
-            )}
 
             {isLoggedIn && (userRole === "teacher" || isAdmin) && (
               <NavItem
