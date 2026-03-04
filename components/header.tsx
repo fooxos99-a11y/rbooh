@@ -749,19 +749,21 @@ export function Header() {
                 />
               </>
             )}
+
+            {isLoggedIn && (userRole === "teacher" || isAdmin) && (
+              <NavItem
+                icon={Gamepad2}
+                label="المسابقات"
+                onClick={() => handleNav("/competitions")}
+              />
+            )}
           </div>
 
           {isLoggedIn && userRole === "teacher" && (
             <>
-              <SectionHeader title="أدواتي" />
+              <SectionHeader title="الإدارة" />
 
               <div className="px-2 mb-2">
-                <NavItem
-                  icon={Gamepad2}
-                  label="المسابقات"
-                  onClick={() => handleNav("/competitions")}
-                />
-
                 <NavItem
                   icon={Users}
                   label="إدارة الحلقة"
@@ -770,7 +772,7 @@ export function Header() {
 
                 <NavItem
                   icon={ClipboardCheck}
-                  label="تحضير الطلاب"
+                  label="التحضير"
                   onClick={() => {
                     setIsAttendanceModalOpen(true);
 
