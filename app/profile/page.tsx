@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -52,7 +54,7 @@ interface RankingData {
   points: number
 }
 
-export default function ProfilePage() {
+function ProfilePage() {
   const [studentData, setStudentData] = useState<StudentData | null>(null)
   // تحديث السجلات يدويًا
   const handleRefreshRecords = () => {
@@ -72,7 +74,7 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "profile")
+  const [activeTab, setActiveTab] = useState(searchParams?.get("tab") || "profile")
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
   const [rankingData, setRankingData] = useState<RankingData | null>(null)
@@ -119,7 +121,7 @@ export default function ProfilePage() {
   }, [])
 
   useEffect(() => {
-    const tab = searchParams.get("tab")
+    const tab = searchParams?.get("tab")
     if (tab) {
       setActiveTab(tab)
     }
@@ -615,5 +617,13 @@ export default function ProfilePage() {
         <Footer />
       </div>
     </>
+  )
+}
+
+export default function ProfilePageWrapper() {
+  return (
+    <Suspense fallback={null}>
+      <ProfilePage />
+    </Suspense>
   )
 }

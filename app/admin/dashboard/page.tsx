@@ -1,8 +1,10 @@
 ﻿"use client"
 
+export const dynamic = 'force-dynamic'
+
 import type React from "react"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -64,7 +66,7 @@ interface AllUser {
   guardian_phone?: string
 }
 
-export default function AdminDashboard() {
+function AdminDashboard() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth();
 
   const [isLoading, setIsLoading] = useState(true)
@@ -1865,5 +1867,13 @@ export default function AdminDashboard() {
 
       <Footer />
     </div>
+  )
+}
+
+export default function AdminDashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminDashboard />
+    </Suspense>
   )
 }
