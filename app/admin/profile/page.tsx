@@ -37,7 +37,7 @@ export default function AdminProfilePage() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
-    if (!loggedIn || userRole === "student" || userRole === "teacher" || !userRole) {
+    if (!loggedIn || userRole === "student" || userRole === "teacher" || userRole === "deputy_teacher" || !userRole) {
       router.push("/login")
     } else {
       fetchAdminData()
@@ -56,6 +56,7 @@ export default function AdminProfilePage() {
         .eq("account_number", Number(accountNumber))
         .neq("role", "student")
         .neq("role", "teacher")
+        .neq("role", "deputy_teacher")
         .single()
 
       if (error) {

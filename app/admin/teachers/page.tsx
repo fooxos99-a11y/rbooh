@@ -29,6 +29,7 @@ interface Teacher {
   halaqah: string
   studentCount: number
   phoneNumber?: string
+  role?: string
 }
 
 interface Circle {
@@ -47,6 +48,7 @@ export default function TeacherManagement() {
   const [newTeacherIdNumber, setNewTeacherIdNumber] = useState("")
   const [newTeacherAccountNumber, setNewTeacherAccountNumber] = useState("")
   const [selectedHalaqah, setSelectedHalaqah] = useState("")
+  const [newTeacherRole, setNewTeacherRole] = useState<"teacher" | "deputy_teacher">("teacher")
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null)
@@ -59,7 +61,7 @@ export default function TeacherManagement() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
-    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher") {
+    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher" || userRole === "deputy_teacher") {
       router.push("/login")
     } else {
       setIsLoading(false)
@@ -120,6 +122,7 @@ export default function TeacherManagement() {
             id_number: newTeacherIdNumber,
             account_number: Number.parseInt(newTeacherAccountNumber),
             halaqah: selectedHalaqah,
+            role: newTeacherRole,
           }),
         })
 
@@ -127,12 +130,14 @@ export default function TeacherManagement() {
 
         if (data.success) {
           setTeachers([...teachers, data.teacher])
+          const roleLabel = newTeacherRole === "deputy_teacher" ? "نائب معلم" : "معلم"
           setNewTeacherName("")
           setNewTeacherIdNumber("")
           setNewTeacherAccountNumber("")
           setSelectedHalaqah("")
+          setNewTeacherRole("teacher")
           setIsAddDialogOpen(false)
-          await showAlert(`تم إضافة المعلم ${newTeacherName} إلى ${selectedHalaqah} بنجاح`, "نجاح")
+          await showAlert(`تم إضافة ${roleLabel} ${newTeacherName} إلى ${selectedHalaqah} بنجاح`, "نجاح")
         } else {
           await showAlert(data.error ? data.error : "فشل في إضافة المعلم", "خطأ")
         }
@@ -244,7 +249,7 @@ export default function TeacherManagement() {
               <DialogTrigger asChild>
                 <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors">
                   <UserPlus className="w-4 h-4" />
-                  إضافة معلم
+                  إضافة
                 </button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[480px]">
@@ -273,6 +278,16 @@ export default function TeacherManagement() {
                         {circles.map((circle) => (
                           <SelectItem key={circle.id} value={circle.name}>{circle.name}</SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="teacherRole" className="text-sm font-semibold text-[#1a2332]">المسمى الوظيفي</Label>
+                    <Select value={newTeacherRole} onValueChange={(v) => setNewTeacherRole(v as "teacher" | "deputy_teacher")}>
+                      <SelectTrigger><SelectValue placeholder="اختر المسمى" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="teacher">معلم</SelectItem>
+                        <SelectItem value="deputy_teacher">نائب معلم</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -329,7 +344,6 @@ export default function TeacherManagement() {
                   <Users className="w-4 h-4 text-[#D4AF37]" />
                 </div>
                 <h2 className="text-base font-bold text-[#1a2332]">قائمة المعلمين</h2>
-                <span className="mr-auto text-sm text-neutral-400">{teachers.length} معلم</span>
               </div>
               <div className="divide-y divide-[#D4AF37]/20">
                 {teachers.map((teacher) => (
@@ -341,7 +355,12 @@ export default function TeacherManagement() {
                           <User className="w-5 h-5 text-[#D4AF37]" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-base font-bold text-[#1a2332] truncate">{teacher.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-base font-bold text-[#1a2332] truncate">{teacher.name}</p>
+                            <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#D4AF37]/15 text-[#C9A961]">
+                              {teacher.role === "deputy_teacher" ? "نائب معلم" : "معلم"}
+                            </span>
+                          </div>
                           <p className="text-xs text-neutral-400 mt-0.5">{teacher.halaqah}</p>
                         </div>
                       </div>

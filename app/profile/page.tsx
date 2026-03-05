@@ -9,7 +9,8 @@ import { Footer } from "@/components/footer"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart } from "lucide-react"
+import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart, BookMarked, CheckCircle2, Clock } from "lucide-react"
+import { getSessionContent, SURAHS } from "@/lib/quran-data"
 import { Button } from "@/components/ui/button"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { ThemeSwitcher } from "@/components/theme-switcher"
@@ -78,6 +79,11 @@ function ProfilePage() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
   const [rankingData, setRankingData] = useState<RankingData | null>(null)
+  const [planData, setPlanData] = useState<any>(null)
+  const [planCompletedDays, setPlanCompletedDays] = useState(0)
+  const [planProgress, setPlanProgress] = useState(0)
+  const [planAttendance, setPlanAttendance] = useState<any[]>([])
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false)
   const [achievements, setAchievements] = useState<StudentAchievement[]>([])
   const confirmDialog = useConfirmDialog()
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -130,18 +136,20 @@ function ProfilePage() {
   const fetchStudentData = async () => {
     try {
       const accountNumber = localStorage.getItem("accountNumber")
+      if (!accountNumber) { router.push("/login"); return }
       console.log("[v0] Fetching student data for account:", accountNumber)
 
-      const response = await fetch(`/api/students`)
+      const response = await fetch(`/api/students?account_number=${accountNumber}`, { cache: "no-store" })
       const data = await response.json()
 
-      const student = data.students?.find((s: StudentData) => s.account_number === Number(accountNumber))
+      const student = (data.students || [])[0]
 
       if (student) {
         setStudentData(student)
         fetchRankingData(student.id)
         fetchAttendanceRecords(student.id)
         fetchAchievements(student.id)
+        fetchPlanData(student.id)
       }
       setIsLoading(false)
     } catch (error) {
@@ -184,9 +192,61 @@ function ProfilePage() {
       case "star":   return <Star   className={`${cls} ${color} fill-[#d8a355]/40`} />
       case "flame":  return <Flame  className={`${cls} ${color}`} />
       case "zap":    return <Zap    className={`${cls} ${color}`} />
-      case "crown":  return <Crown  className={`${cls} ${color}`} />
-      case "heart":  return <Heart  className={`${cls} ${color}`} />
+      case "crown":  return <Crown      className={`${cls} ${color}`} />
+      case "heart":  return <Heart      className={`${cls} ${color}`} />
+      case "book":   return <BookMarked className={`${cls} ${color}`} />
       default:       return <Trophy className={`${cls} ${color}`} />
+    }
+  }
+
+  const fetchPlanData = async (studentId: string) => {
+    setIsLoadingPlan(true)
+    try {
+      const res = await fetch(`/api/student-plans?student_id=${studentId}`, { cache: "no-store" })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      console.log("[profile] plan data:", data)
+      setPlanData(data.plan ?? null)
+      setPlanCompletedDays(data.completedDays ?? 0)
+      setPlanProgress(data.progressPercent ?? 0)
+      setPlanAttendance(data.completedRecords ?? [])
+
+      // منح إنجاز تلقائي عند اكتمال الخطة 100%
+      if ((data.progressPercent ?? 0) >= 100 && data.plan) {
+        const plan = data.plan
+        const descKey = `plan_${plan.id}`
+        const achRes = await fetch(`/api/achievements?student_id=${studentId}`)
+        if (achRes.ok) {
+          const achData = await achRes.json()
+          const existing = (achData.achievements || []).find((a: any) => a.description === descKey)
+          if (!existing) {
+            await fetch("/api/achievements", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                student_id: studentId,
+                title: `إنجاز خطة (${plan.start_surah_name} إلى ${plan.end_surah_name})`,
+                category: "خطة حفظ",
+                date: new Date().toISOString().split("T")[0],
+                description: descKey,
+                status: "مكتمل",
+                level: "ممتاز",
+                icon_type: "book",
+                achievement_type: "personal",
+              }),
+            })
+            // تحديث قائمة الإنجازات بعد الإضافة
+            fetchAchievements(studentId)
+          } else {
+            setAchievements(achData.achievements || [])
+          }
+        }
+      }
+    } catch (e) {
+      console.error("[profile] Error fetching plan:", e)
+      setPlanData(null)
+    } finally {
+      setIsLoadingPlan(false)
     }
   }
 
@@ -278,223 +338,171 @@ function ProfilePage() {
 
         <main className="flex-1 py-6 md:py-12 px-3 md:px-4">
           <div className="container mx-auto max-w-6xl">
-            <div
-              className="rounded-2xl md:rounded-3xl shadow-2xl p-4 md:p-8 mb-2 md:mb-8 text-white"
-              style={{
-                background: `linear-gradient(to right, #d8a355, #c99347)`,
-              }}
-            >
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-8">
-                <div className="flex-1 w-full">
-                  <div className="flex flex-col items-center gap-4 md:gap-8">
-                    <div className="flex-1 text-center md:text-right w-full">
-                      <h1 className="text-2xl md:text-4xl font-bold mb-2">{studentData.name}</h1>
-                      <p className="text-base md:text-xl mb-4 opacity-90">{studentData.halaqah}</p>
-                      <div className="grid grid-cols-3 gap-2 md:gap-3 mt-4 md:mt-6">
-                        <div className="bg-white/95 backdrop-blur-sm rounded-lg md:rounded-xl p-3 md:p-4 shadow-lg border-2 border-white/50 hover:scale-105 transition-transform duration-300">
-                          <div className="flex items-center justify-between mb-1 md:mb-2">
-                            <div
-                              className="p-1.5 md:p-2 rounded-lg shadow-md"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                              }}
-                            >
-                              <Trophy className="w-3 h-3 md:w-5 md:h-5 text-white" />
-                            </div>
-                            <span className="text-[10px] md:text-xs font-bold text-[#1a2332]/60 tracking-wide">
-                              المركز العام
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div
-                              className="text-2xl md:text-4xl font-black"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                backgroundClip: "text",
-                              }}
-                            >
-                              {rankingData?.globalRank || "-"}
-                            </div>
-                            <p className="text-[9px] md:text-xs text-[#1a2332]/50 font-semibold">بين جميع الطلاب</p>
-                          </div>
-                        </div>
+            {/* بطاقة ملف الطالب */}
+            <div className="w-full rounded-2xl overflow-hidden mb-3 md:mb-4 shadow-lg bg-white">
 
-                        <div className="bg-white/95 backdrop-blur-sm rounded-lg md:rounded-xl p-3 md:p-4 shadow-lg border-2 border-white/50 hover:scale-105 transition-transform duration-300">
-                          <div className="flex items-center justify-between mb-1 md:mb-2">
-                            <div
-                              className="p-1.5 md:p-2 rounded-lg shadow-md"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                              }}
-                            >
-                              <Award className="w-3 h-3 md:w-5 md:h-5 text-white" />
-                            </div>
-                            <span className="text-[10px] md:text-xs font-bold text-[#1a2332]/60 tracking-wide">
-                              الحلقة
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div
-                              className="text-2xl md:text-4xl font-black"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                backgroundClip: "text",
-                              }}
-                            >
-                              {rankingData?.circleRank || "-"}
-                            </div>
-                            <p className="text-[9px] md:text-xs text-[#1a2332]/50 font-semibold">
-                              {rankingData?.circleName}
-                            </p>
-                          </div>
-                        </div>
+              {/* رأس البطاقة */}
+              <div className="px-0 pt-0 pb-0 bg-white">
+                {/* تم حذف المستطيل العلوي نهائياً ليبدأ المكون مباشرة بمربعات الإحصاءات */}
+              </div>
 
-                        {/* Points Card */}
-                        <div className="bg-white/95 backdrop-blur-sm rounded-lg md:rounded-xl p-3 md:p-4 shadow-lg border-2 border-white/50 hover:scale-105 transition-transform duration-300">
-                          <div className="flex items-center justify-between mb-1 md:mb-2">
-                            <div
-                              className="p-1.5 md:p-2 rounded-lg shadow-md"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                              }}
-                            >
-                              <Star className="w-3 h-3 md:w-5 md:h-5 text-white fill-white" />
-                            </div>
-                            <span className="text-[10px] md:text-xs font-bold text-[#1a2332]/60 tracking-wide">
-                              النقاط
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <div
-                              className="text-2xl md:text-4xl font-black"
-                              style={{
-                                background: `linear-gradient(to bottom right, #d8a355, #c99347)`,
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                backgroundClip: "text",
-                              }}
-                            >
-                              {studentData.points}
-                            </div>
-                            <p className="text-[9px] md:text-xs text-[#1a2332]/50 font-semibold">نقطة</p>
-                          </div>
-                        </div>
-                      </div>
+              {/* فاصل */}
+              <div className="h-px bg-[#d8a355]/15" />
+
+              {/* بطاقات الإحصاءات */}
+              <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[#d8a355]/12">
+                {[
+                  { icon: <Trophy className="w-4 h-4 text-[#d8a355]" />,                       label: "المركز العام", value: rankingData?.globalRank || "-", sub: "بين جميع الطلاب"          },
+                  { icon: <Award  className="w-4 h-4 text-[#d8a355]" />,                       label: "الحلقة",       value: rankingData?.circleRank  || "-", sub: rankingData?.circleName || "—" },
+                  { icon: <Star   className="w-4 h-4 text-[#d8a355] fill-[#d8a355]" />,        label: "النقاط",       value: studentData.points,               sub: "نقطة"                        },
+                ].map((stat) => (
+                  <div key={stat.label} className="flex flex-col items-center justify-center py-4 px-2 gap-1 bg-white border-2 border-[#d8a355]/40 rounded-xl shadow-sm">
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-1" style={{ background: "rgba(216,163,85,0.08)" }}>
+                      {stat.icon}
                     </div>
+                    <div className="text-xl md:text-2xl font-black text-[#1a2332]">{stat.value}</div>
+                    <div className="text-[9px] font-bold text-[#1a2332]/45 text-center">{stat.label}</div>
+                    <div className="text-[8px] text-[#1a2332]/30 truncate max-w-full text-center">{stat.sub}</div>
                   </div>
+                ))}
+              </div>
+
+              {/* فاصل */}
+              <div className="h-px bg-[#d8a355]/15" />
+
+              {/* شريط خطة الحفظ */}
+              <div className="px-5 py-3.5">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <BookMarked className="w-3.5 h-3.5 text-[#d8a355] flex-shrink-0" />
+                    <span className="text-[11px] font-bold text-[#1a2332]/65">خطة الحفظ</span>
+                    {planData && (
+                      <span className="text-[9px] text-[#1a2332]/35 truncate">{planData?.start_surah_name} ← {planData?.end_surah_name}</span>
+                    )}
+                  </div>
+                  <span className="text-xs font-black text-[#d8a355] flex-shrink-0 mr-2">{planData ? `${planProgress}%` : "0%"}</span>
                 </div>
+                <div className="relative h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(26,35,50,0.07)" }}>
+                  <div
+                    className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
+                    style={{
+                      width: `${planData ? planProgress : 0}%`,
+                      background: "linear-gradient(90deg, #b8860b 0%, #d8a355 50%, #f0d060 100%)",
+                    }}
+                  >
+                    <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)", animation: "shimmer 2s infinite" }} />
+                  </div>
+                  {[25, 50, 75].map((t) => (
+                    <div key={t} className="absolute top-0 bottom-0 w-px bg-[#1a2332]/10" style={{ left: `${t}%` }} />
+                  ))}
+                </div>
+                <div className="flex justify-between mt-1.5">
+                  {[0, 25, 50, 75, 100].map((lvl) => (
+                    <div key={lvl} className={`w-1.5 h-1.5 rounded-full transition-all ${(planData ? planProgress : 0) >= lvl ? "bg-[#d8a355] shadow-[0_0_4px_rgba(216,163,85,0.6)]" : "bg-[#1a2332]/12"}`} />
+                  ))}
+                </div>
+                <p className="text-[9px] text-[#1a2332]/30 mt-1 text-left">
+                  {planData && planCompletedDays > 0 ? `${planCompletedDays} يوم مكتمل` : null}
+                </p>
               </div>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList
-                className="grid w-full grid-cols-3 min-h-0 h-auto bg-white shadow-lg rounded-xl p-1 md:p-2 mb-3 md:mb-8 overflow-visible"
-                style={{ marginTop: 0 }}
-              >
-                <TabsTrigger
-                  value="profile"
-                  className="w-full h-auto flex flex-col items-center justify-center gap-1 text-base md:text-xl font-extrabold py-4 md:py-5 rounded-lg data-[state=active]:text-white leading-tight"
-                  style={{
-                    background: activeTab === "profile" ? `linear-gradient(to right, #d8a355, #c99347)` : undefined,
-                  }}
-                >
-                  <User className="w-7 h-7 md:w-8 md:h-8 mb-1" />
-                  <span className="block leading-tight">الملف الشخصي</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="achievements"
-                  className="w-full h-auto flex flex-col items-center justify-center gap-1 text-base md:text-xl font-extrabold py-4 md:py-5 rounded-lg data-[state=active]:text-white leading-tight"
-                  style={{
-                    background:
-                      activeTab === "achievements" ? `linear-gradient(to right, #d8a355, #c99347)` : undefined,
-                  }}
-                >
-                  <Award className="w-7 h-7 md:w-8 md:h-8 mb-1" />
-                  <span className="block leading-tight">الإنجازات</span>
-                </TabsTrigger>
-                <TabsTrigger
-                  value="records"
-                  className="w-full h-auto flex flex-col items-center justify-center gap-1 text-base md:text-xl font-extrabold py-4 md:py-5 rounded-lg data-[state=active]:text-white leading-tight"
-                  style={{
-                    background: activeTab === "records" ? `linear-gradient(to right, #d8a355, #c99347)` : undefined,
-                  }}
-                >
-                  <BarChart3 className="w-7 h-7 md:w-8 md:h-8 mb-1" />
-                  <span className="block leading-tight">السجلات</span>
-                </TabsTrigger>
-              </TabsList>
+            {/* قسم البيانات - موحد */}
+            <div className="w-full bg-white rounded-xl shadow-md border border-[#d8a355]/20 overflow-hidden mb-3 md:mb-6">
+              <div className="px-4 py-2 border-b border-[#d8a355]/20 bg-gradient-to-r from-[#d8a355]/10 to-transparent">
+                <span className="text-sm font-bold text-[#1a2332]">البيانات</span>
+              </div>
+              <div className="grid grid-cols-4 divide-x divide-x-reverse divide-[#d8a355]/15 border-b border-[#d8a355]/15">
+                  {[
+                    { value: "profile",      icon: <User       className="w-5 h-5" />, label: "الملف"      },
+                    { value: "achievements", icon: <Award      className="w-5 h-5" />, label: "الإنجازات"  },
+                    { value: "records",      icon: <BarChart3  className="w-5 h-5" />, label: "السجلات"    },
+                    { value: "plan",         icon: <BookMarked className="w-5 h-5" />, label: "الخطة"      },
+                  ].map((item) => (
+                    <button
+                      key={item.value}
+                      onClick={() => setActiveTab(item.value)}
+                      className={`flex flex-col items-center justify-center gap-1 py-3 text-xs font-bold transition-colors ${
+                        activeTab === item.value
+                          ? "text-[#d8a355] bg-[#d8a355]/8"
+                          : "text-[#1a2332]/50 hover:text-[#d8a355] hover:bg-[#d8a355]/5"
+                      }`}
+                    >
+                      {item.icon}
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+              </div>
+
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
 
               <TabsContent value="profile" className="space-y-4 md:space-y-6">
-                <Card className="border-2 shadow-lg border-[#d8a355]/20">
+                <Card className="rounded-none border-0 shadow-none">
                   <CardHeader className="bg-white p-4 md:p-6">
                     <CardTitle className="text-xl md:text-2xl text-[#1a2332]">البيانات الشخصية</CardTitle>
-                    <CardDescription className="text-sm md:text-base">معلومات الطالب الأساسية</CardDescription>
                   </CardHeader>
-                  <CardContent className="pt-4 md:pt-6 space-y-4 md:space-y-6">
-                    {/* Theme Switcher Section */}
-                    <div className="pb-4 md:pb-6 border-b-2 md:border-b-2 border-[#d8a355]/20 md:border-[#d8a355]/20">
-                      <ThemeSwitcher studentId={studentData?.id} />
-                    </div>
-
-                    {/* Effect Selector Section */}
-                    <div className="pb-4 md:pb-6 border-b-2 md:border-b-2 border-[#d8a355]/20 md:border-[#d8a355]/20">
-                      <EffectSelector studentId={studentData?.id} />
-                    </div>
-
-                    {/* Badge Selector Section */}
-                    <div className="pb-4 md:pb-6 border-b-2 md:border-b-2 border-[#d8a355]/20 md:border-[#d8a355]/20">
-                      <BadgeSelector studentId={studentData?.id} />
-                    </div>
-
-                    {/* Font Selector Section */}
-                    <div className="pb-4 md:pb-6 border-b-2 md:border-b-2 border-[#d8a355]/20 md:border-[#d8a355]/20">
-                      <FontSelector studentId={studentData?.id} />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                      <div className="space-y-2">
-                        <label className="text-base md:text-sm font-bold md:font-semibold text-[#1a2332]/80">رقم الحساب</label>
-                        <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-lg md:text-lg font-extrabold text-[#1a2332] tracking-wide">
+                  <CardContent className="pt-2 md:pt-3 space-y-4 md:space-y-6">
+                    {/* بيانات الطالب */}
+                    <div className="grid grid-cols-2 gap-3 pb-4 md:pb-6 border-b-2 border-[#d8a355]/20">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-[#1a2332]/60">رقم الحساب</label>
+                        <div className="p-3 bg-white rounded-xl text-base font-extrabold text-[#1a2332] tracking-wide border border-[#d8a355]/20">
                           {studentData.account_number}
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-base md:text-sm font-bold md:font-semibold text-[#1a2332]/80">الاسم الكامل</label>
-                        <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-lg md:text-lg font-extrabold text-[#1a2332] tracking-wide">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-[#1a2332]/60">الاسم الكامل</label>
+                        <div className="p-3 bg-white rounded-xl text-base font-extrabold text-[#1a2332] tracking-wide border border-[#d8a355]/20">
                           {studentData.name}
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-base md:text-sm font-bold md:font-semibold text-[#1a2332]/80">الحلقة</label>
-                        <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-lg md:text-lg font-extrabold text-[#1a2332] tracking-wide">
-                          {studentData.halaqah}
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-[#1a2332]/60">الحلقة</label>
+                        <div className="p-3 bg-white rounded-xl text-base font-extrabold text-[#1a2332] tracking-wide border border-[#d8a355]/20">
+                          {studentData.halaqah || "—"}
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-base md:text-sm font-bold md:font-semibold text-[#1a2332]/80">رقم الهوية</label>
-                        <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-lg md:text-lg font-extrabold text-[#1a2332] tracking-wide">
+                      <div className="space-y-1">
+                        <label className="text-xs font-semibold text-[#1a2332]/60">رقم الهوية</label>
+                        <div className="p-3 bg-white rounded-xl text-base font-extrabold text-[#1a2332] tracking-wide border border-[#d8a355]/20">
                           {studentData.id_number || "غير محدد"}
                         </div>
                       </div>
                       {studentData.guardian_phone && (
-                        <div className="space-y-2">
-                          <label className="text-base md:text-sm font-bold md:font-semibold text-[#1a2332]/80">رقم جوال ولي الأمر</label>
-                          <div className="p-3 md:p-4 bg-gray-50 rounded-xl text-lg md:text-lg font-extrabold text-[#1a2332] tracking-wide">
+                        <div className="col-span-2 space-y-1">
+                          <label className="text-xs font-semibold text-[#1a2332]/60">رقم جوال ولي الأمر</label>
+                          <div className="p-3 bg-white rounded-xl text-base font-extrabold text-[#1a2332] tracking-wide border border-[#d8a355]/20" dir="ltr">
                             {studentData.guardian_phone}
                           </div>
                         </div>
                       )}
+                    </div>
+
+                    {/* Theme Switcher Section */}
+                    <div className="pb-4 md:pb-6 border-b-2 border-[#d8a355]/20">
+                      <ThemeSwitcher studentId={studentData?.id} />
+                    </div>
+
+                    {/* Effect Selector Section */}
+                    <div className="pb-4 md:pb-6 border-b-2 border-[#d8a355]/20">
+                      <EffectSelector studentId={studentData?.id} />
+                    </div>
+
+                    {/* Badge Selector Section */}
+                    <div className="pb-4 md:pb-6 border-b-2 border-[#d8a355]/20">
+                      <BadgeSelector studentId={studentData?.id} />
+                    </div>
+
+                    {/* Font Selector Section */}
+                    <div className="pb-2">
+                      <FontSelector studentId={studentData?.id} />
                     </div>
                   </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="achievements" className="space-y-6">
-                <Card className="border-2 shadow-lg" style={{ borderColor: `var(--theme-primary)33` }}>
+                <Card className="rounded-none border-0 shadow-none">
                   <CardContent className="pt-6">
                     {achievements.length === 0 ? (
                       <div className="text-center py-12">
@@ -527,7 +535,7 @@ function ProfilePage() {
               </TabsContent>
 
               <TabsContent value="records" className="space-y-4">
-                <Card className="border-2 shadow-lg" style={{ borderColor: `var(--theme-primary)33` }}>
+                <Card className="rounded-none border-0 shadow-none">
                   <CardHeader className="bg-white">
                     <CardTitle className="text-2xl font-bold text-[#c99347]">سجلات الحضور والتقييم</CardTitle>
                     <CardDescription className="text-lg font-semibold text-[#1a2332]/80">سجلات الحضور والتقييمات الخاصة بك</CardDescription>
@@ -610,7 +618,143 @@ function ProfilePage() {
                   </CardContent>
                 </Card>
               </TabsContent>
-            </Tabs>
+              <TabsContent value="plan" className="space-y-4">
+                {isLoadingPlan ? (
+                  <div className="text-center py-12">
+                    <div className="w-10 h-10 rounded-full border-2 border-[#d8a355]/40 border-t-[#d8a355] animate-spin mx-auto" />
+                    <p className="mt-4 text-base text-[#c99347]/70">جاري تحميل الخطة...</p>
+                  </div>
+                ) : !planData ? (
+                  <div className="text-center py-14">
+                    <BookMarked className="w-20 h-20 mx-auto mb-4 opacity-30" style={{ color: "#d8a355" }} />
+                    <p className="text-xl font-bold text-[#c99347] mb-2">لا توجد خطة حفظ حالياً</p>
+                    <p className="text-sm text-[#1a2332]/40">سيتم إضافة خطة حفظ من قِبل المشرف</p>
+                  </div>
+                ) : (() => {
+                  const daily = planData.daily_pages as number
+                  const totalDays = planData.total_days as number
+                  const totalPages = planData.total_pages as number
+                  const planDirection = (planData.direction as "asc" | "desc") || "asc"
+                  const startSurahData = SURAHS.find((s) => s.number === Math.min(planData.start_surah_number, planData.end_surah_number))
+                  const planStartPage = startSurahData?.startPage || 1
+
+                  // بناء قائمة كل الأيام
+                  const allDays = Array.from({ length: totalDays }, (_, i) => {
+                    const dayNum = i + 1
+                    const sessionContent = getSessionContent(planStartPage, daily, dayNum, totalPages, planDirection)
+
+                    let label = ""
+                    if (daily === 0.5) {
+                      const wajh = Math.ceil(dayNum / 2)
+                      // في التنازلي: أول يوم = النصف الثاني من آخر وجه
+                      if (planDirection === "desc") {
+                        label = (dayNum % 2 === 1) ? `الوجه ${wajh} — النصف الثاني` : `الوجه ${wajh} — النصف الأول`
+                      } else {
+                        label = (dayNum % 2 === 1) ? `الوجه ${wajh} — النصف الأول` : `الوجه ${wajh} — النصف الثاني`
+                      }
+                    } else if (daily === 1) {
+                      label = `الوجه ${dayNum}`
+                    } else {
+                      label = `الوجه ${(dayNum - 1) * 2 + 1} – ${dayNum * 2}`
+                    }
+
+                    const completed = planAttendance[i] || null
+                    return { dayNum, label, sessionContent, completed }
+                  })
+
+                  return (
+                    <>
+                      {/* رأس الخطة: النص + مربعَي الإجمالي والمتبقي */}
+                      <div className="bg-white rounded-2xl border-2 px-4 py-4 shadow-sm flex items-center gap-3" style={{ borderColor: "#d8a35530" }}>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] text-[#c99347]/70 font-semibold mb-0.5">خطة الحفظ</p>
+                          <p className="text-base font-black text-[#1a2332] leading-snug">
+                            من سورة {planDirection === "asc" ? planData.start_surah_name : planData.end_surah_name} إلى سورة {planDirection === "asc" ? planData.end_surah_name : planData.start_surah_name}
+                          </p>
+                          <p className="text-[11px] text-neutral-400 mt-0.5">{planData.daily_pages === 0.5 ? "نصف وجه يومياً" : planData.daily_pages === 1 ? "وجه يومياً" : "وجهان يومياً"}</p>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <div className="text-center bg-[#d8a355]/8 border border-[#d8a355]/25 rounded-xl px-3 py-2 min-w-[56px]">
+                            <p className="text-lg font-black text-[#c99347]">{totalDays}</p>
+                            <p className="text-[9px] text-neutral-400 font-semibold">الإجمالي</p>
+                          </div>
+                          <div className="text-center bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 min-w-[56px]">
+                            <p className="text-lg font-black text-emerald-600">{totalDays - planCompletedDays}</p>
+                            <p className="text-[9px] text-neutral-400 font-semibold">المتبقي</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* الجدول الزمني لكل الأيام */}
+                      <div className="bg-white rounded-2xl border-2 overflow-hidden" style={{ borderColor: "#d8a35526" }}>
+                        <div className="px-5 py-4 border-b border-[#d8a355]/20 flex items-center justify-between">
+                          <h4 className="font-bold text-[#1a2332]">جدول الخطة</h4>
+                          <span className="text-xs text-neutral-400">{planData.daily_pages === 0.5 ? "نصف وجه يومياً" : planData.daily_pages === 1 ? "وجه يومياً" : "وجهان يومياً"}</span>
+                        </div>
+                        <div className="relative">
+                          {/* خط التسلسل */}
+                          <div className="absolute right-[28px] top-0 bottom-0 w-0.5 bg-[#d8a355]/15" />
+                          <div className="space-y-0">
+                            {allDays.map(({ dayNum, label, sessionContent, completed }) => {
+                              const isNext = !completed && dayNum === planCompletedDays + 1
+                              const hijriDate = completed
+                                ? new Date(completed.date).toLocaleDateString("ar-SA-u-ca-islamic", { day: "numeric", month: "long" })
+                                : null
+                              return (
+                                <div
+                                  key={dayNum}
+                                  className={`flex items-start gap-3 px-4 py-3 relative transition-colors ${
+                                    completed ? "bg-emerald-50/40" : isNext ? "bg-[#d8a355]/5" : ""
+                                  }`}
+                                >
+                                  {/* الأيقونة */}
+                                  <div className="shrink-0 mt-0.5 z-10">
+                                    {completed ? (
+                                      <div className="w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
+                                        <CheckCircle2 className="w-4 h-4 text-white" />
+                                      </div>
+                                    ) : isNext ? (
+                                      <div className="w-7 h-7 rounded-full border-2 border-[#d8a355] bg-white flex items-center justify-center">
+                                        <div className="w-2.5 h-2.5 rounded-full bg-[#d8a355] animate-pulse" />
+                                      </div>
+                                    ) : (
+                                      <div className="w-7 h-7 rounded-full border-2 border-neutral-200 bg-white flex items-center justify-center">
+                                        <span className="text-[9px] font-bold text-neutral-300">{dayNum}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {/* المحتوى */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className={`text-sm font-bold ${completed ? "text-emerald-700" : isNext ? "text-[#c99347]" : "text-neutral-400"}`}>
+                                        {label}
+                                      </p>
+                                      {isNext && (
+                                        <span className="text-[10px] bg-[#d8a355]/15 text-[#c99347] px-1.5 py-0.5 rounded-full font-semibold">التالي</span>
+                                      )}
+                                    </div>
+                                    <p className={`text-[11px] mt-0.5 ${completed ? "text-emerald-600/70" : "text-neutral-400"}`}>
+                                      {sessionContent.text}
+                                    </p>
+                                  </div>
+                                  {/* التاريخ */}
+                                  {hijriDate && (
+                                    <div className="shrink-0 text-right">
+                                      <p className="text-[11px] font-semibold text-emerald-600">{hijriDate}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )
+                })()}
+              </TabsContent>
+              </Tabs>
+            </div>
           </div>
         </main>
 

@@ -39,6 +39,7 @@ import {
   Banknote,
   BarChart3,
   Trash2,
+  BookMarked,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -171,6 +172,7 @@ function CollapseSection({
 }
 
 export function Header() {
+    const [globalRank, setGlobalRank] = useState<string | number | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -222,6 +224,8 @@ export function Header() {
   const [notifications, setNotifications] = useState<{id:string;message:string;is_read:boolean;created_at:string}[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [dailyChallengePlayedToday, setDailyChallengePlayedToday] = useState(false);
+  const [sidebarPlanProgress, setSidebarPlanProgress] = useState<number | null>(null);
+  const [sidebarPlanName, setSidebarPlanName] = useState<string | null>(null);
 
   const isAdmin = userAccountNumber === 2 || validAdminRoles.includes(userRole || "");
 
@@ -236,6 +240,34 @@ export function Header() {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "instant" });
 
   useEffect(() => {
+        // جلب الترتيب العام للطالب عند تحميل القائمة الجانبية
+        const fetchGlobalRank = async () => {
+          const accNum = localStorage.getItem("accountNumber");
+          const role = localStorage.getItem("userRole");
+          if (accNum && role === "student") {
+            try {
+              // جلب بيانات الطالب للحصول على studentId
+              const resStudents = await fetch(`/api/students?account_number=${accNum}`);
+              const dataStudents = await resStudents.json();
+              const student = (dataStudents.students || []).find((s:any) => String(s.account_number) === String(accNum));
+              if (student && student.id) {
+                const resRank = await fetch(`/api/student-ranking?student_id=${student.id}`);
+                const dataRank = await resRank.json();
+                if (dataRank.success && dataRank.ranking && dataRank.ranking.globalRank) {
+                  setGlobalRank(dataRank.ranking.globalRank);
+                  localStorage.setItem('studentGlobalRank', String(dataRank.ranking.globalRank));
+                } else {
+                  setGlobalRank("-");
+                }
+              } else {
+                setGlobalRank("-");
+              }
+            } catch {
+              setGlobalRank("-");
+            }
+          }
+        };
+        fetchGlobalRank();
     const loggedIn = localStorage.getItem("isLoggedIn") === "true";
 
     const role = localStorage.getItem("userRole");
@@ -273,10 +305,14 @@ export function Header() {
     };
     fetchUnread();
 
-    if (loggedIn && role === "teacher") {
+    if (loggedIn && (role === "teacher" || role === "deputy_teacher")) {
       const accNum = localStorage.getItem("accountNumber");
-
       if (accNum) fetchTeacherInfo(accNum);
+    }
+
+    if (loggedIn && role === "student") {
+      const accNum = localStorage.getItem("accountNumber");
+      if (accNum) fetchSidebarPlan(accNum);
     }
 
     loadCircles();
@@ -331,10 +367,12 @@ export function Header() {
       if (
         freshRole === "student" ||
         freshRole === "teacher" ||
+        freshRole === "deputy_teacher" ||
         !freshRole ||
         (!validAdminRoles.includes(freshRole) &&
           freshRole !== "student" &&
-          freshRole !== "teacher")
+          freshRole !== "teacher" &&
+          freshRole !== "deputy_teacher")
       ) {
         // No redirect here — just update sidebar. Redirect happens on admin pages via useAdminAuth.
       }
@@ -379,6 +417,21 @@ export function Header() {
     } finally {
       setCirclesLoading(false);
     }
+  };
+
+  const fetchSidebarPlan = async (accNum: string) => {
+    try {
+      const res = await fetch(`/api/students?account_number=${accNum}`);
+      const data = await res.json();
+      const student = (data.students || [])[0];
+      if (!student) return;
+      const planRes = await fetch(`/api/student-plans?student_id=${student.id}`);
+      const planData = await planRes.json();
+      if (planData.plan) {
+        setSidebarPlanProgress(planData.progressPercent ?? 0);
+        setSidebarPlanName(`${planData.plan.start_surah_name} ← ${planData.plan.end_surah_name}`);
+      }
+    } catch {}
   };
 
   const fetchTeacherInfo = async (accNum: string) => {
@@ -439,7 +492,7 @@ export function Header() {
 
   const goToProfile = () => {
     if (isAdmin) router.push("/admin/profile");
-    else if (userRole === "teacher") router.push("/teacher/dashboard");
+    else if (userRole === "teacher" || userRole === "deputy_teacher") router.push("/teacher/dashboard");
     else router.push("/profile");
 
     scrollToTop();
@@ -457,13 +510,15 @@ export function Header() {
     ? (userAccountNumber === 2 ? "مدير" : (userRole || "مشرف"))
     : userRole === "teacher"
       ? "معلم"
-      : userRole === "student"
+      : userRole === "deputy_teacher"
+        ? "نائب معلم"
+        : userRole === "student"
         ? "طالب"
         : "";
 
   return (
     <>
-      {isLoggedIn && userRole === "teacher" && teacherInfo && (
+      {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher") && teacherInfo && (
         <TeacherAttendanceModal
           isOpen={isAttendanceModalOpen}
           onClose={() => setIsAttendanceModalOpen(false)}
@@ -657,19 +712,103 @@ export function Header() {
 
           {/* معلومات المستخدم */}
           {isLoggedIn && (
-            <button
-              onClick={() => { goToProfile(); setIsMobileMenuOpen(false); }}
-              className="w-full flex items-center gap-3 bg-white/[0.03] hover:bg-white/[0.08] transition-colors rounded-xl px-3 py-2.5"
-            >
-              <div className="w-10 h-10 rounded-full bg-[#d8a355] flex items-center justify-center flex-shrink-0">
-                <User size={18} className="text-[#00312e]" />
+            <>
+              {userRole === "student" && (
+                <div className="flex flex-col items-start gap-2 mb-2 pl-2">
+                  {/* النقاط */}
+                  <div className="flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-yellow-400"><path d="M10 2L12.4721 7.23607L18.0902 7.90983L13.5451 12.1459L14.9442 17.5902L10 14.618L5.05585 17.5902L6.45492 12.1459L1.90983 7.90983L7.52786 7.23607L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                    <span className="text-xs font-medium text-yellow-400">النقاط</span>
+                    <span className="text-white font-extrabold text-base ml-1" title="النقاط">
+                      {sidebarPlanProgress !== null && sidebarPlanProgress !== undefined ? sidebarPlanProgress : 0}
+                    </span>
+                  </div>
+                  {/* الترتيب العام */}
+                  <div className="flex items-center gap-2">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-amber-500"><path d="M5 3V5C5 8.31371 7.68629 11 11 11C14.3137 11 17 8.31371 17 5V3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M3 3H17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M7 17C7 15.3431 8.34315 14 10 14C11.6569 14 13 15.3431 13 17" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="17" r="1" fill="currentColor"/></svg>
+                    <span className="text-xs font-medium text-amber-500">المركز العام</span>
+                    <span className="text-white font-extrabold text-base ml-1" title="المركز العام">
+                      {globalRank !== null && globalRank !== undefined ? globalRank : "-"}
+                    </span>
+                  </div>
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => { goToProfile(); setIsMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 bg-white/[0.03] hover:bg-white/[0.08] transition-colors rounded-xl px-3 py-2.5"
+                >
+                  <div className="w-10 h-10 rounded-full bg-[#d8a355] flex items-center justify-center flex-shrink-0">
+                    <User size={18} className="text-[#00312e]" />
+                  </div>
+                  <div className="flex-1 text-right min-w-0">
+                    <p className="text-white font-bold text-sm truncate">{userName || "المستخدم"}</p>
+                    <p className="text-white/60 text-xs mt-0.5">{roleLabel}</p>
+                  </div>
+                  <ChevronLeft size={16} className="text-white/40 flex-shrink-0" />
+                </button>
               </div>
-              <div className="flex-1 text-right min-w-0">
-                <p className="text-white font-bold text-sm truncate">{userName || "المستخدم"}</p>
-                <p className="text-white/60 text-xs mt-0.5">{roleLabel}</p>
+            </>
+          )}
+
+          {/* بار إنجاز الخطة — للطالب فقط */}
+          {isLoggedIn && userRole === "student" && (
+            <div className="mt-3 px-1">
+              <div className="flex items-center mb-1.5">
+                <span className="text-[10px] font-bold text-[#D4AF37] tracking-wide">إنجاز الخطة</span>
               </div>
-              <ChevronLeft size={16} className="text-white/40 flex-shrink-0" />
-            </button>
+              {sidebarPlanName && (
+                <p className="text-[9px] text-white/40 text-right mb-1.5 truncate">{sidebarPlanName}</p>
+              )}
+              {/* خلفية البار */}
+              <div className="relative h-4 rounded-full bg-white/10 overflow-hidden">
+                {/* توهج خفيف */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
+                {/* التعبئة */}
+                <div
+                  className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
+                  style={{
+                    width: `${sidebarPlanProgress ?? 0}%`,
+                    background: "linear-gradient(90deg, #b8860b 0%, #D4AF37 50%, #f0d060 100%)",
+                  }}
+                >
+                  {/* بريق متحرك */}
+                  <div
+                    className="absolute inset-0 opacity-60"
+                    style={{
+                      background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)",
+                      animation: "shimmer 2s infinite",
+                      backgroundSize: "200% 100%",
+                    }}
+                  />
+                </div>
+                {/* النسبة داخل البار */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-[10px] font-black text-white drop-shadow tabular-nums">{sidebarPlanProgress ?? 0}%</span>
+                </div>
+                {/* علامات تقسيم */}
+                {[25, 50, 75].map((tick) => (
+                  <div
+                    key={tick}
+                    className="absolute top-0 bottom-0 w-px bg-white/10"
+                    style={{ left: `${tick}%` }}
+                  />
+                ))}
+              </div>
+              {/* نجوم المستوى */}
+              <div className="flex justify-between mt-1.5 px-0.5">
+                {[0, 25, 50, 75, 100].map((lvl) => (
+                  <div
+                    key={lvl}
+                    className={`w-1.5 h-1.5 rounded-full transition-all ${
+                      (sidebarPlanProgress ?? 0) >= lvl
+                        ? "bg-[#D4AF37] shadow-[0_0_4px_#D4AF37]"
+                        : "bg-white/20"
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
@@ -677,43 +816,32 @@ export function Header() {
 
         <div className="flex-1 overflow-y-auto bg-[#f9fafb] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
-          {isLoggedIn && userRole === "teacher" && (
-            <div className="px-2 mt-2 mb-0">
-              <NavItem
-                icon={ClipboardCheck}
-                label="التحضير"
-                onClick={() => {
-                  setIsAttendanceModalOpen(true);
-                  setIsMobileMenuOpen(false);
-                }}
-              />
-              <NavItem
-                icon={Users}
-                label="إدارة الحلقة"
-                onClick={() => handleNav("/teacher/halaqah/1")}
-              />
-            </div>
-          )}
-
-          {isLoggedIn && userRole === "student" && (
-            <div className="px-2 mt-2 mb-0">
-              <NavItem
-                icon={Map}
-                label="المسار"
-                onClick={() => handleNav("/pathways")}
-              />
-              <NavItem
-                icon={Target}
-                label="التحدي اليومي"
-                onClick={() => handleNav("/daily-challenge")}
-                gold={!dailyChallengePlayedToday}
-              />
-              <NavItem
-                icon={Store}
-                label="المتجر"
-                onClick={() => handleNav("/store")}
-              />
-            </div>
+          {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher") && (
+            <>
+              <SectionHeader title="الإدارة" />
+              <div className="px-2 mb-0">
+                <NavItem
+                  icon={ClipboardCheck}
+                  label="التحضير"
+                  onClick={() => {
+                    setIsAttendanceModalOpen(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                />
+                {userRole === "teacher" && (
+                  <NavItem
+                    icon={BookMarked}
+                    label="خطة الطلاب"
+                    onClick={() => handleNav("/teacher/student-plans")}
+                  />
+                )}
+                <NavItem
+                  icon={Users}
+                  label="إدارة الحلقة"
+                  onClick={() => handleNav("/teacher/halaqah/1")}
+                />
+              </div>
+            </>
           )}
 
           <SectionHeader title="المعلومات العامة" />
@@ -767,7 +895,7 @@ export function Header() {
               )}
             </CollapseSection>
 
-            {isLoggedIn && (userRole === "teacher" || isAdmin) && (
+            {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher" || isAdmin) && (
               <NavItem
                 icon={Gamepad2}
                 label="المسابقات"
@@ -775,6 +903,54 @@ export function Header() {
               />
             )}
           </div>
+
+          {isLoggedIn && userRole === "student" && (
+            <>
+              <SectionHeader title="البيانات" />
+              <div className="px-2 mb-0">
+                <NavItem
+                  icon={User}
+                  label="الملف الشخصي"
+                  onClick={() => { handleNav("/profile?tab=profile"); setIsMobileMenuOpen(false); }}
+                />
+                <NavItem
+                  icon={Award}
+                  label="الإنجازات"
+                  onClick={() => { handleNav("/profile?tab=achievements"); setIsMobileMenuOpen(false); }}
+                />
+                <NavItem
+                  icon={BarChart3}
+                  label="السجلات"
+                  onClick={() => { handleNav("/profile?tab=records"); setIsMobileMenuOpen(false); }}
+                />
+                <NavItem
+                  icon={BookMarked}
+                  label="الخطة"
+                  onClick={() => { handleNav("/profile?tab=plan"); setIsMobileMenuOpen(false); }}
+                />
+              </div>
+
+              <SectionHeader title="الأنشطة" />
+              <div className="px-2 mb-0">
+                <NavItem
+                  icon={Map}
+                  label="المسار"
+                  onClick={() => handleNav("/pathways")}
+                />
+                <NavItem
+                  icon={Target}
+                  label="التحدي اليومي"
+                  onClick={() => handleNav("/daily-challenge")}
+                  gold={!dailyChallengePlayedToday}
+                />
+                <NavItem
+                  icon={Store}
+                  label="المتجر"
+                  onClick={() => handleNav("/store")}
+                />
+              </div>
+            </>
+          )}
 
           {isLoggedIn && isAdmin && (
             <>
@@ -852,6 +1028,13 @@ export function Header() {
                       label: "إنجازات الطلاب",
 
                       path: "/admin/students-achievements",
+                    },
+                    {
+                      icon: BookMarked,
+
+                      label: "خطط الطلاب",
+
+                      path: "/admin/student-plans",
                     },
                   ].map(({ icon: Ic, label, path }) => (
                     <NavItem

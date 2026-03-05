@@ -57,7 +57,7 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
         const freshRole = userData.role || "";
 
         // 2. Reject students and teachers immediately
-        if (freshRole === "student" || freshRole === "teacher" || !freshRole) {
+        if (freshRole === "student" || freshRole === "teacher" || freshRole === "deputy_teacher" || !freshRole) {
           localStorage.setItem("userRole", freshRole);
           router.replace("/login");
           return;

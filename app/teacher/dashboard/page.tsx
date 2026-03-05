@@ -47,7 +47,7 @@ export default function TeacherDashboard() {
     const userRole = localStorage.getItem("userRole")
     const accountNumber = localStorage.getItem("accountNumber")
 
-    if (!loggedIn || userRole !== "teacher") {
+    if (!loggedIn || (userRole !== "teacher" && userRole !== "deputy_teacher")) {
       router.push("/login")
     } else {
       fetchTeacherData(accountNumber || "")

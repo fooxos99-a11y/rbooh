@@ -61,7 +61,7 @@ export default function HalaqahManagement() {
 		const userRole = localStorage.getItem("userRole")
 		const accountNumber = localStorage.getItem("accountNumber")
 
-		const allowedRoles = ["teacher", "admin", "supervisor"];
+		const allowedRoles = ["teacher", "deputy_teacher", "admin", "supervisor"];
 		if (!loggedIn || !allowedRoles.includes(userRole || "")) {
 			router.push("/login")
 		} else {

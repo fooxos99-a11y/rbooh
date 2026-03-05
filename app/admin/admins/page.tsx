@@ -45,7 +45,7 @@ export default function AdminsManagement() {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
 
-    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher") {
+    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher" || userRole === "deputy_teacher") {
       router.push("/login")
     } else {
       fetchData()
@@ -62,6 +62,7 @@ export default function AdminsManagement() {
         .select("*")
         .neq("role", "student")
         .neq("role", "teacher")
+        .neq("role", "deputy_teacher")
         .neq("account_number", 2)
         .order("account_number", { ascending: true })
 
@@ -106,7 +107,7 @@ export default function AdminsManagement() {
     }
   }
 
-  const RESERVED_ROLE_NAMES = ["طالب", "student", "معلم", "teacher", "مدير", "admin"]
+  const RESERVED_ROLE_NAMES = ["طالب", "student", "معلم", "teacher", "نائب معلم", "deputy_teacher", "مدير", "admin"]
 
   const handleAddRole = async () => {
     if (!newRoleName.trim()) {

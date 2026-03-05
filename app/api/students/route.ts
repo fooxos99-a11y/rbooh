@@ -96,31 +96,31 @@ export async function DELETE(request: Request) {
   }
 }
 
-// Enable route caching for 30 seconds
-export const revalidate = 30
-
 export async function GET(request: Request) {
   try {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const circleName = searchParams.get("circle")
+    const accountNumber = searchParams.get("account_number")
 
-    console.log("[v0] GET /api/students - Filtering by circle:", circleName)
+    console.log("[v0] GET /api/students - circle:", circleName, "account:", accountNumber)
 
     let query = supabase.from("students").select("*")
 
-    const { data, error } = await query.order("points", { ascending: false })
+    if (accountNumber) {
+      query = query.eq("account_number", Number(accountNumber)) as typeof query
+    } else if (circleName) {
+      query = query.eq("halaqah", circleName.trim()) as typeof query
+    }
+
+    const { data, error } = await (query as any).order("points", { ascending: false })
 
     if (error) {
       console.error("[v0] Error fetching students:", error)
       return NextResponse.json({ error: "فشل في جلب الطلاب" }, { status: 500 })
     }
 
-    let filtered = data || [];
-    if (circleName) {
-      const trimmedCircle = circleName.trim();
-      filtered = filtered.filter((student) => (student.halaqah || "").trim() === trimmedCircle);
-    }
+    const filtered = data || [];
 
     console.log("[v0] Students fetched from database:", filtered)
 
@@ -134,7 +134,7 @@ export async function GET(request: Request) {
       { 
         status: 200,
         headers: {
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
+          'Cache-Control': 'private, no-store'
         }
       }
     )

@@ -132,7 +132,7 @@ export default function AdminPathwaysPage() {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const role = localStorage.getItem("userRole")
 
-    if (!loggedIn || !role || role === "student" || role === "teacher") {
+    if (!loggedIn || !role || role === "student" || role === "teacher" || role === "deputy_teacher") {
       router.push("/login")
       return
     }

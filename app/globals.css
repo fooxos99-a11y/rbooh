@@ -380,3 +380,22 @@
   animation: gradient 3s ease infinite;
 }
 
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Surah combobox scrollbar */
+.surah-scroll::-webkit-scrollbar {
+  width: 2px;
+}
+.surah-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.surah-scroll::-webkit-scrollbar-thumb {
+  background: #d8a355;
+  border-radius: 999px;
+}
+.surah-scroll::-webkit-scrollbar-thumb:hover {
+  background: #c99347;
+}

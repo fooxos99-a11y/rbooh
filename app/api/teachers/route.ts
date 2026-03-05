@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       const { data: teachers, error } = await supabase
         .from("users")
         .select("*")
-        .eq("role", "teacher")
+        .in("role", ["teacher", "deputy_teacher"])
         .eq("account_number", accountNumber)
         .limit(1)
 
@@ -39,11 +39,11 @@ export async function GET(request: Request) {
       }, { status: 200 })
     }
 
-    // Fetch all users with role 'teacher'
+    // Fetch all users with role 'teacher' or 'deputy_teacher'
     const { data: teachers, error } = await supabase
       .from("users")
       .select("*")
-      .eq("role", "teacher")
+      .in("role", ["teacher", "deputy_teacher"])
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -75,6 +75,7 @@ export async function GET(request: Request) {
           halaqah: teacher.halaqah || "",
           studentCount: count || 0,
           phoneNumber: teacher.phone_number || "",
+          role: teacher.role || "teacher",
         }
       })
     );
@@ -90,11 +91,13 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient()
     const body = await request.json()
-    const { name, id_number, account_number, halaqah } = body
+    const { name, id_number, account_number, halaqah, role } = body
 
     if (!name || !id_number || !account_number || !halaqah) {
       return NextResponse.json({ error: "جميع الحقول مطلوبة" }, { status: 400 })
     }
+
+    const assignedRole = role === "deputy_teacher" ? "deputy_teacher" : "teacher"
 
     const { data: existingUser } = await supabase
       .from("users")
@@ -112,7 +115,7 @@ export async function POST(request: Request) {
         {
           name,
           id_number,
-          role: "teacher",
+          role: assignedRole,
           halaqah,
           account_number: Number.parseInt(account_number),
           password_hash: "",
@@ -136,6 +139,7 @@ export async function POST(request: Request) {
           idNumber: data.id_number || "",
           halaqah: data.halaqah || "",
           studentCount: 0,
+          role: data.role || "teacher",
         },
       },
       { status: 201 },
@@ -156,7 +160,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "معرف المعلم مطلوب" }, { status: 400 })
     }
 
-    const { error } = await supabase.from("users").delete().eq("id", teacherId).eq("role", "teacher")
+    const { error } = await supabase.from("users").delete().eq("id", teacherId).in("role", ["teacher", "deputy_teacher"])
 
     if (error) {
       console.error("[v0] Error removing teacher:", error)
@@ -188,7 +192,7 @@ export async function PATCH(request: Request) {
       .from("users")
       .update(updateData)
       .eq("id", id)
-      .eq("role", "teacher")
+      .in("role", ["teacher", "deputy_teacher"])
       .select()
       .single()
 

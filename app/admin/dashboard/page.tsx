@@ -41,6 +41,7 @@ import {
   ShieldCheck,
   Bell,
   ArrowRightLeft,
+  BookMarked,
 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { createClient } from "@/lib/supabase/client"
@@ -237,7 +238,7 @@ function AdminDashboard() {
         const freshRole = userData?.role || localStorage.getItem("userRole") || ""
         const adminRoles = ["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"]
 
-        if (freshRole === "student" || freshRole === "teacher" || !freshRole) {
+        if (freshRole === "student" || freshRole === "teacher" || freshRole === "deputy_teacher" || !freshRole) {
           router.push("/login")
           return
         }
@@ -270,7 +271,7 @@ function AdminDashboard() {
   const fetchTeachers = async () => {
     try {
       const supabase = createClient()
-      const { data, error } = await supabase.from("users").select("*").eq("role", "teacher")
+      const { data, error } = await supabase.from("users").select("*").in("role", ["teacher", "deputy_teacher"])
 
       if (error) {
         console.error("[v0] Error fetching teachers:", error)
@@ -404,16 +405,16 @@ function AdminDashboard() {
           const userData: AllUser = {
             id: user.id,
             name: user.name,
-            role: user.role === "teacher" ? "معلم" : (user.role !== "student" && user.role !== "teacher") ? "إداري" : user.role,
+            role: user.role === "teacher" ? "معلم" : user.role === "deputy_teacher" ? "نائب معلم" : (user.role !== "student" && user.role !== "teacher" && user.role !== "deputy_teacher") ? "إداري" : user.role,
             account_number: user.account_number,
             phone_number: user.phone_number,
             id_number: user.id_number,
             halaqah: user.halaqah,
           }
 
-          if (user.role !== "student" && user.role !== "teacher") {
+          if (user.role !== "student" && user.role !== "teacher" && user.role !== "deputy_teacher") {
             admins.push(userData)
-          } else if (user.role === "teacher") {
+          } else if (user.role === "teacher" || user.role === "deputy_teacher") {
             teachers.push(userData)
           }
         })
@@ -1057,6 +1058,7 @@ function AdminDashboard() {
                         { icon: Edit2, label: "تعديل نقاط الطالب", action: () => { setIsStudentManagementDialogOpen(false); setSelectedCircleForPoints(""); setSelectedStudentForPoints(""); setEditingStudentPoints(null); setNewPoints(""); setIsEditPointsDialogOpen(true) } },
                         { icon: FileText, label: "سجلات الطلاب", action: handleOpenRecordsDialog },
                         { icon: Award, label: "إنجازات الطلاب", action: () => { setIsStudentManagementDialogOpen(false); router.push("/admin/students-achievements") } },
+                        { icon: BookMarked, label: "خطط الطلاب", action: () => { setIsStudentManagementDialogOpen(false); router.push("/admin/student-plans") } },
                       ].map(({ icon: Ic, label, action }) => (
                         <button key={label} onClick={action} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                           <div className="flex items-center gap-3">
@@ -1374,71 +1376,69 @@ function AdminDashboard() {
           </Dialog>
 
           <Dialog open={isAddStudentDialogOpen} onOpenChange={setIsAddStudentDialogOpen}>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle className="text-xl text-[#1a2332]">إضافة طالب جديد</DialogTitle>
-                <DialogDescription className="text-sm text-neutral-500">أدخل معلومات الطالب واختر الحلقة</DialogDescription>
+            <DialogContent className="max-w-md bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto" dir="rtl">
+              <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
+                <DialogTitle className="text-lg font-bold text-[#1a2332] flex items-center gap-2 pr-8">
+                  <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] text-base">＋</span>
+                  إضافة طالب جديد
+                </DialogTitle>
+                <DialogDescription className="text-sm text-neutral-400 mt-0.5 pr-10">أدخل معلومات الطالب واختر الحلقة</DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="studentName" className="text-sm font-medium text-neutral-600">
-                    اسم الطالب
-                  </Label>
-                  <Input
-                    id="studentName"
-                    value={newStudentName}
-                    onChange={(e) => setNewStudentName(e.target.value)}
-                    placeholder="أدخل اسم الطالب"
-                    className="text-sm"
-                  />
+
+              <div className="px-6 py-5 space-y-4">
+                {/* الاسم ورقم الحساب */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-[#1a2332]">اسم الطالب</label>
+                    <Input
+                      value={newStudentName}
+                      onChange={(e) => setNewStudentName(e.target.value)}
+                      placeholder="الاسم الكامل"
+                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-[#1a2332]">رقم الحساب</label>
+                    <Input
+                      value={newStudentAccountNumber}
+                      onChange={(e) => setNewStudentAccountNumber(e.target.value)}
+                      placeholder="00000"
+                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      dir="ltr"
+                      type="number"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="studentAccountNumber" className="text-sm font-medium text-neutral-600">
-                    رقم الحساب
-                  </Label>
-                  <Input
-                    id="studentAccountNumber"
-                    value={newStudentAccountNumber}
-                    onChange={(e) => setNewStudentAccountNumber(e.target.value)}
-                    placeholder="أدخل رقم الحساب"
-                    className="text-sm"
-                    dir="ltr"
-                    type="number"
-                  />
+
+                {/* رقم الهوية ورقم الجوال */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-[#1a2332]">رقم الهوية</label>
+                    <Input
+                      value={newStudentIdNumber}
+                      onChange={(e) => setNewStudentIdNumber(e.target.value)}
+                      placeholder="1xxxxxxxxx"
+                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-[#1a2332]">رقم جوال ولي الأمر</label>
+                    <Input
+                      value={newGuardianPhone}
+                      onChange={(e) => setNewGuardianPhone(e.target.value)}
+                      placeholder="966501234567"
+                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      dir="ltr"
+                      type="tel"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="studentIdNumber" className="text-sm font-medium text-neutral-600">
-                    رقم الهوية
-                  </Label>
-                  <Input
-                    id="studentIdNumber"
-                    value={newStudentIdNumber}
-                    onChange={(e) => setNewStudentIdNumber(e.target.value)}
-                    placeholder="أدخل رقم الهوية"
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="guardianPhoneNumber" className="text-sm font-medium text-neutral-600">
-                    رقم جوال ولي الأمر
-                  </Label>
-                  <Input
-                    id="guardianPhoneNumber"
-                    value={newGuardianPhone}
-                    onChange={(e) => setNewGuardianPhone(e.target.value)}
-                    placeholder="966501234567"
-                    className="text-sm"
-                    dir="ltr"
-                    type="tel"
-                  />
-                  <p className="text-xs text-gray-500">مثال: 966501234567</p>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="circleSelect" className="text-sm font-medium text-neutral-600">
-                    اختر الحلقة
-                  </Label>
+
+                {/* الحلقة */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-[#1a2332]">الحلقة</label>
                   <Select value={selectedCircleToAdd} onValueChange={setSelectedCircleToAdd}>
-                    <SelectTrigger className="w-full text-base">
+                    <SelectTrigger className="rounded-xl border-[#D4AF37]/40 focus:border-[#D4AF37] h-10 text-sm">
                       <SelectValue placeholder="اختر الحلقة" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1451,21 +1451,18 @@ function AdminDashboard() {
                   </Select>
                 </div>
               </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setIsAddStudentDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">
-                  إلغاء
-                </Button>
+
+              <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
                 <Button
                   onClick={handleAddStudent}
-                  className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
-                  disabled={
-                    !newStudentName.trim() ||
-                    !newStudentIdNumber.trim() ||
-                    !newStudentAccountNumber.trim() ||
-                    isSubmitting
-                  }
+                  disabled={!newStudentName.trim() || !newStudentIdNumber.trim() || !newStudentAccountNumber.trim() || isSubmitting}
+                  className="flex-1 bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white rounded-xl h-10 font-semibold hover:opacity-90 disabled:opacity-50"
                 >
-                  {isSubmitting ? "جاري الحفظ..." : "حفظ"}
+                  {isSubmitting ? "جاري الحفظ..." : "حفظ الطالب"}
+                </Button>
+                <Button variant="outline" onClick={() => setIsAddStudentDialogOpen(false)}
+                  className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10">
+                  إلغاء
                 </Button>
               </div>
             </DialogContent>

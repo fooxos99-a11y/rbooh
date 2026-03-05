@@ -82,8 +82,8 @@ export default function AdminNotificationsClient() {
   }
 
   const filteredUsers = users.filter((user) => {
-    if (targetType === "teachers" && user.role !== "teacher") return false
-    if (targetType === "admins" && (user.role === "student" || user.role === "teacher")) return false
+    if (targetType === "teachers" && user.role !== "teacher" && user.role !== "deputy_teacher") return false
+    if (targetType === "admins" && (user.role === "student" || user.role === "teacher" || user.role === "deputy_teacher")) return false
     if (targetType === "students") {
       if (user.role !== "student") return false
       if (selectedHalaqah !== "all" && user.halaqah !== selectedHalaqah) return false

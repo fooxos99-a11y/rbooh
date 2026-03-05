@@ -39,7 +39,7 @@ export default function StudentReportsPage() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
-    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher") {
+    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher" || userRole === "deputy_teacher") {
       router.push("/login")
     } else {
       fetchCircles()

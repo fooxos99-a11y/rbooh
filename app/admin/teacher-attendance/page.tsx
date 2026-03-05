@@ -41,7 +41,7 @@ export default function TeacherAttendancePage() {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
 
-    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher") {
+    if (!loggedIn || !userRole || userRole === "student" || userRole === "teacher" || userRole === "deputy_teacher") {
       router.push("/login")
     } else {
       fetchAttendanceRecords()
@@ -160,7 +160,7 @@ export default function TeacherAttendancePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-right text-[#1a2332] font-bold text-lg">اسم المعلم</TableHead>
+                        <TableHead className="text-right text-[#1a2332] font-bold text-lg">الاسم</TableHead>
                         <TableHead className="text-right text-[#1a2332] font-bold text-lg">رقم الحساب</TableHead>
                         <TableHead className="text-right text-[#1a2332] font-bold text-lg">التاريخ</TableHead>
                         <TableHead className="text-right text-[#1a2332] font-bold text-lg">
