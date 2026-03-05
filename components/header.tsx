@@ -744,7 +744,7 @@ export function Header() {
                            <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
                          </svg>
                        </div>
-                       <span className="text-xs font-medium text-white tracking-wide">المركز العام</span>
+                       <span className="text-xs font-medium text-white tracking-wide">الترتيب العام</span>
                        <span className="flex items-center gap-[2px] text-base font-bold tabular-nums tracking-tight">
                          <svg viewBox="0 0 20 20" fill="none" stroke="#e2a958" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 align-middle drop-shadow-[0_0_2px_#e2a95855]" style={{ color: '#e2a958' }}>
                            <path d="M7 3L5 17" />
