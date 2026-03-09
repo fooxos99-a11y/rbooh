@@ -905,23 +905,48 @@ export function Header() {
           {isLoggedIn && (
             <>
               {userRole === "student" && (
-                <div className="flex flex-col items-start gap-2 mb-2 pl-2">
+                <div className="flex flex-col gap-2 p-1 max-w-xs font-sans rtl">
                   {/* النقاط */}
-                  <div className="flex items-center gap-2">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-yellow-400"><path d="M10 2L12.4721 7.23607L18.0902 7.90983L13.5451 12.1459L14.9442 17.5902L10 14.618L5.05585 17.5902L6.45492 12.1459L1.90983 7.90983L7.52786 7.23607L10 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
-                    <span className="text-xs font-medium text-yellow-400">النقاط</span>
-                    <span className="text-white font-extrabold text-base ml-1" title="النقاط">
-                      {sidebarPlanProgress !== null && sidebarPlanProgress !== undefined ? sidebarPlanProgress : 0}
-                    </span>
-                  </div>
-                  {/* الترتيب العام */}
-                  <div className="flex items-center gap-2">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-amber-500"><path d="M5 3V5C5 8.31371 7.68629 11 11 11C14.3137 11 17 8.31371 17 5V3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M3 3H17" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><path d="M7 17C7 15.3431 8.34315 14 10 14C11.6569 14 13 15.3431 13 17" stroke="currentColor" strokeWidth="1.5"/><circle cx="10" cy="17" r="1" fill="currentColor"/></svg>
-                    <span className="text-xs font-medium text-amber-500">المركز العام</span>
-                    <span className="text-white font-extrabold text-base ml-1" title="المركز العام">
-                      {globalRank !== null && globalRank !== undefined ? globalRank : "-"}
-                    </span>
-                  </div>
+                   <div className="flex items-center justify-between group">
+                     <span className="flex items-center gap-1">
+                       <div className="relative">
+                         {/* أيقونة النجمة مع إشعاع خفيف جداً */}
+                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-yellow-400 drop-shadow-[0_0_3px_rgba(250,204,21,0.4)]">
+                           <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clipRule="evenodd" />
+                         </svg>
+                       </div>
+                       <span className="text-xs font-medium text-white tracking-wide">النقاط</span>
+                       <span className="flex items-center gap-0 text-base font-bold tabular-nums tracking-tight">
+                         <span className="font-bold align-middle drop-shadow-[0_0_2px_#e2a95855] text-sm" style={{ color: '#e2a958' }}>{sidebarPlanProgress ?? 0}</span>
+                       </span>
+                     </span>
+                   </div>
+                  {/* المركز العام */}
+                   <div className="flex items-center justify-between group">
+                     <div className="flex items-center gap-1">
+                       <div className="relative">
+                         {/* أيقونة تروفي (Trophy) احترافية */}
+                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-500 drop-shadow-[0_0_3px_rgba(245,158,11,0.4)]">
+                           <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                           <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                           <path d="M4 22h16" />
+                           <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                           <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                           <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
+                         </svg>
+                       </div>
+                       <span className="text-xs font-medium text-white tracking-wide">الترتيب العام</span>
+                       <span className="flex items-center gap-[2px] text-base font-bold tabular-nums tracking-tight">
+                         <svg viewBox="0 0 20 20" fill="none" stroke="#e2a958" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 align-middle drop-shadow-[0_0_2px_#e2a95855]" style={{ color: '#e2a958' }}>
+                           <path d="M7 3L5 17" />
+                           <path d="M13 3L11 17" />
+                           <path d="M3 7H17" />
+                           <path d="M3 13H17" />
+                         </svg>
+                         <span className="font-bold align-middle drop-shadow-[0_0_2px_#e2a95855] text-sm" style={{ color: '#e2a958' }}>{globalRank ?? "-"}</span>
+                       </span>
+                     </div>
+                   </div>
                 </div>
               )}
               <div className="flex flex-col gap-1">
