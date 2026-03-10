@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader";
 
 interface Stage {
   id: number;
@@ -54,7 +55,7 @@ export default function GuessStagesAdmin() {
     setLoading(false);
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="container mx-auto p-4 max-w-xl">
@@ -71,7 +72,7 @@ export default function GuessStagesAdmin() {
         </Button>
       </form>
       {loading ? (
-        <p>جاري التحميل...</p>
+        <div className="flex justify-center py-6"><SiteLoader size="md" /></div>
       ) : (
         <ul className="space-y-2">
           {stages.map(stage => (

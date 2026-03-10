@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Download } from "lucide-react"
 import { useState, useEffect } from "react"
 
@@ -32,7 +33,7 @@ export default function ProgramsPage() {
   }, [])
 
   const handleDownload = (programName: string) => {
-    setDownloadMessage(`جاري تحميل ${programName}...`)
+    setDownloadMessage(programName)
     setTimeout(() => {
       setDownloadMessage(null)
     }, 3000)
@@ -41,7 +42,7 @@ export default function ProgramsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
@@ -59,8 +60,8 @@ export default function ProgramsPage() {
           </div>
 
           {downloadMessage && (
-            <div className="mb-6 bg-[#d8a355] text-white px-6 py-4 rounded-lg text-center font-semibold shadow-lg">
-              {downloadMessage}
+            <div className="mb-6 bg-[#d8a355] text-white px-6 py-4 rounded-lg flex justify-center shadow-lg">
+              <SiteLoader size="sm" color="#ffffff" />
             </div>
           )}
 

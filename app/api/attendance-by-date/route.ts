@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         // جلب بيانات التقييم
         const { data: evaluations } = await supabase
           .from("evaluations")
-          .select("hafiz_level, tikrar_level, samaa_level, rabet_level")
+          .select("hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
           .eq("attendance_record_id", record.id)
           .single()
 
@@ -49,6 +49,18 @@ export async function GET(request: NextRequest) {
           tikrar_level: evaluations?.tikrar_level || null,
           samaa_level: evaluations?.samaa_level || null,
           rabet_level: evaluations?.rabet_level || null,
+          hafiz_from_surah: evaluations?.hafiz_from_surah || null,
+          hafiz_from_verse: evaluations?.hafiz_from_verse || null,
+          hafiz_to_surah: evaluations?.hafiz_to_surah || null,
+          hafiz_to_verse: evaluations?.hafiz_to_verse || null,
+          samaa_from_surah: evaluations?.samaa_from_surah || null,
+          samaa_from_verse: evaluations?.samaa_from_verse || null,
+          samaa_to_surah: evaluations?.samaa_to_surah || null,
+          samaa_to_verse: evaluations?.samaa_to_verse || null,
+          rabet_from_surah: evaluations?.rabet_from_surah || null,
+          rabet_from_verse: evaluations?.rabet_from_verse || null,
+          rabet_to_surah: evaluations?.rabet_to_surah || null,
+          rabet_to_verse: evaluations?.rabet_to_verse || null,
         }
       }),
     )

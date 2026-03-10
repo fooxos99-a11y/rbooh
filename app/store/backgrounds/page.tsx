@@ -6,6 +6,7 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight, Star, Check, BookOpen } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -408,7 +409,7 @@ export default function BackgroundsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }

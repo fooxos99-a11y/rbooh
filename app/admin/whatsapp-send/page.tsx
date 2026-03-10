@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
-import { MessageCircle, Send, Users, CheckCircle2, XCircle, Loader2, Phone } from "lucide-react"
+import { MessageCircle, Send, Users, CheckCircle2, XCircle, Phone } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface Student {
   id: string
@@ -232,12 +233,12 @@ export default function WhatsAppSendPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#faf8f5] to-white">
@@ -300,7 +301,7 @@ export default function WhatsAppSendPage() {
                       {/* قائمة الرسائل الجاهزة */}
                       <div className="space-y-1 mb-2">
                         {isLoadingReady ? (
-                          <div className="text-xs text-gray-400">جاري التحميل...</div>
+                          <div className="py-1"><SiteLoader /></div>
                         ) : readyMessages.length === 0 ? (
                           <div className="text-xs text-gray-400">لا توجد رسائل جاهزة</div>
                         ) : (
@@ -354,7 +355,7 @@ export default function WhatsAppSendPage() {
                     >
                       {isSending ? (
                         <>
-                          <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+                          <SiteLoader className="ml-2" color="#8b7355" />
                           جاري الإرسال...
                         </>
                       ) : (

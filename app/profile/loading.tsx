@@ -1,3 +1,5 @@
+import { SiteLoader } from "@/components/ui/site-loader"
+
 export default function Loading() {
-  return null
+  return <SiteLoader fullScreen size="lg" />
 }

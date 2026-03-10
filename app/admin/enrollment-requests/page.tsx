@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { ArrowRight, Copy, Loader2, Check, ExternalLink, Lock, Unlock, Trash2 } from "lucide-react";
+import { SiteLoader } from "@/components/ui/site-loader"
+import { Copy, Check, ExternalLink, Lock, Unlock, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase-client";
 import { toast } from "@/hooks/use-toast";
@@ -20,7 +21,7 @@ interface EnrollmentRequest {
 }
 
 export default function EnrollmentRequestsPage() {
-  const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("طلبات الإلتحاق");
+  const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("طلبات التسجيل");
 
   const [requests, setRequests] = useState<EnrollmentRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +68,7 @@ export default function EnrollmentRequestsPage() {
         
       if (!error) {
         setIsEnrollmentOpen(newStatus);
-        toast({ title: newStatus ? "تم فتح استقبال طلبات الإلتحاق" : "تم إغلاق طلبات الإلتحاق" });
+        toast({ title: newStatus ? "تم فتح استقبال طلبات التسجيل" : "تم إغلاق طلبات التسجيل" });
       } else {
         toast({ title: "حدث خطأ أثناء تغيير الحالة", variant: "destructive" });
       }
@@ -90,7 +91,7 @@ export default function EnrollmentRequestsPage() {
       setRequests(data || []);
     } catch (error: any) {
       console.error("Error fetching requests:", error);
-      toast({ title: "حدث خطأ أثناء جلب طلبات الإلتحاق", variant: "destructive" });
+      toast({ title: "حدث خطأ أثناء جلب طلبات التسجيل", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -121,7 +122,7 @@ export default function EnrollmentRequestsPage() {
     setTimeout(() => setCopiedLink(false), 3000);
   };
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
     <div className="min-h-screen flex flex-col bg-[#f8f9fa] dir-rtl font-cairo">
@@ -131,18 +132,10 @@ export default function EnrollmentRequestsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <Link
-                href="/admin/dashboard"
-                className="p-2 hover:bg-neutral-200 rounded-lg transition-colors"
-                title="العودة للوحة التحكم"
-              >
-                <ArrowRight className="w-5 h-5 rtl:hidden" />
-                <ArrowRight className="w-5 h-5 ltr:hidden rotate-180" />
-              </Link>
-              <h1 className="text-3xl font-bold text-[#1a2332]">طلبات الإلتحاق</h1>
+              <h1 className="text-3xl font-bold text-[#1a2332]">طلبات التسجيل</h1>
             </div>
             <p className="text-neutral-500">
-              قائمة بالطلاب الذين قاموا بطلب الإلتحاق عبر الرابط
+              قائمة بالطلاب الذين قاموا بطلب التسجيل عبر الرابط
             </p>
           </div>
 
@@ -155,10 +148,10 @@ export default function EnrollmentRequestsPage() {
                   ? "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100" 
                   : "bg-green-50 text-green-600 border border-green-200 hover:bg-green-100"
               }`}
-              title={isEnrollmentOpen ? "إيقاف استقبال طلبات الإلتحاق" : "تفعيل استقبال طلبات الإلتحاق"}
+              title={isEnrollmentOpen ? "إيقاف استقبال طلبات التسجيل" : "تفعيل استقبال طلبات التسجيل"}
             >
               {isStatusLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <SiteLoader color={isEnrollmentOpen ? "#dc2626" : "#16a34a"} />
               ) : isEnrollmentOpen ? (
                 <Lock className="w-5 h-5" />
               ) : (
@@ -179,7 +172,7 @@ export default function EnrollmentRequestsPage() {
               href="/enroll"
               target="_blank"
               className="flex items-center gap-2 bg-white border border-[#D4AF37] text-[#D4AF37] hover:bg-[#D4AF37]/5 px-4 py-2.5 rounded-xl font-medium transition-all shadow-sm"
-              title="معاينة نموذج الإلتحاق"
+              title="معاينة نموذج التسجيل"
             >
               <ExternalLink className="w-5 h-5" />
             </Link>
@@ -189,12 +182,11 @@ export default function EnrollmentRequestsPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-[#D4AF37]/20 overflow-hidden">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-12 h-12 text-[#D4AF37] animate-spin mb-4" />
-              <p className="text-neutral-500">جاري تحميل الطلبات...</p>
+              <SiteLoader />
             </div>
           ) : requests.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
-              <p className="text-xl text-neutral-400">لا توجد طلبات إلتحاق حتى الآن</p>
+              <p className="text-xl text-neutral-400">لا توجد طلبات تسجيل حتى الآن</p>
             </div>
           ) : (
             <div className="overflow-x-auto">

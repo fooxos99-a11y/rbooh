@@ -58,6 +58,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { SiteLoader } from "@/components/ui/site-loader";
 
 interface Circle {
   name: string;
@@ -176,6 +177,8 @@ function CollapseSection({
 export function Header() {
     const [globalRank, setGlobalRank] = useState<string | number | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authResolved, setAuthResolved] = useState(false);
+  const [isGlobalRankLoading, setIsGlobalRankLoading] = useState(true);
 
   const [userRole, setUserRole] = useState<string | null>(null);
 
@@ -222,12 +225,17 @@ export function Header() {
 
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [userAccountNumber, setUserAccountNumber] = useState<number | null>(null);
+  const [notificationStartAt, setNotificationStartAt] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<{id:string;message:string;is_read:boolean;created_at:string}[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [dailyChallengePlayedToday, setDailyChallengePlayedToday] = useState(false);
   const [sidebarPlanProgress, setSidebarPlanProgress] = useState<number | null>(null);
+  const [sidebarQuranProgress, setSidebarQuranProgress] = useState<number | null>(null);
+  const [sidebarQuranLevel, setSidebarQuranLevel] = useState<number>(0);
+  const [sidebarStudentPoints, setSidebarStudentPoints] = useState<number>(0);
   const [sidebarPlanName, setSidebarPlanName] = useState<string | null>(null);
+  const [isSidebarStudentStatsLoading, setIsSidebarStudentStatsLoading] = useState(true);
 
   const isAdmin = userAccountNumber === 2 || validAdminRoles.includes(userRole || "");
 
@@ -239,6 +247,19 @@ export function Header() {
 
   const confirmDialog = useConfirmDialog();
 
+  const fetchNotificationStartAt = async (accountNumber: string) => {
+    try {
+      const response = await fetch(`/api/account-created-at?account_number=${accountNumber}`, { cache: "no-store" });
+      const data = await response.json();
+      const createdAt = typeof data.created_at === "string" ? data.created_at : null;
+      setNotificationStartAt(createdAt);
+      return createdAt;
+    } catch {
+      setNotificationStartAt(null);
+      return null;
+    }
+  };
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "instant" });
 
   useEffect(() => {
@@ -246,6 +267,15 @@ export function Header() {
         const fetchGlobalRank = async () => {
           const accNum = localStorage.getItem("accountNumber");
           const role = localStorage.getItem("userRole");
+          if (!(accNum && role === "student")) {
+            setIsGlobalRankLoading(false);
+            return;
+          }
+          const cachedGlobalRank = localStorage.getItem(`studentGlobalRank_${accNum}`) || localStorage.getItem("studentGlobalRank");
+          if (cachedGlobalRank) {
+            setGlobalRank(cachedGlobalRank);
+            setIsGlobalRankLoading(false);
+          }
           if (accNum && role === "student") {
             try {
               // جلب بيانات الطالب للحصول على studentId
@@ -258,14 +288,23 @@ export function Header() {
                 if (dataRank.success && dataRank.ranking && dataRank.ranking.globalRank) {
                   setGlobalRank(dataRank.ranking.globalRank);
                   localStorage.setItem('studentGlobalRank', String(dataRank.ranking.globalRank));
+                  localStorage.setItem(`studentGlobalRank_${accNum}`, String(dataRank.ranking.globalRank));
                 } else {
                   setGlobalRank("-");
+                  localStorage.setItem('studentGlobalRank', "-");
+                  localStorage.setItem(`studentGlobalRank_${accNum}`, "-");
                 }
               } else {
                 setGlobalRank("-");
+                localStorage.setItem('studentGlobalRank', "-");
+                localStorage.setItem(`studentGlobalRank_${accNum}`, "-");
               }
             } catch {
               setGlobalRank("-");
+              localStorage.setItem('studentGlobalRank', "-");
+              localStorage.setItem(`studentGlobalRank_${accNum}`, "-");
+            } finally {
+              setIsGlobalRankLoading(false);
             }
           }
         };
@@ -282,6 +321,8 @@ export function Header() {
 
     setUserName(name);
 
+    setAuthResolved(true);
+
     const accNumStr = localStorage.getItem("accountNumber");
     if (accNumStr) setUserAccountNumber(Number(accNumStr));
 
@@ -296,12 +337,17 @@ export function Header() {
     const fetchUnread = async () => {
       if (!accNumStr) return;
       try {
+        const createdAt = await fetchNotificationStartAt(accNumStr);
         const supabase = createClient();
-        const { count } = await supabase
+        let query = supabase
           .from("notifications")
           .select("id", { count: "exact", head: true })
           .eq("user_account_number", accNumStr)
           .eq("is_read", false);
+        if (createdAt) {
+          query = query.gte("created_at", createdAt);
+        }
+        const { count } = await query;
         setUnreadCount(count || 0);
       } catch {}
     };
@@ -314,7 +360,24 @@ export function Header() {
 
     if (loggedIn && role === "student") {
       const accNum = localStorage.getItem("accountNumber");
-      if (accNum) fetchSidebarPlan(accNum);
+      if (accNum) {
+        const cachedStats = localStorage.getItem(`studentHeaderStats_${accNum}`);
+        if (cachedStats) {
+          try {
+            const parsed = JSON.parse(cachedStats);
+            setSidebarPlanProgress(parsed.sidebarPlanProgress ?? 0);
+            setSidebarQuranProgress(parsed.sidebarQuranProgress ?? 0);
+            setSidebarQuranLevel(parsed.sidebarQuranLevel ?? 0);
+            setSidebarStudentPoints(parsed.sidebarStudentPoints ?? 0);
+            setSidebarPlanName(parsed.sidebarPlanName ?? null);
+            setIsSidebarStudentStatsLoading(false);
+          } catch {}
+        }
+        fetchSidebarPlan(accNum);
+      }
+      else setIsSidebarStudentStatsLoading(false);
+    } else {
+      setIsSidebarStudentStatsLoading(false);
     }
 
     loadCircles();
@@ -426,14 +489,65 @@ export function Header() {
       const res = await fetch(`/api/students?account_number=${accNum}`);
       const data = await res.json();
       const student = (data.students || [])[0];
-      if (!student) return;
+      if (!student) {
+        setSidebarPlanProgress(0);
+        setSidebarQuranProgress(0);
+        setSidebarQuranLevel(0);
+        setSidebarStudentPoints(0);
+        setSidebarPlanName(null);
+        localStorage.setItem(`studentHeaderStats_${accNum}`, JSON.stringify({
+          sidebarPlanProgress: 0,
+          sidebarQuranProgress: 0,
+          sidebarQuranLevel: 0,
+          sidebarStudentPoints: 0,
+          sidebarPlanName: null,
+        }));
+        return;
+      }
+      setSidebarStudentPoints(Number(student.points) || 0);
       const planRes = await fetch(`/api/student-plans?student_id=${student.id}`);
       const planData = await planRes.json();
       if (planData.plan) {
         setSidebarPlanProgress(planData.progressPercent ?? 0);
+        setSidebarQuranProgress(planData.quranProgressPercent ?? 0);
+        setSidebarQuranLevel(planData.quranLevel ?? 0);
         setSidebarPlanName(`${planData.plan.start_surah_name} ← ${planData.plan.end_surah_name}`);
+        localStorage.setItem(`studentHeaderStats_${accNum}`, JSON.stringify({
+          sidebarPlanProgress: planData.progressPercent ?? 0,
+          sidebarQuranProgress: planData.quranProgressPercent ?? 0,
+          sidebarQuranLevel: planData.quranLevel ?? 0,
+          sidebarStudentPoints: Number(student.points) || 0,
+          sidebarPlanName: `${planData.plan.start_surah_name} ← ${planData.plan.end_surah_name}`,
+        }));
+      } else {
+        setSidebarPlanProgress(0);
+        setSidebarQuranProgress(0);
+        setSidebarQuranLevel(0);
+        setSidebarPlanName(null);
+        localStorage.setItem(`studentHeaderStats_${accNum}`, JSON.stringify({
+          sidebarPlanProgress: 0,
+          sidebarQuranProgress: 0,
+          sidebarQuranLevel: 0,
+          sidebarStudentPoints: Number(student.points) || 0,
+          sidebarPlanName: null,
+        }));
       }
-    } catch {}
+    } catch {
+      setSidebarPlanProgress(0);
+      setSidebarQuranProgress(0);
+      setSidebarQuranLevel(0);
+      setSidebarStudentPoints(0);
+      setSidebarPlanName(null);
+      localStorage.setItem(`studentHeaderStats_${accNum}`, JSON.stringify({
+        sidebarPlanProgress: 0,
+        sidebarQuranProgress: 0,
+        sidebarQuranLevel: 0,
+        sidebarStudentPoints: 0,
+        sidebarPlanName: null,
+      }));
+    } finally {
+      setIsSidebarStudentStatsLoading(false);
+    }
   };
 
   const fetchTeacherInfo = async (accNum: string) => {
@@ -486,10 +600,20 @@ export function Header() {
 
   const handleNav = (href: string) => {
     setIsMobileMenuOpen(false);
-
     scrollToTop();
 
-    router.push(href);
+    if (href.startsWith('?')) {
+      const dashboardOnlyActions: string[] = [];
+        const action = href.split('=')[1];
+        
+        if (dashboardOnlyActions.includes(action) && window.location.pathname !== '/admin/dashboard') {
+            router.push('/admin/dashboard' + href);
+        } else {
+            router.push(window.location.pathname + href);
+        }
+    } else {
+        router.push(href);
+    }
   };
 
   const goToProfile = () => {
@@ -518,6 +642,13 @@ export function Header() {
         ? "طالب"
         : "";
 
+  const isStudentHeaderStatsReady =
+    authResolved &&
+    isLoggedIn &&
+    userRole === "student" &&
+    !isSidebarStudentStatsLoading &&
+    !isGlobalRankLoading;
+
   return (
     <>
       {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher") && teacherInfo && (
@@ -532,176 +663,150 @@ export function Header() {
 
       {isLoggingOut && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 flex flex-col items-center gap-4 shadow-2xl">
-            <div className="w-12 h-12 border-4 border-[#d8a355]/20 border-t-[#d8a355] rounded-full animate-spin" />
-
-            <p className="font-bold text-[#d8a355] text-lg">
-              جاري تسجيل الخروج...
-            </p>
+          <div className="bg-white rounded-3xl px-10 py-8 flex flex-col items-center shadow-2xl min-w-[260px]">
+            <SiteLoader size="md" color="#D4AF37" />
           </div>
         </div>
       )}
 
-      <header className="text-white sticky top-0 z-50 shadow-lg" style={{ background: "linear-gradient(to right, #0f5c5c -80%, #032424 100%)" }}>
-        <div className="container mx-auto px-4 h-20 flex items-center justify-between relative">
-          <div className="flex items-center gap-2 z-20">
-            <button
-            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/10 transition-colors z-20"
+      <header className="text-white sticky top-0 z-50 shadow-lg relative" style={{ background: "linear-gradient(to right, #0f5c5c -80%, #032424 100%)" }}>
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center gap-2">
+          <button
+            className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/10 transition-colors"
             onClick={() => setIsMobileMenuOpen(true)}
             aria-label="القائمة"
           >
             <Menu size={26} />
           </button>
-            {isLoggedIn && userRole === "student" && (
-              <DropdownMenu onOpenChange={async (open) => {
-                if (!open) return;
-                const accNumStr = localStorage.getItem("accountNumber");
-                if (!accNumStr) return;
-                setNotifLoading(true);
-                try {
-                  const supabase = createClient();
-                  const { data } = await supabase
-                    .from("notifications")
-                    .select("id,message,is_read,created_at")
-                    .eq("user_account_number", accNumStr)
-                    .order("created_at", { ascending: false })
-                    .limit(20);
-                  setNotifications(data || []);
-                  const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
-                  if (unreadIds.length > 0) {
-                    await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
-                    setUnreadCount(0);
-                  }
-                } catch {}
-                setNotifLoading(false);
-              }}>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
-                    aria-label="الإشعارات"
-                  >
-                    <Bell size={22} className="text-white" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                        {unreadCount > 9 ? "9+" : unreadCount}
-                      </span>
-                    )}
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
-                  {/* Header */}
-                  <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-[#d8a355]/15 flex items-center justify-center">
-                        <Bell size={13} className="text-[#d8a355]" />
-                      </div>
-                      <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
+          {isLoggedIn && userRole === "student" && (
+            <DropdownMenu onOpenChange={async (open) => {
+              if (!open) return;
+              const accNumStr = localStorage.getItem("accountNumber");
+              if (!accNumStr) return;
+              setNotifLoading(true);
+              try {
+                const supabase = createClient();
+                const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
+                let query = supabase
+                  .from("notifications")
+                  .select("id,message,is_read,created_at")
+                  .eq("user_account_number", accNumStr)
+                  .order("created_at", { ascending: false })
+                  .limit(20);
+                if (createdAt) {
+                  query = query.gte("created_at", createdAt);
+                }
+                const { data } = await query;
+                setNotifications(data || []);
+                const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
+                if (unreadIds.length > 0) {
+                  await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+                  setUnreadCount(0);
+                }
+              } catch {}
+              setNotifLoading(false);
+            }}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                  aria-label="الإشعارات"
+                >
+                  <Bell size={22} className="text-white" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
+                  )}
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
+                <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-[#d8a355]/15 flex items-center justify-center">
+                      <Bell size={13} className="text-[#d8a355]" />
                     </div>
-                    {notifications.length > 0 && (
-                      <span className="text-[11px] bg-[#d8a355]/15 text-[#c99347] px-2 py-0.5 rounded-full font-semibold">
-                        {notifications.length}
-                      </span>
-                    )}
+                    <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
                   </div>
-                  {/* Body */}
-                  <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d8a35540_transparent] bg-white" dir="rtl">
-                    {notifLoading ? (
-                      <div className="flex items-center justify-center py-14">
-                        <div className="w-7 h-7 rounded-full border-2 border-gray-200 border-t-[#d8a355] animate-spin" />
+                  {notifications.length > 0 && (
+                    <span className="text-[11px] bg-[#d8a355]/15 text-[#c99347] px-2 py-0.5 rounded-full font-semibold">
+                      {notifications.length}
+                    </span>
+                  )}
+                </div>
+                <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d8a35540_transparent] bg-white" dir="rtl">
+                  {notifLoading ? (
+                    <div className="flex items-center justify-center py-14">
+                      <SiteLoader size="sm" color="#d8a355" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="py-14 flex flex-col items-center gap-3 text-center">
+                      <div className="w-14 h-14 rounded-full bg-[#d8a355]/10 flex items-center justify-center">
+                        <Bell size={24} className="text-[#d8a355]/60" />
                       </div>
-                    ) : notifications.length === 0 ? (
-                      <div className="py-14 flex flex-col items-center gap-3 text-center">
-                        <div className="w-14 h-14 rounded-full bg-[#d8a355]/10 flex items-center justify-center">
-                          <Bell size={24} className="text-[#d8a355]/60" />
-                        </div>
-                        <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
-                      </div>
-                    ) : (
-                      <div>
-                        {notifications.map((n, i) => (
-                          <div
-                            key={n.id}
-                            className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
-                          >
-                            {/* Unread indicator */}
-                            <div className="flex-shrink-0 mt-2">
-                              {!n.is_read
-                                ? <div className="w-2 h-2 rounded-full bg-[#d8a355] shadow-sm" />
-                                : <div className="w-2 h-2 rounded-full border border-gray-300" />
-                              }
-                            </div>
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
-                                {n.message}
-                              </p>
-                              <p className="text-[11px] text-gray-400 mt-1.5">
-                                {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                              </p>
-                            </div>
-                            {/* Delete */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                              className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                      <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                    </div>
+                  ) : (
+                    <div>
+                      {notifications.map((n, i) => (
+                        <div
+                          key={n.id}
+                          className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
+                        >
+                          <div className="flex-shrink-0 mt-2">
+                            {!n.is_read
+                              ? <div className="w-2 h-2 rounded-full bg-[#d8a355] shadow-sm" />
+                              : <div className="w-2 h-2 rounded-full border border-gray-300" />
+                            }
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
+                              {n.message}
+                            </p>
+                            <p className="text-[11px] text-gray-400 mt-1.5">
+                              {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </p>
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                            className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        {isStudentHeaderStatsReady && (() => {
+          const currentLevel = Math.max(0, Math.min(100, sidebarQuranLevel || 0));
+          const displayProgress = currentLevel;
 
-          <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
-            <Image
-              src="/قبس.png"
-              alt="قبس"
-              width={100}
-              height={60}
-              className="w-20 md:w-24 h-auto cursor-pointer"
-              onClick={() => handleNav("/")}
-            />
-          </div>
-
-          <div className="z-20 flex items-center gap-2">
-            {/* ليفل بار إنجاز الخطة للمستوى بار للطالب في الأعلى يسار */}
-            {isLoggedIn && userRole === "student" && (() => {
-              const baseProgress = userAccountNumber === 1 ? 50 : (sidebarPlanProgress ?? 0);
-              const currentLevel = Math.floor(baseProgress / 100) + 1;
-              const displayProgress = baseProgress % 100;
-
-              return (
-              <div className="relative flex items-center mr-2 md:mr-3 scale-105 md:scale-[1.15] transform-gpu drop-shadow-sm pointer-events-none select-none" style={{ direction: 'ltr' }}>
-                
-                {/* 1. شارة المستوى السداسية (أقصى اليسار) */}
+          return (
+            <div className="absolute left-12 md:left-16 top-1/2 -translate-y-1/2 flex items-center gap-2 transform-gpu drop-shadow-sm select-none z-30" style={{ direction: 'ltr' }}>
+              <div className="relative flex items-center gap-1.5">
                 <div 
                    className="relative flex flex-col items-center justify-center z-30 drop-shadow-md"
                    style={{
                      width: "48px",
                      height: "42px",
-                     // الظل عبر الحاوية ليأخذ الشكل السداسي
                    }}
                 >
-                  {/* الإطار الخارجي (الأبيض/الرمادي) */}
                   <div className="absolute w-full h-full"
                        style={{
                          background: "linear-gradient(to bottom, #ffffff, #e1e4eb)",
                          clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                         padding: "2.5px" // سماكة الإطار الأبيض
+                         padding: "2.5px"
                        }}>
-                    {/* الحشوة الداخلية الرصاصية */}
                     <div className="relative w-full h-full flex items-center justify-center p-[2px]"
                          style={{
                            background: "linear-gradient(to bottom, #eceef3, #d3d7df)",
                            clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
                            boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.1), inset 0 2px 3px rgba(255,255,255,0.8)"
                          }}>
-                      
-                      {/* الرقم باللون السماوي الفاقع نفس النجمة */}
                       <span 
                         className="relative z-10 text-[18px] sm:text-[20px] font-black pb-[1px]"
                         style={{
@@ -715,42 +820,102 @@ export function Header() {
                   </div>
                 </div>
 
-                {/* 2. شريط التقدم (يمين الشارة، وتدخل بدايته تحت الشارة) */}
                 <div 
-                  className="relative flex items-center h-4 sm:h-5 w-28 sm:w-36 z-20 ml-[-24px]"
+                  className="relative flex items-center h-5 w-36 z-20 ml-[-24px]"
                   style={{
-                    background: "linear-gradient(to bottom, #ffffff, #dcdede)", // نفس الإطار الخارجي
+                    background: "linear-gradient(to bottom, #ffffff, #dcdede)",
                     borderRadius: "0 100px 100px 0",
                     padding: "2px",
-                    paddingLeft: "0", // إزالة أي مسافة يسار حتى لا يظهر بياض
+                    paddingLeft: "0",
                   }}
                 >
                   <div
                     className="relative w-full h-full"
                     style={{
-                      background: "linear-gradient(to bottom, #e2e5eb, #ced3db)", // أرضية الشريط
+                      background: "linear-gradient(to bottom, #e2e5eb, #ced3db)",
                       borderRadius: "0 100px 100px 0",
                       boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)"
                     }}
                   >
-                    {/* التعبئة السماوية - من اليسار لليمين */}
                     <div 
                       className="absolute top-0 left-0 bottom-0 z-10 transition-all duration-1000"
                       style={{ 
-                        width: `${Math.max(displayProgress, 8)}%`, 
+                        width: displayProgress > 0 ? `min(100%, calc(${displayProgress}% + 24px))` : "0%",
                         background: "linear-gradient(to right, #D4AF37, #C9A961)",
                         borderRadius: "0 100px 100px 0"
                       }}
                     >
-                      {/* لمعة علوية للتعبئة */}
                       <div className="absolute top-0 left-0 right-0 h-[45%] bg-gradient-to-b from-white/40 to-transparent"></div>
                     </div>
                   </div>
                 </div>
               </div>
-              );
-            })()}
 
+              <div className="relative z-30 group">
+                <div
+                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#D4AF37]/50"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(58,36,8,0.96), rgba(140,91,18,0.9))",
+                    boxShadow: "inset 0 1px 0 rgba(255,245,214,0.18), 0 4px 10px rgba(0,0,0,0.18)",
+                  }}
+                  aria-label="الترتيب العام"
+                  title="الترتيب العام"
+                >
+                  <Trophy
+                    className="w-4 h-4 text-[#ffd36b] drop-shadow-[0_0_4px_rgba(255,211,107,0.35)]"
+                    strokeWidth={1.9}
+                  />
+                  <span className="text-[13px] font-black tabular-nums text-[#fff7df] leading-none tracking-wide">
+                    {globalRank ?? "-"}
+                  </span>
+                </div>
+
+                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#D4AF37]/30 bg-[linear-gradient(135deg,rgba(58,36,8,0.98),rgba(140,91,18,0.95))] px-2 py-1 text-[10px] font-semibold text-[#fff7df] shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  الترتيب العام
+                </div>
+              </div>
+
+              <div className="relative z-30 group">
+                <div
+                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#D4AF37]/50"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(3,36,36,0.92), rgba(15,92,92,0.88))",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 10px rgba(0,0,0,0.18)",
+                  }}
+                  aria-label="النقاط"
+                  title="النقاط"
+                >
+                  <Star
+                    className="w-4 h-4 text-[#f4d03f] fill-[#f4d03f] drop-shadow-[0_0_4px_rgba(244,208,63,0.35)]"
+                    strokeWidth={1.8}
+                  />
+                  <span className="text-[13px] font-black tabular-nums text-[#fff7df] leading-none tracking-wide">
+                    {sidebarStudentPoints}
+                  </span>
+                </div>
+
+                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#D4AF37]/30 bg-[linear-gradient(135deg,rgba(3,36,36,0.98),rgba(15,92,92,0.95))] px-2 py-1 text-[10px] font-semibold text-[#fff7df] shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                  النقاط
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+        <div className="container mx-auto px-4 h-20 flex items-center justify-between relative">
+          <div className="w-[40px] z-20 shrink-0" />
+
+          <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
+            <Image
+              src="/قبس.png"
+              alt="قبس"
+              width={100}
+              height={60}
+              className="w-20 md:w-24 h-auto cursor-pointer"
+              onClick={() => handleNav("/")}
+            />
+          </div>
+
+          <div className="z-20 flex items-center gap-2 min-w-[40px] justify-end">
             {isLoggedIn && userRole !== "student" && (
               <DropdownMenu onOpenChange={async (open) => {
                 if (!open) return;
@@ -759,12 +924,17 @@ export function Header() {
                 setNotifLoading(true);
                 try {
                   const supabase = createClient();
-                  const { data } = await supabase
+                  const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
+                  let query = supabase
                     .from("notifications")
                     .select("id,message,is_read,created_at")
                     .eq("user_account_number", accNumStr)
                     .order("created_at", { ascending: false })
                     .limit(20);
+                  if (createdAt) {
+                    query = query.gte("created_at", createdAt);
+                  }
+                  const { data } = await query;
                   setNotifications(data || []);
                   const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
                   if (unreadIds.length > 0) {
@@ -776,7 +946,7 @@ export function Header() {
               }}>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                    className="fixed left-4 top-4 z-[70] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0b4b4b]/95 shadow-[0_12px_30px_rgba(3,36,36,0.28)] backdrop-blur-sm transition-colors hover:bg-[#0f5c5c]"
                     aria-label="الإشعارات"
                   >
                     <Bell size={22} className="text-white" />
@@ -806,7 +976,7 @@ export function Header() {
                   <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d8a35540_transparent] bg-white" dir="rtl">
                     {notifLoading ? (
                       <div className="flex items-center justify-center py-14">
-                        <div className="w-7 h-7 rounded-full border-2 border-gray-200 border-t-[#d8a355] animate-spin" />
+                        <SiteLoader size="sm" color="#d8a355" />
                       </div>
                     ) : notifications.length === 0 ? (
                       <div className="py-14 flex flex-col items-center gap-3 text-center">
@@ -853,7 +1023,7 @@ export function Header() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            {!isLoggedIn && (
+            {authResolved && !isLoggedIn && (
               <Button
                 onClick={() => handleNav("/login")}
                 className="bg-[#d8a355] hover:bg-[#c99347] text-[#00312e] font-extrabold rounded-lg px-5 h-9 text-sm"
@@ -864,7 +1034,6 @@ export function Header() {
           </div>
         </div>
         <GlobalAddStudentDialog />
-        <GlobalAdminModals />
     </header>
 
       {/* خلفية مظللة */}
@@ -904,51 +1073,6 @@ export function Header() {
           {/* معلومات المستخدم */}
           {isLoggedIn && (
             <>
-              {userRole === "student" && (
-                <div className="flex flex-col gap-2 p-1 max-w-xs font-sans rtl">
-                  {/* النقاط */}
-                   <div className="flex items-center justify-between group">
-                     <span className="flex items-center gap-1">
-                       <div className="relative">
-                         {/* أيقونة النجمة مع إشعاع خفيف جداً */}
-                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-yellow-400 drop-shadow-[0_0_3px_rgba(250,204,21,0.4)]">
-                           <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005Z" clipRule="evenodd" />
-                         </svg>
-                       </div>
-                       <span className="text-xs font-medium text-white tracking-wide">النقاط</span>
-                       <span className="flex items-center gap-0 text-base font-bold tabular-nums tracking-tight">
-                         <span className="font-bold align-middle drop-shadow-[0_0_2px_#e2a95855] text-sm" style={{ color: '#e2a958' }}>{sidebarPlanProgress ?? 0}</span>
-                       </span>
-                     </span>
-                   </div>
-                  {/* المركز العام */}
-                   <div className="flex items-center justify-between group">
-                     <div className="flex items-center gap-1">
-                       <div className="relative">
-                         {/* أيقونة تروفي (Trophy) احترافية */}
-                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-amber-500 drop-shadow-[0_0_3px_rgba(245,158,11,0.4)]">
-                           <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                           <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                           <path d="M4 22h16" />
-                           <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                           <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                           <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-                         </svg>
-                       </div>
-                       <span className="text-xs font-medium text-white tracking-wide">الترتيب العام</span>
-                       <span className="flex items-center gap-[2px] text-base font-bold tabular-nums tracking-tight">
-                         <svg viewBox="0 0 20 20" fill="none" stroke="#e2a958" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 align-middle drop-shadow-[0_0_2px_#e2a95855]" style={{ color: '#e2a958' }}>
-                           <path d="M7 3L5 17" />
-                           <path d="M13 3L11 17" />
-                           <path d="M3 7H17" />
-                           <path d="M3 13H17" />
-                         </svg>
-                         <span className="font-bold align-middle drop-shadow-[0_0_2px_#e2a95855] text-sm" style={{ color: '#e2a958' }}>{globalRank ?? "-"}</span>
-                       </span>
-                     </div>
-                   </div>
-                </div>
-              )}
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => { goToProfile(); setIsMobileMenuOpen(false); }}
@@ -967,65 +1091,6 @@ export function Header() {
             </>
           )}
 
-          {/* بار إنجاز الخطة — للطالب فقط */}
-          {isLoggedIn && userRole === "student" && (
-            <div className="mt-3 px-1">
-              <div className="flex items-center mb-1.5">
-                <span className="text-[10px] font-bold text-[#D4AF37] tracking-wide">إنجاز الخطة</span>
-              </div>
-              {sidebarPlanName && (
-                <p className="text-[9px] text-white/40 text-right mb-1.5 truncate">{sidebarPlanName}</p>
-              )}
-              {/* خلفية البار */}
-              <div className="relative h-4 rounded-full bg-white/10 overflow-hidden">
-                {/* توهج خفيف */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent" />
-                {/* التعبئة */}
-                <div
-                  className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
-                  style={{
-                    width: `${sidebarPlanProgress ?? 0}%`,
-                    background: "linear-gradient(90deg, #b8860b 0%, #D4AF37 50%, #f0d060 100%)",
-                  }}
-                >
-                  {/* بريق متحرك */}
-                  <div
-                    className="absolute inset-0 opacity-60"
-                    style={{
-                      background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%)",
-                      animation: "shimmer 2s infinite",
-                      backgroundSize: "200% 100%",
-                    }}
-                  />
-                </div>
-                {/* النسبة داخل البار */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-[10px] font-black text-white drop-shadow tabular-nums">{sidebarPlanProgress ?? 0}%</span>
-                </div>
-                {/* علامات تقسيم */}
-                {[25, 50, 75].map((tick) => (
-                  <div
-                    key={tick}
-                    className="absolute top-0 bottom-0 w-px bg-white/10"
-                    style={{ left: `${tick}%` }}
-                  />
-                ))}
-              </div>
-              {/* نجوم المستوى */}
-              <div className="flex justify-between mt-1.5 px-0.5">
-                {[0, 25, 50, 75, 100].map((lvl) => (
-                  <div
-                    key={lvl}
-                    className={`w-1.5 h-1.5 rounded-full transition-all ${
-                      (sidebarPlanProgress ?? 0) >= lvl
-                        ? "bg-[#D4AF37] shadow-[0_0_4px_#D4AF37]"
-                        : "bg-white/20"
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* محتوى الدرج */}
@@ -1095,9 +1160,9 @@ export function Header() {
               />
 
               {circlesLoading ? (
-                <p className="pr-10 pl-4 py-3 text-xs text-[#00312e]/40 font-medium">
-                  جاري التحميل...
-                </p>
+                <div className="pr-10 pl-4 py-3 flex justify-start">
+                  <SiteLoader size="sm" color="#d8a355" />
+                </div>
               ) : (
                 circles.map((c) => (
                   <NavItem
@@ -1279,7 +1344,7 @@ export function Header() {
 
                       label: "إدارة المعلمين",
 
-                      path: "/admin/teachers",
+                      path: "?action=teachers",
                     },
 
                     {
@@ -1287,7 +1352,7 @@ export function Header() {
 
                       label: "إدارة الحلقات",
 
-                      path: "/admin/circles",
+                      path: "?action=circles",
                     },
 
                     {
@@ -1295,7 +1360,7 @@ export function Header() {
 
                       label: "الهيكل الإداري",
 
-                      path: "/admin/admins",
+                      path: "?action=admins",
                     },
 
                     {

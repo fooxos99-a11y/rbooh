@@ -1,7 +1,10 @@
 ﻿"use client";
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
 import { createClient } from "@/lib/supabase/client";
 import { useEffect, useState } from "react";
 import { Plus, Trash2, BookOpen, LayoutGrid } from "lucide-react"; // تأكد من تثبيت lucide-react
+import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
 const ARABIC_LETTERS = [
@@ -57,10 +60,13 @@ export default function LetterHiveQuestionsAdmin() {
     fetchQuestions();
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
-    <div dir="rtl" className="min-h-screen bg-[#faf9f6] text-[#3d3d3d] p-4 md:p-8 font-sans">
+    <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
+      <Header />
+
+      <div className="flex-1 bg-[#faf9f6] text-[#3d3d3d] p-4 md:p-8 font-sans">
       {/* Header Section */}
       <header className="max-w-6xl mx-auto mb-12 text-center">
         <div className="inline-block p-3 rounded-full bg-[#cc994b]/10 mb-4">
@@ -140,9 +146,9 @@ export default function LetterHiveQuestionsAdmin() {
                 <h3 className="text-xl font-bold mb-6 text-gray-700">الأسئلة الحالية</h3>
                 
                 {loading ? (
-                    <div className="flex justify-center py-12">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#cc994b]"></div>
-                    </div>
+                  <div className="flex justify-center py-12">
+                    <SiteLoader />
+                  </div>
                 ) : (questions[selectedLetter] || []).length === 0 ? (
                   <p className="text-center py-12 text-gray-400">لا توجد أسئلة مضافة لهذا الحرف بعد.</p>
                 ) : (
@@ -171,6 +177,9 @@ export default function LetterHiveQuestionsAdmin() {
           )}
         </section>
       </main>
+      </div>
+
+      <Footer />
     </div>
   );
 }

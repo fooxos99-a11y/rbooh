@@ -52,6 +52,8 @@ const useDialogStore = create<DialogStore>((set) => ({
 
 export function ConfirmDialogProvider({ children }: { children: React.ReactNode }) {
   const { confirm, alert } = useDialogStore()
+  const shouldShowAlertTitle = Boolean(alert.title && alert.title !== "نجاح")
+  const accessibleAlertTitle = alert.title || "تنبيه"
 
   const handleConfirm = () => {
     confirm.onConfirm?.()
@@ -82,21 +84,23 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
       {children}
       {/* Confirmation Dialog */}
       <AlertDialog open={confirm.isOpen} onOpenChange={(open) => !open && handleCancel()}>
-        <AlertDialogContent className="sm:max-w-[460px] border border-[#D4AF37]/40 bg-white" dir="rtl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-[#1a2332]">{confirm.title}</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm text-neutral-500 mt-1">{confirm.message}</AlertDialogDescription>
+        <AlertDialogContent className="sm:max-w-[360px] rounded-2xl border border-[#D4AF37]/25 bg-white p-0 shadow-[0_18px_45px_rgba(15,23,42,0.14)]" dir="rtl">
+          <AlertDialogHeader className="gap-1.5 px-5 py-5 text-right">
+            <div className="space-y-1 pt-0.5">
+                <AlertDialogTitle className="text-lg font-black text-[#1a2332]">{confirm.title}</AlertDialogTitle>
+                <AlertDialogDescription className="text-sm leading-6 text-neutral-600">{confirm.message}</AlertDialogDescription>
+            </div>
           </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2 mt-4 flex-row-reverse sm:flex-row-reverse">
+          <AlertDialogFooter className="mt-0 gap-3 border-t border-[#D4AF37]/12 px-5 py-4 sm:justify-end">
             <AlertDialogCancel
               onClick={handleCancel}
-              className="border border-[#D4AF37]/50 text-neutral-600 hover:bg-[#D4AF37]/5 font-medium text-sm"
+              className="mt-0 min-w-24 rounded-xl border border-[#D4AF37]/30 bg-white text-neutral-700 hover:bg-[#D4AF37]/6 hover:text-[#1a2332] focus-visible:border-[#D4AF37] focus-visible:ring-[#D4AF37]/20"
             >
               {confirm.cancelText}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
-              className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] font-semibold text-sm shadow-none"
+              className="min-w-24 rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#B78D2C] shadow-none hover:bg-[#D4AF37]/18 hover:text-[#8E6B16] focus-visible:border-[#D4AF37] focus-visible:ring-[#D4AF37]/20"
             >
               {confirm.confirmText}
             </AlertDialogAction>
@@ -106,19 +110,23 @@ export function ConfirmDialogProvider({ children }: { children: React.ReactNode 
 
       {/* Alert Dialog */}
       <AlertDialog open={alert.isOpen} onOpenChange={(open) => !open && handleAlertClose()}>
-        <AlertDialogContent className="sm:max-w-[460px] border border-[#D4AF37]/40 bg-white" dir="rtl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-[#1a2332]">{alert.title}</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm text-neutral-500 mt-1 whitespace-pre-line">
-              {alert.message}
-            </AlertDialogDescription>
+        <AlertDialogContent className="sm:max-w-[360px] rounded-2xl border border-[#D4AF37]/25 bg-white p-0 shadow-[0_18px_45px_rgba(15,23,42,0.14)]" dir="rtl">
+          <AlertDialogHeader className="gap-1.5 px-5 py-5 text-right">
+            <div className={`w-full ${shouldShowAlertTitle ? "space-y-1" : ""}`}>
+                <AlertDialogTitle className={shouldShowAlertTitle ? "text-lg font-black text-[#1a2332]" : "sr-only"}>
+                  {accessibleAlertTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="whitespace-pre-line text-sm leading-6 text-neutral-600">
+                  {alert.message}
+                </AlertDialogDescription>
+            </div>
           </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4">
+          <AlertDialogFooter className="mt-0 border-t border-[#D4AF37]/12 px-5 py-4">
             <AlertDialogAction
               onClick={handleAlertClose}
-              className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] font-semibold text-sm w-full shadow-none"
+              className="w-full rounded-xl border border-[#D4AF37]/35 bg-[#D4AF37]/10 text-[#B78D2C] shadow-none hover:bg-[#D4AF37]/18 hover:text-[#8E6B16] focus-visible:border-[#D4AF37] focus-visible:ring-[#D4AF37]/20"
             >
-              حسناً
+              موافق
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

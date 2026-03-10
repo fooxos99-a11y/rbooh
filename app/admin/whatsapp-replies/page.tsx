@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast"
 import { MessageCircle, Search, Phone, Clock, CheckCheck } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface Reply {
   id: string
@@ -140,12 +141,12 @@ export default function WhatsAppRepliesPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#faf8f5] to-white">

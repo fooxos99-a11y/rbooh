@@ -1,6 +1,52 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { calculateTotalPages, calculateTotalDays } from "@/lib/quran-data"
+import { SURAHS, calculateTotalPages, calculateTotalDays, calculateQuranMemorizationProgress } from "@/lib/quran-data"
+
+const POSITIVE_MEMORIZATION_LEVELS = ["excellent", "good", "very_good", "average"]
+
+function hasCompletedMemorization(record: any) {
+  if (record.status !== "present") return false
+
+  const evaluations = Array.isArray(record.evaluations)
+    ? record.evaluations
+    : record.evaluations
+      ? [record.evaluations]
+      : []
+
+  if (evaluations.length === 0) return false
+
+  const latestEvaluation = evaluations[evaluations.length - 1]
+  return POSITIVE_MEMORIZATION_LEVELS.includes(latestEvaluation?.hafiz_level ?? "")
+}
+
+function getExpectedNextStart(prevStartSurah?: number | null, prevEndSurah?: number | null, prevEndVerse?: number | null) {
+  if (!prevStartSurah || !prevEndSurah || !prevEndVerse) {
+    return null
+  }
+
+  const previousEndSurahData = SURAHS.find((surah) => surah.number === prevEndSurah)
+  if (!previousEndSurahData) return null
+
+  const isDescending = prevStartSurah > prevEndSurah
+
+  if (!isDescending) {
+    if (prevEndVerse < previousEndSurahData.verseCount) {
+      return { surahNumber: prevEndSurah, verseNumber: prevEndVerse + 1 }
+    }
+
+    const nextSurah = SURAHS.find((surah) => surah.number === prevEndSurah + 1)
+    return nextSurah ? { surahNumber: nextSurah.number, verseNumber: 1 } : null
+  }
+
+  if (prevEndVerse > 1) {
+    return { surahNumber: prevEndSurah, verseNumber: prevEndVerse - 1 }
+  }
+
+  const previousSurah = SURAHS.find((surah) => surah.number === prevEndSurah - 1)
+  return previousSurah
+    ? { surahNumber: previousSurah.number, verseNumber: previousSurah.verseCount }
+    : null
+}
 
 // GET - جلب خطط طالب معين أو جلب كل الخطط
 export async function GET(request: Request) {
@@ -60,31 +106,23 @@ export async function GET(request: Request) {
         })
       }
 
-      // حساب الأيام المكتملة: حاضر + تقييم إيجابي في evaluations
-      const POSITIVE_LEVELS = ["excellent", "good", "very_good", "average"]
-      const completedRecords = (attendanceRecords || []).filter((r: any) => {
-        if (r.status !== "present") return false
-        const evals = Array.isArray(r.evaluations) ? r.evaluations : r.evaluations ? [r.evaluations] : []
-        if (evals.length === 0) return false
-        const ev = evals[evals.length - 1] // آخر تقييم
-        return (
-          POSITIVE_LEVELS.includes(ev.hafiz_level ?? "") ||
-          POSITIVE_LEVELS.includes(ev.tikrar_level ?? "") ||
-          POSITIVE_LEVELS.includes(ev.samaa_level ?? "") ||
-          POSITIVE_LEVELS.includes(ev.rabet_level ?? "")
-        )
-      })
+      // اليوم يُحتسب مكتملًا فقط إذا كان الطالب حاضرًا وتم تقييم الحفظ نفسه بشكل إيجابي.
+      const completedRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
 
       const completedDays = completedRecords.length
       const progressPercent =
         plan.total_days > 0
           ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
           : 0
+      const quranMemorization = calculateQuranMemorizationProgress(plan, completedDays)
 
       return NextResponse.json({
         plan,
         completedDays,
         progressPercent,
+        quranMemorizedPages: quranMemorization.memorizedPages,
+        quranProgressPercent: quranMemorization.progressPercent,
+        quranLevel: quranMemorization.level,
         attendanceRecords: attendanceRecords || [],
         completedRecords,
       })
@@ -127,7 +165,33 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "البيانات المطلوبة ناقصة" }, { status: 400 })
     }
 
-    const totalPages = calculateTotalPages(start_surah_number, end_surah_number)
+    if (has_previous) {
+      const expectedNextStart = getExpectedNextStart(prev_start_surah, prev_end_surah, prev_end_verse)
+      if (!expectedNextStart) {
+        return NextResponse.json({ error: "بيانات الحفظ السابق غير مكتملة" }, { status: 400 })
+      }
+
+      const normalizedStartVerse = Number(start_verse) || 1
+      if (
+        start_surah_number !== expectedNextStart.surahNumber ||
+        normalizedStartVerse !== expectedNextStart.verseNumber
+      ) {
+        const expectedSurah = SURAHS.find((surah) => surah.number === expectedNextStart.surahNumber)
+        return NextResponse.json(
+          {
+            error: `يجب أن تبدأ الخطة الجديدة مباشرة بعد نهاية الحفظ السابق: ${expectedSurah?.name || "السورة"} آية ${expectedNextStart.verseNumber}`,
+          },
+          { status: 400 },
+        )
+      }
+    }
+
+    const totalPages = calculateTotalPages(
+      start_surah_number,
+      end_surah_number,
+      start_verse,
+      end_verse,
+    )
     const totalDays =
       totalDaysOverride && Number(totalDaysOverride) > 0
         ? Number(totalDaysOverride)

@@ -8,6 +8,7 @@ import { BookOpen } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface Circle {
   id: string
@@ -41,7 +42,7 @@ export default function StudentRecordsPage() {
     router.push(`/admin/student-records/${circleId}`)
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white" dir="rtl">
@@ -55,7 +56,7 @@ export default function StudentRecordsPage() {
 
           {loading ? (
             <div className="text-center py-12">
-              <p className="text-xl text-gray-600">جاري التحميل...</p>
+              <div className="flex justify-center"><SiteLoader size="md" /></div>
             </div>
           ) : circles.length === 0 ? (
             <div className="text-center py-12">

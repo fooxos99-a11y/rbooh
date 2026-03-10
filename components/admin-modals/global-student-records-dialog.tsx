@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { FileText, Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 export function GlobalStudentRecordsDialog() {
   const router = useRouter()
@@ -39,8 +40,11 @@ export function GlobalStudentRecordsDialog() {
       if (!studentsRes.error && studentsRes.data) {
         const grouped: Record<string, any[]> = {}
         studentsRes.data.forEach((s) => {
-          if (!grouped[s.circle_name]) grouped[s.circle_name] = []
-          grouped[s.circle_name].push(s)
+          const circleName = s.halaqah || s.circle_name;
+          if (circleName) {
+            if (!grouped[circleName]) grouped[circleName] = []
+            grouped[circleName].push(s)
+          }
         })
         setStudentsInCircles(grouped)
       }
@@ -63,7 +67,11 @@ export function GlobalStudentRecordsDialog() {
       const res = await fetch(`/api/attendance?student_id=${studentId}`)
       if (!res.ok) throw new Error("Failed to fetch")
       const data = await res.json()
-      setRecords(Array.isArray(data) ? data : [])
+      if (data && data.records && Array.isArray(data.records)) {
+        setRecords(data.records)
+      } else {
+        setRecords(Array.isArray(data) ? data : [])
+      }
     } catch (error) {
       console.error(error)
       setRecords([])
@@ -76,7 +84,7 @@ export function GlobalStudentRecordsDialog() {
     if (!open) {
       setIsOpen(false)
       setTimeout(() => {
-        router.push(String.fromCharCode(63))
+        router.push(window.location.pathname)
       }, 300)
     }
   }
@@ -106,6 +114,11 @@ export function GlobalStudentRecordsDialog() {
     }
   }
 
+  const formatReadingRange = (fromSurah?: string | null, fromVerse?: string | null, toSurah?: string | null, toVerse?: string | null) => {
+    if (!fromSurah || !fromVerse || !toSurah || !toVerse) return null
+    return `${fromSurah} ${fromVerse} - ${toSurah} ${toVerse}`
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto" dir="rtl">
@@ -117,7 +130,6 @@ export function GlobalStudentRecordsDialog() {
             سجلات الطلاب
           </DialogTitle>
           <DialogDescription className="text-sm text-neutral-500 pr-10 mt-1">
-            اختر الحلقة ثم الطالب لعرض سجل الحضور والتقييمات
           </DialogDescription>
         </DialogHeader>
 
@@ -162,7 +174,7 @@ export function GlobalStudentRecordsDialog() {
               <div className="max-h-[300px] overflow-y-auto">
                 {isLoadingRecords ? (
                   <div className="flex justify-center items-center py-10">
-                    <div className="w-6 h-6 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+                    <SiteLoader size="sm" />
                   </div>
                 ) : records.length === 0 ? (
                   <div className="text-center py-10 text-neutral-500 text-sm">
@@ -176,7 +188,7 @@ export function GlobalStudentRecordsDialog() {
                         <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">الحالة</th>
                         <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">حفظ</th>
                         <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">تكرار</th>
-                        <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">تسميع</th>
+                        <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">مراجعة</th>
                         <th className="px-4 py-2.5 font-medium whitespace-nowrap text-center">ربط</th>
                       </tr>
                     </thead>
@@ -185,10 +197,31 @@ export function GlobalStudentRecordsDialog() {
                         <tr key={record.id} className="hover:bg-[#fcfbf9] transition-colors">
                           <td className="px-4 py-3 whitespace-nowrap text-xs tabular-nums text-neutral-800">{new Date(record.date).toLocaleDateString("en-GB")}</td>
                           <td className="px-4 py-3 whitespace-nowrap text-center">{getStatusBadge(record.status)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">{getLevelLabel(record.hafiz_level)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">
+                            <div className="flex flex-col items-center gap-1">
+                              {getLevelLabel(record.hafiz_level)}
+                              {formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse) && (
+                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)}</span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 whitespace-nowrap text-center text-xs">{getLevelLabel(record.tikrar_level)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">{getLevelLabel(record.samaa_level)}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">{getLevelLabel(record.rabet_level)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">
+                            <div className="flex flex-col items-center gap-1">
+                              {getLevelLabel(record.samaa_level)}
+                              {formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse) && (
+                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-center text-xs">
+                            <div className="flex flex-col items-center gap-1">
+                              {getLevelLabel(record.rabet_level)}
+                              {formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse) && (
+                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)}</span>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

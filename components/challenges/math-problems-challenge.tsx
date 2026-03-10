@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Clock, Calculator, CheckCircle2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface MathProblemsChallengeProps {
   onSuccess: () => void
@@ -134,7 +135,7 @@ export function MathProblemsChallenge({ onSuccess, onFailure, timeLimit = 60 }: 
   }
 
   if (problems.length === 0) {
-    return <div className="flex items-center justify-center h-full">جاري التحميل...</div>
+    return <div className="flex items-center justify-center h-full"><SiteLoader size="sm" /></div>
   }
 
   const currentProblem = problems[currentProblemIndex]

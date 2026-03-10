@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight, ShoppingBag, Package, Check, Trash2 } from "lucide-react";
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
@@ -126,7 +127,7 @@ export default function StoreOrdersPage() {
 
   const currentList = showDelivered ? delivered : notDelivered;
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
@@ -204,8 +205,7 @@ export default function StoreOrdersPage() {
           {/* Content */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-24 gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#D4AF37]"></div>
-              <p className="text-neutral-400 text-sm">جاري تحميل البيانات...</p>
+              <SiteLoader />
             </div>
           ) : currentList.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 bg-white rounded-2xl border border-dashed border-[#D4AF37]/40">

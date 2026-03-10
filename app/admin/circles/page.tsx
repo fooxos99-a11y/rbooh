@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
 import { Plus, Trash2, ArrowRight, Users, BookOpen, Eye, UserX, Info } from "lucide-react"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { TeacherAttendanceModal } from "@/components/teacher-attendance-modal"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
@@ -180,12 +182,12 @@ export default function CircleManagement() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fafaf9]" dir="rtl">
@@ -301,7 +303,7 @@ export default function CircleManagement() {
           <div className="space-y-2 py-2">
             {isLoadingStudents ? (
               <div className="flex justify-center py-12">
-                <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+                <SiteLoader />
               </div>
             ) : circleStudents.length > 0 ? (
               <div className="divide-y divide-[#D4AF37]/20 rounded-xl border border-[#D4AF37]/40 overflow-hidden">

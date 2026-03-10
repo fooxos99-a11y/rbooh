@@ -93,7 +93,7 @@ function AchievementsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+        <SiteLoader />
       </div>
     )
   }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Clock, CheckCircle2 } from "lucide-react"
+import { getSaudiDateString, getSaudiTimeString } from "@/lib/saudi-time"
 
 interface TeacherAttendanceModalProps {
   isOpen: boolean
@@ -23,6 +24,7 @@ export function TeacherAttendanceModal({
 }: TeacherAttendanceModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [isCheckingToday, setIsCheckingToday] = useState(false)
   const [currentTime, setCurrentTime] = useState<string>("")
   const [hasCheckedToday, setHasCheckedToday] = useState(false)
   const [lastCheckInTime, setLastCheckInTime] = useState<string>("")
@@ -43,14 +45,7 @@ export function TeacherAttendanceModal({
   useEffect(() => {
     if (isOpen) {
       const updateTime = () => {
-        const now = new Date()
-        setCurrentTime(
-          now.toLocaleTimeString("ar-SA", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }),
-        )
+        setCurrentTime(getSaudiTimeString())
       }
       updateTime()
       const interval = setInterval(updateTime, 1000)
@@ -61,7 +56,12 @@ export function TeacherAttendanceModal({
   // Check if teacher has already checked in today
   useEffect(() => {
     if (isOpen && teacherId) {
-      checkTodayAttendance()
+      setIsCheckingToday(true)
+      setHasCheckedToday(false)
+      setLastCheckInTime("")
+      void checkTodayAttendance()
+    } else if (!isOpen) {
+      setIsCheckingToday(false)
     }
   }, [isOpen, teacherId])
 
@@ -73,7 +73,7 @@ export function TeacherAttendanceModal({
     }
 
     try {
-      const today = new Date().toISOString().split("T")[0]
+      const today = getSaudiDateString()
       console.log("[v0] Checking attendance for:", { teacherId, date: today })
 
       const response = await fetch(`/api/teacher-attendance?teacher_id=${teacherId}&date=${today}`)
@@ -103,6 +103,8 @@ export function TeacherAttendanceModal({
     } catch (error) {
       console.error("[v0] Error checking attendance:", error)
       setHasCheckedToday(false)
+    } finally {
+      setIsCheckingToday(false)
     }
     // </CHANGE>
   }
@@ -185,20 +187,27 @@ export function TeacherAttendanceModal({
     )
   }
 
+  if (isOpen && isCheckingToday) {
+    return null
+  }
+
   if (hasCheckedToday) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-[95vw] md:max-w-[500px] text-center">
+        <DialogContent className="max-w-[95vw] md:max-w-[500px]" dir="rtl">
           <DialogHeader>
-            <DialogTitle className="text-2xl text-[#1a2332] text-center">تم التسجيل مسبقاً</DialogTitle>
+            <DialogTitle className="text-2xl text-[#1a2332]">تم التسجيل مسبقاً</DialogTitle>
           </DialogHeader>
-          <div className="py-8">
-            <div className="text-5xl mb-4">✓</div>
+          <div className="py-8 text-right">
             <p className="text-lg text-[#1a2332] mb-2">تم تسجيل حضورك اليوم</p>
             <p className="text-sm text-gray-500">آخر تحضير: {lastCheckInTime}</p>
           </div>
-          <div className="flex justify-center">
-            <Button onClick={onClose} className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] hover:from-[#C9A961] hover:to-[#BFA050] text-[#023232] font-bold">
+          <div className="flex justify-end border-t border-[#D4AF37]/20 pt-4">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+            >
               إغلاق
             </Button>
           </div>

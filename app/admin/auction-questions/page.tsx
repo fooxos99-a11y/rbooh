@@ -4,6 +4,9 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Dialog,
   DialogContent,
@@ -179,10 +182,12 @@ export default function AuctionQuestionsAdmin() {
     }
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
-    <>
+    <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
+      <Header />
+
       {/* نافذة تأكيد حذف السؤال */}
       {showDeleteQuestionDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -207,7 +212,7 @@ export default function AuctionQuestionsAdmin() {
         </div>
       )}
       {/* ...باقي الصفحة... */}
-    <div className="min-h-screen bg-gradient-to-br from-[#faf8f5] via-[#f5ead8] to-[#faf8f5] p-6">
+    <div className="flex-1 bg-gradient-to-br from-[#faf8f5] via-[#f5ead8] to-[#faf8f5] p-6">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-4xl font-bold bg-gradient-to-r from-[#d8a355] to-[#c89547] bg-clip-text text-transparent">
@@ -265,7 +270,7 @@ export default function AuctionQuestionsAdmin() {
           )}
         </div>
         {loading ? (
-          <div className="text-center text-xl text-[#1a2332]">جاري التحميل...</div>
+          <div className="flex justify-center py-6"><SiteLoader /></div>
         ) : (
           <div className="space-y-4">
             {questions
@@ -321,6 +326,7 @@ export default function AuctionQuestionsAdmin() {
           </div>
         )}
       </div>
+    </div>
 
       {/* مودال إضافة سؤال */}
       <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
@@ -486,7 +492,7 @@ export default function AuctionQuestionsAdmin() {
           </div>
         </DialogContent>
       </Dialog>
+      <Footer />
     </div>
-    </>
   )
 }

@@ -8,6 +8,7 @@ import { Footer } from "@/components/footer"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight, Check, Star } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
@@ -212,7 +213,7 @@ export default function FontsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }

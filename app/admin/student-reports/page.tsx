@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { ArrowRight, Download, Calendar, BookOpen } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface Circle {
   name: string
@@ -131,7 +132,7 @@ export default function StudentReportsPage() {
     if (studentReports.length === 0) return
 
     const csv = [
-      ["اسم الطالب", "حالة الحضور", "الحفظ", "التكرار", "السماع", "الربط"],
+      ["اسم الطالب", "حالة الحضور", "الحفظ", "التكرار", "المراجعة", "الربط"],
       ...studentReports.map((r) => [
         r.name,
         r.attendance_status,
@@ -154,12 +155,12 @@ export default function StudentReportsPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white" dir="rtl">
@@ -274,7 +275,7 @@ export default function StudentReportsPage() {
                             <TableHead className="text-center font-bold text-[#1a2332]">حالة الحضور</TableHead>
                             <TableHead className="text-center font-bold text-[#1a2332]">الحفظ</TableHead>
                             <TableHead className="text-center font-bold text-[#1a2332]">التكرار</TableHead>
-                            <TableHead className="text-center font-bold text-[#1a2332]">السماع</TableHead>
+                            <TableHead className="text-center font-bold text-[#1a2332]">المراجعة</TableHead>
                             <TableHead className="text-center font-bold text-[#1a2332]">الربط</TableHead>
                           </TableRow>
                         </TableHeader>

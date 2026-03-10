@@ -1,11 +1,10 @@
 ﻿"use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
-import { Award, Medal, Gem, Trash2, Plus, ArrowRight, User, Trophy, Star, Flame, Zap, Crown, Heart } from "lucide-react";
+import { Award, Medal, Gem, Trash2, Plus, User, Trophy, Star, Flame, Zap, Crown, Heart } from "lucide-react";
 
 interface Student {
   id: string;
@@ -20,7 +19,6 @@ interface Achievement {
 }
 
 function StudentsAchievementsAdmin() {
-  const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [icon, setIcon] = useState<string>("trophy");
@@ -101,12 +99,6 @@ function StudentsAchievementsAdmin() {
 
           {/* Page header */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => selectedStudent ? setSelectedStudent(null) : router.push("/admin/dashboard")}
-              className="w-10 h-10 rounded-full bg-white border border-[#D4AF37]/30 flex items-center justify-center text-neutral-500 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] transition-all shadow-sm"
-            >
-              <ArrowRight className="w-5 h-5 rotate-180" />
-            </button>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
                 <Trophy className="w-5 h-5 text-[#D4AF37]" />

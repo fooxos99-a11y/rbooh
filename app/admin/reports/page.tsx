@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Mail, Clock, CheckCircle, Archive, ArchiveX, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface ContactMessage {
   id: string
@@ -141,7 +142,7 @@ export default function ReportsPage() {
     return date.toLocaleDateString("ar-SA")
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white" dir="rtl">
@@ -242,8 +243,8 @@ export default function ReportsPage() {
 
           {/* Messages List */}
           {loading ? (
-            <div className="text-center py-12">
-              <p className="text-xl text-gray-600">جاري تحميل الرسائل...</p>
+            <div className="flex justify-center py-12">
+              <SiteLoader />
             </div>
           ) : filteredMessages.length === 0 ? (
             <Card className="border-2 border-gray-300">

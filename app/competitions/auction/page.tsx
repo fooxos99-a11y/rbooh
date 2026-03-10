@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Plus, Minus, HelpCircle, Trophy, RotateCcw } from "lucide-react"
 
 type Team = {
@@ -309,7 +310,7 @@ export default function AuctionGame() {
                 disabled={!teamNames.every(name => name.trim()) || loading}
                 className="w-full bg-gradient-to-r from-[#d8a355] to-[#c89547] hover:from-[#c89547] hover:to-[#d8a355] text-white text-xl py-6"
               >
-                {loading ? "جاري التحميل..." : "ابدأ اللعبة"}
+                {loading ? <SiteLoader size="sm" color="#ffffff" /> : "ابدأ اللعبة"}
               </Button>
             </div>
           </div>

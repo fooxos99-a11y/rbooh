@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowRight, BookOpen, Trophy, Users } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
@@ -92,14 +93,10 @@ export default function PathwaysResultsPage() {
   const selectedLevelTitle = levels.find((l) => String(l.level_number) === selectedLevel)?.title || ""
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-      </div>
-    )
+    return <SiteLoader fullScreen />
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">

@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
+import { SiteLoader } from "@/components/ui/site-loader"
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
   Dialog,
   DialogContent,
@@ -44,7 +46,6 @@ import {
   Calendar,
   BookMarked,
   BarChart3,
-  ArrowRight,
   ChevronDown,
   Check,
 } from "lucide-react";
@@ -72,13 +73,22 @@ interface StudentPlan {
   student_id: string;
   start_surah_number: number;
   start_surah_name: string;
+  start_verse?: number | null;
   end_surah_number: number;
   end_surah_name: string;
+  end_verse?: number | null;
   daily_pages: number;
   total_pages: number;
   total_days: number;
   start_date: string;
   created_at: string;
+  has_previous?: boolean;
+  prev_start_surah?: number | null;
+  prev_start_verse?: number | null;
+  prev_end_surah?: number | null;
+  prev_end_verse?: number | null;
+  muraajaa_pages?: number | null;
+  rabt_pages?: number | null;
 }
 
 const MURAAJAA_OPTIONS = [
@@ -107,9 +117,63 @@ function dailyLabel(v: number) {
   return `${v} وجه`;
 }
 
+function getNextStartFromPrevious(
+  prevStartSurahValue: string,
+  prevEndSurahValue: string,
+  prevEndVerseValue: string,
+) {
+  const previousStartNumber = parseInt(prevStartSurahValue, 10)
+  const previousEndNumber = parseInt(prevEndSurahValue, 10)
+  const previousEndVerseNumber = parseInt(prevEndVerseValue, 10)
+
+  if (!previousStartNumber || !previousEndNumber || !previousEndVerseNumber) {
+    return null
+  }
+
+  const previousEndSurah = SURAHS.find((surah) => surah.number === previousEndNumber)
+  if (!previousEndSurah) return null
+
+  const isDescending = previousStartNumber > previousEndNumber
+
+  if (!isDescending) {
+    if (previousEndVerseNumber < previousEndSurah.verseCount) {
+      return {
+        surahNumber: previousEndNumber,
+        verseNumber: previousEndVerseNumber + 1,
+      }
+    }
+
+    const nextSurah = SURAHS.find((surah) => surah.number === previousEndNumber + 1)
+    if (!nextSurah) return null
+
+    return {
+      surahNumber: nextSurah.number,
+      verseNumber: 1,
+    }
+  }
+
+  if (previousEndVerseNumber > 1) {
+    return {
+      surahNumber: previousEndNumber,
+      verseNumber: previousEndVerseNumber - 1,
+    }
+  }
+
+  const previousSurah = SURAHS.find((surah) => surah.number === previousEndNumber - 1)
+  if (!previousSurah) return null
+
+  return {
+    surahNumber: previousSurah.number,
+    verseNumber: previousSurah.verseCount,
+  }
+}
+
 export default function StudentPlansPage() {
   const router = useRouter();
+  const confirmDialog = useConfirmDialog()
   const [isLoading, setIsLoading] = useState(true);
+  const [isCirclesLoading, setIsCirclesLoading] = useState(true);
+  const [isCircleDataLoading, setIsCircleDataLoading] = useState(false);
   const [circles, setCircles] = useState<Circle[]>([]);
   const [selectedCircle, setSelectedCircle] = useState<string | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -186,26 +250,66 @@ export default function StudentPlansPage() {
   // جلب الحلقات
   useEffect(() => {
     if (isLoading) return;
+    setIsCirclesLoading(true);
     fetch("/api/circles")
       .then((r) => r.json())
       .then((d) => setCircles(d.circles || []))
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setIsCirclesLoading(false));
   }, [isLoading]);
 
   // جلب طلاب الحلقة المختارة
   useEffect(() => {
-    if (!selectedCircle) return;
-    fetch("/api/students")
-      .then((r) => r.json())
-      .then((d) => {
-        const circleStudents = (d.students || []).filter(
+    if (!selectedCircle) {
+      setStudents([]);
+      setStudentPlans({});
+      setStudentProgress({});
+      setIsCircleDataLoading(false);
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadCircleData = async () => {
+      setIsCircleDataLoading(true);
+      setStudents([]);
+      setStudentPlans({});
+      setStudentProgress({});
+
+      try {
+        const response = await fetch("/api/students");
+        const data = await response.json();
+        const circleStudents = (data.students || []).filter(
           (s: Student) => (s.halaqah || "").trim() === selectedCircle.trim(),
         );
+
+        if (isCancelled) return;
+
         setStudents(circleStudents);
-        // جلب خطط هؤلاء الطلاب
-        fetchPlansForStudents(circleStudents);
-      })
-      .catch(console.error);
+
+        const { plans, progress } = await fetchPlansForStudents(circleStudents);
+        if (isCancelled) return;
+
+        setStudentPlans(plans);
+        setStudentProgress(progress);
+      } catch (error) {
+        if (isCancelled) return;
+        console.error(error);
+        setStudents([]);
+        setStudentPlans({});
+        setStudentProgress({});
+      } finally {
+        if (!isCancelled) {
+          setIsCircleDataLoading(false);
+        }
+      }
+    };
+
+    loadCircleData();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedCircle]);
 
   const fetchPlansForStudents = async (studs: Student[]) => {
@@ -224,8 +328,7 @@ export default function StudentPlansPage() {
         }
       }),
     );
-    setStudentPlans(plans);
-    setStudentProgress(progress);
+    return { plans, progress };
   };
 
   const openAddDialog = (student: Student) => {
@@ -261,9 +364,41 @@ export default function StudentPlansPage() {
     const startNum = parseInt(startSurah);
     const endNum = parseInt(endSurah);
 
+    if (hasPrevious) {
+      if (!prevStartSurah || !prevEndSurah || !prevEndVerse) {
+        setSaveMsg({ type: "error", text: "يجب تعبئة بيانات الحفظ السابق كاملة" });
+        return;
+      }
+
+      if (!nextStartFromPrevious) {
+        setSaveMsg({ type: "error", text: "تعذر تحديد البداية الصحيحة بعد الحفظ السابق" });
+        return;
+      }
+
+      const normalizedStartVerse = startVerse ? parseInt(startVerse) : 1;
+      if (startNum !== nextStartFromPrevious.surahNumber || normalizedStartVerse !== nextStartFromPrevious.verseNumber) {
+        const expectedSurah = SURAHS.find((s) => s.number === nextStartFromPrevious.surahNumber)?.name || "السورة";
+        setSaveMsg({
+          type: "error",
+          text: `يجب أن تبدأ الخطة الجديدة مباشرة بعد نهاية الحفظ السابق: ${expectedSurah} آية ${nextStartFromPrevious.verseNumber}`,
+        });
+        return;
+      }
+    }
+
+    if (startNum === endNum && startVerse && endVerse && parseInt(startVerse) > parseInt(endVerse)) {
+      setSaveMsg({ type: "error", text: "في نفس السورة يجب أن تكون آية النهاية بعد آية البداية" });
+      return;
+    }
+
     const startSurahData = SURAHS.find((s) => s.number === startNum)!;
     const endSurahData = SURAHS.find((s) => s.number === endNum)!;
-    const total = calculateTotalPages(startNum, endNum);
+    const total = calculateTotalPages(
+      startNum,
+      endNum,
+      startVerse ? parseInt(startVerse) : null,
+      endVerse ? parseInt(endVerse) : null,
+    );
     const days = calculateTotalDays(total, parseFloat(dailyPages));
     const effectiveDays = days;
 
@@ -286,8 +421,12 @@ export default function StudentPlansPage() {
           has_previous: hasPrevious,
           prev_start_surah:
             hasPrevious && prevStartSurah ? parseInt(prevStartSurah) : null,
+          prev_start_verse:
+            hasPrevious && prevStartVerse ? parseInt(prevStartVerse) : null,
           prev_end_surah:
             hasPrevious && prevEndSurah ? parseInt(prevEndSurah) : null,
+          prev_end_verse:
+            hasPrevious && prevEndVerse ? parseInt(prevEndVerse) : null,
           muraajaa_pages: parseFloat(muraajaaPages),
           rabt_pages: parseFloat(rabtPages),
           start_date: new Date().toISOString().split("T")[0],
@@ -317,7 +456,14 @@ export default function StudentPlansPage() {
   };
 
   const handleDeletePlan = async (studentId: string) => {
-    if (!confirm("هل أنت متأكد من حذف خطة هذا الطالب؟")) return;
+    const confirmed = await confirmDialog({
+      title: "حذف الخطة",
+      description: "هل أنت متأكد من حذف خطة هذا الطالب؟",
+      confirmText: "حذف",
+      cancelText: "إلغاء",
+    })
+    if (!confirmed) return;
+
     try {
       await fetch(`/api/student-plans?student_id=${studentId}`, {
         method: "DELETE",
@@ -335,6 +481,9 @@ export default function StudentPlansPage() {
   const startNum = startSurah ? parseInt(startSurah) : null;
   const endNum = endSurah ? parseInt(endSurah) : null;
   const direction = (startNum && endNum && startNum > endNum) ? "desc" : "asc";
+  const nextStartFromPrevious = hasPrevious && prevStartSurah && prevEndSurah && prevEndVerse
+    ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
+    : null;
 
   // خيارات بداية الخطة
   const startSurahOptions = (() => {
@@ -344,16 +493,84 @@ export default function StudentPlansPage() {
       const pEnd = parseInt(prevEndSurah);
       const min = Math.min(pStart, pEnd);
       const max = Math.max(pStart, pEnd);
-      opts = opts.filter((s) => s.number < min || s.number > max);
+      opts = opts.filter((s) => {
+        if (nextStartFromPrevious?.surahNumber === s.number) return true;
+        return s.number < min || s.number > max;
+      });
     }
     return opts;
+  })();
+
+  const startVerseOptions = (() => {
+    if (!startSurah) return [];
+
+    const selectedSurah = SURAHS.find((s) => s.number === parseInt(startSurah));
+    if (!selectedSurah) return [];
+
+    const verseCount = selectedSurah.verseCount;
+    let minVerse = 1;
+    let maxVerse = verseCount;
+
+    if (nextStartFromPrevious?.surahNumber === selectedSurah.number) {
+      const previousStartNumber = parseInt(prevStartSurah || "0", 10);
+      const previousEndNumber = parseInt(prevEndSurah || "0", 10);
+      const isDescendingPrevious = previousStartNumber > previousEndNumber;
+
+      if (isDescendingPrevious) {
+        maxVerse = nextStartFromPrevious.verseNumber;
+      } else {
+        minVerse = nextStartFromPrevious.verseNumber;
+      }
+    }
+
+    return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index);
+  })();
+
+  const prevStartVerseOptions = (() => {
+    if (!prevStartSurah) return [];
+
+    const selectedSurah = SURAHS.find((s) => s.number === parseInt(prevStartSurah, 10));
+    if (!selectedSurah) return [];
+
+    return Array.from({ length: selectedSurah.verseCount }, (_, index) => index + 1);
   })();
 
   // قائمة السور المتاحة لنهاية الخطة
   const endSurahOptions = (() => {
     if (!startNum) return startSurahOptions;
-    // يمكنه اختيار أي سورة أخرى كـ نهاية، والتصاعدي والتنازلي يحسب تلقائيا
-    return startSurahOptions.filter((s) => s.number !== startNum);
+    return startSurahOptions;
+  })();
+
+  const endVerseOptions = (() => {
+    if (!endSurah) return [];
+
+    const selectedSurah = SURAHS.find((s) => s.number === parseInt(endSurah));
+    if (!selectedSurah) return [];
+
+    let minVerse = 1;
+    let maxVerse = selectedSurah.verseCount;
+
+    if (startNum && endNum && startNum === endNum && startVerse) {
+      minVerse = parseInt(startVerse, 10);
+    }
+
+    return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index);
+  })();
+
+  const prevEndVerseOptions = (() => {
+    if (!prevEndSurah) return [];
+
+    const selectedSurah = SURAHS.find((s) => s.number === parseInt(prevEndSurah, 10));
+    if (!selectedSurah) return [];
+
+    let minVerse = 1;
+    const maxVerse = selectedSurah.verseCount;
+
+    if (prevStartSurah && prevStartVerse && prevStartSurah === prevEndSurah) {
+      minVerse = parseInt(prevStartVerse, 10);
+    }
+
+    return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index);
   })();
 
   // إعادة تعيين النهاية إذا أصبحت غير صالحة
@@ -361,7 +578,12 @@ export default function StudentPlansPage() {
     endNum !== null && endSurahOptions.some((s) => s.number === endNum);
   const previewTotal =
     startSurah && endSurah && isEndValid
-      ? calculateTotalPages(parseInt(startSurah), parseInt(endSurah))
+      ? calculateTotalPages(
+          parseInt(startSurah),
+          parseInt(endSurah),
+          startVerse ? parseInt(startVerse) : null,
+          endVerse ? parseInt(endVerse) : null,
+        )
       : 0;
   const previewDays =
     previewTotal > 0 && dailyPages
@@ -408,12 +630,62 @@ export default function StudentPlansPage() {
     }
   }, [prevEndOpen, prevEndSurah]);
 
+  useEffect(() => {
+    if (!hasPrevious || !prevStartSurah || !prevEndSurah || !prevEndVerse) return;
+
+    const nextStart = getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse);
+    if (!nextStart) return;
+
+    setStartSurah(String(nextStart.surahNumber));
+    setStartVerse(String(nextStart.verseNumber));
+  }, [hasPrevious, prevStartSurah, prevEndSurah, prevEndVerse]);
+
+  useEffect(() => {
+    if (!startVerseOptions.length) {
+      if (startVerse) setStartVerse("");
+      return;
+    }
+
+    if (!startVerse || !startVerseOptions.includes(parseInt(startVerse, 10))) {
+      setStartVerse(String(startVerseOptions[0]));
+    }
+  }, [startVerse, startVerseOptions]);
+
+  useEffect(() => {
+    if (!prevStartVerseOptions.length) {
+      if (prevStartVerse) setPrevStartVerse("");
+      return;
+    }
+
+    if (!prevStartVerse || !prevStartVerseOptions.includes(parseInt(prevStartVerse, 10))) {
+      setPrevStartVerse(String(prevStartVerseOptions[0]));
+    }
+  }, [prevStartVerse, prevStartVerseOptions]);
+
+  useEffect(() => {
+    if (!endVerseOptions.length) {
+      if (endVerse) setEndVerse("");
+      return;
+    }
+
+    if (!endVerse || !endVerseOptions.includes(parseInt(endVerse, 10))) {
+      setEndVerse(String(endVerseOptions[endVerseOptions.length - 1]));
+    }
+  }, [endVerse, endVerseOptions]);
+
+  useEffect(() => {
+    if (!prevEndVerseOptions.length) {
+      if (prevEndVerse) setPrevEndVerse("");
+      return;
+    }
+
+    if (!prevEndVerse || !prevEndVerseOptions.includes(parseInt(prevEndVerse, 10))) {
+      setPrevEndVerse(String(prevEndVerseOptions[prevEndVerseOptions.length - 1]));
+    }
+  }, [prevEndVerse, prevEndVerseOptions]);
+
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-      </div>
-    );
+    return <SiteLoader fullScreen />;
   }
 
   return (
@@ -423,12 +695,6 @@ export default function StudentPlansPage() {
         <div className="container mx-auto max-w-5xl space-y-8">
           {/* رأس الصفحة */}
           <div className="border-b border-[#D4AF37]/40 pb-6 flex items-center gap-3">
-            <button
-              onClick={() => router.push("/admin/dashboard")}
-              className="p-2 rounded-lg hover:bg-[#D4AF37]/10 transition-colors"
-            >
-              <ArrowRight className="w-5 h-5 text-[#D4AF37]" />
-            </button>
             <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
               <BookMarked className="w-5 h-5 text-[#D4AF37]" />
             </div>
@@ -449,7 +715,11 @@ export default function StudentPlansPage() {
                 </h2>
               </div>
               <div className="divide-y divide-[#D4AF37]/20">
-                {circles.length === 0 ? (
+                {isCirclesLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <SiteLoader size="md" />
+                  </div>
+                ) : circles.length === 0 ? (
                   <div className="flex items-center justify-center py-16 text-neutral-400">
                     لا توجد حلقات
                   </div>
@@ -505,7 +775,11 @@ export default function StudentPlansPage() {
                 </div>
               </div>
 
-              {students.length === 0 ? (
+              {isCircleDataLoading ? (
+                <div className="flex justify-center py-16">
+                  <SiteLoader size="lg" />
+                </div>
+              ) : students.length === 0 ? (
                 <div className="flex items-center justify-center py-16 text-neutral-400">
                   لا يوجد طلاب في هذه الحلقة
                 </div>
@@ -611,14 +885,14 @@ export default function StudentPlansPage() {
           <div className="px-6 py-5 space-y-4">
             {/* الحفظ السابق وطريقة المراجعة والربط */}
             <div className="space-y-2 pt-2 pb-2 border-y border-[#D4AF37]/20">
-              <label className="flex items-center gap-2 text-sm font-semibold text-[#1a2332] cursor-pointer">
+              <label className="plan-history-checkbox text-sm font-semibold text-[#1a2332]">
                 <input
                   type="checkbox"
-                  className="rounded border-[#D4AF37] text-[#D4AF37] focus:ring-[#C9A961] accent-[#D4AF37] w-4 h-4 cursor-pointer transition-all"
                   checked={hasPrevious}
                   onChange={(e) => setHasPrevious(e.target.checked)}
                 />
-                هل يوجد حفظ سابق؟
+                <span className="plan-history-checkbox__label">هل يوجد حفظ سابق؟</span>
+                <span className="plan-history-checkbox__mark" aria-hidden="true" />
               </label>
 
               {hasPrevious && (
@@ -657,13 +931,12 @@ export default function StudentPlansPage() {
                           </PopoverContent>
                         </Popover>
 
-                        <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={!prevStartSurah}>
+                        <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={!prevStartSurah || prevStartVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
-                            {prevStartSurah &&
-                              Array.from({ length: SURAHS.find(s => s.number === parseInt(prevStartSurah))?.verseCount || 0 }, (_, i) => i + 1).map((v) => (
+                            {prevStartVerseOptions.map((v) => (
                                 <SelectItem key={v} value={v.toString()} className="text-xs text-right">
                                   {v}
                                 </SelectItem>
@@ -706,13 +979,12 @@ export default function StudentPlansPage() {
                           </PopoverContent>
                         </Popover>
 
-                        <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={!prevEndSurah}>
+                        <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={!prevEndSurah || prevEndVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
-                            {prevEndSurah &&
-                              Array.from({ length: SURAHS.find(s => s.number === parseInt(prevEndSurah))?.verseCount || 0 }, (_, i) => i + 1).map((v) => (
+                            {prevEndVerseOptions.map((v) => (
                                 <SelectItem key={v} value={v.toString()} className="text-xs text-right">
                                   {v}
                                 </SelectItem>
@@ -792,12 +1064,12 @@ export default function StudentPlansPage() {
                 </Popover>
                     </div>
                     
-                      <Select value={startVerse} onValueChange={setStartVerse} disabled={!startSurah}>
+                      <Select value={startVerse} onValueChange={setStartVerse} disabled={!startSurah || startVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent className="max-h-48" dir="rtl">
-                            {startSurah && Array.from({ length: SURAHS.find((s) => s.number === parseInt(startSurah))?.verseCount || 0 }, (_, i) => i + 1).map((v) => (
+                            {startVerseOptions.map((v) => (
                                 <SelectItem key={v} value={v.toString()} className="text-right">
                                   {v}
                                 </SelectItem>
@@ -867,12 +1139,12 @@ export default function StudentPlansPage() {
                   </PopoverContent>
                 </Popover>
                     </div>
-                    <Select value={endVerse} onValueChange={setEndVerse} disabled={!endSurah}>
+                    <Select value={endVerse} onValueChange={setEndVerse} disabled={!endSurah || endVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent className="max-h-48" dir="rtl">
-                            {endSurah && Array.from({ length: SURAHS.find((s) => s.number === parseInt(endSurah))?.verseCount || 0 }, (_, i) => i + 1).map((v) => (
+                            {endVerseOptions.map((v) => (
                                 <SelectItem key={v} value={v.toString()} className="text-right">
                                   {v}
                                 </SelectItem>
@@ -977,7 +1249,6 @@ export default function StudentPlansPage() {
 
             {/* معاينة الخطة */}
             {previewTotal > 0 &&
-              startSurah !== endSurah &&
               (() => {
                 const startNum = parseInt(startSurah);
                 const endNum = parseInt(endSurah);
@@ -1008,10 +1279,12 @@ export default function StudentPlansPage() {
                       </span>
                       <span className="font-bold text-[#1a2332]">
                         {actuallStartSurah?.name}
+                        {startVerse ? ` آية ${startVerse}` : ""}
                       </span>
                       <span className="text-neutral-300">←</span>
                       <span className="text-neutral-500 text-xs">
                         {actualEndSurah?.name}
+                        {endVerse ? ` آية ${endVerse}` : ""}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">

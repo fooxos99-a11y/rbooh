@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Dialog,
   DialogContent,
@@ -516,11 +517,11 @@ function AdminDashboard() {
           setIsAddStudentDialogOpen(false)
           fetchStudents()
         } else {
-          alert(data.error || "فشل في إضافة الطالب")
+          await showAlert(data.error || "فشل في إضافة الطالب", "خطأ")
         }
       } catch (error) {
         console.error("[v0] Error adding student:", error)
-        alert("حدث خطأ أثناء إضافة الطالب")
+        await showAlert("حدث خطأ أثناء إضافة الطالب", "خطأ")
       } finally {
         setIsSubmitting(false)
       }
@@ -800,8 +801,6 @@ function AdminDashboard() {
             className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
           })
           setSelectedStudentToRemove("")
-          setSelectedCircleToRemove("")
-          setIsRemoveStudentDialogOpen(false)
           fetchStudents()
         } else {
           alert(data.error || "فشل في إزالة الطالب")
@@ -976,8 +975,7 @@ function AdminDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
-          <p className="text-sm text-neutral-400">جاري التحميل...</p>
+          <SiteLoader size="lg" />
         </div>
       </div>
     )
@@ -1075,11 +1073,11 @@ function AdminDashboard() {
                 )}
 
                 {[
-                  { icon: Settings, label: "إدارة المعلمين", action: () => router.push("/admin/teachers") },
-                  { icon: BookOpen, label: "إدارة الحلقات", action: () => router.push("/admin/circles") },
-                  { icon: ShieldCheck, label: "الهيكل الإداري", action: () => router.push("/admin/admins") },
+                  { icon: Settings, label: "إدارة المعلمين", action: () => router.push("?action=teachers") },
+                  { icon: BookOpen, label: "إدارة الحلقات", action: () => router.push("?action=circles") },
+                  { icon: ShieldCheck, label: "الهيكل الإداري", action: () => router.push("?action=admins") },
                   { icon: Zap, label: "الصلاحيات", action: () => router.push("/admin/permissions") },
-                  { icon: UserPlus, label: "طلبات الإلتحاق", action: () => router.push("/admin/enrollment-requests") },
+                  { icon: UserPlus, label: "طلبات التسجيل", action: () => router.push("/admin/enrollment-requests") },
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, action }) => (
                   <button key={label} onClick={action} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group border-t border-[#D4AF37]/10">
                     <div className="flex items-center gap-3">
@@ -1367,7 +1365,7 @@ function AdminDashboard() {
                   disabled={!bulkCircle || bulkRows.every(r => !r.name.trim() || !r.account.trim()) || isBulkSubmitting}
                   className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
                 >
-                  {isBulkSubmitting ? "جاري الحفظ..." : "حفظ الجميع"}
+                  {isBulkSubmitting ? "جاري الحفظ..." : "حفظ"}
                 </Button>
               </div>
             </DialogContent>
@@ -1380,7 +1378,6 @@ function AdminDashboard() {
                   <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] text-base">＋</span>
                   إضافة طالب جديد
                 </DialogTitle>
-                <DialogDescription className="text-sm text-neutral-400 mt-0.5 pr-10">أدخل معلومات الطالب واختر الحلقة</DialogDescription>
               </DialogHeader>
 
               <div className="px-6 py-5 space-y-4">
@@ -1454,9 +1451,9 @@ function AdminDashboard() {
                 <Button
                   onClick={handleAddStudent}
                   disabled={!newStudentName.trim() || !newStudentIdNumber.trim() || !newStudentAccountNumber.trim() || isSubmitting}
-                  className="flex-1 bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white rounded-xl h-10 font-semibold hover:opacity-90 disabled:opacity-50"
+                  className="flex-1 h-10 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
                 >
-                  {isSubmitting ? "جاري الحفظ..." : "حفظ الطالب"}
+                  {isSubmitting ? "جاري الحفظ..." : "حفظ"}
                 </Button>
                 <Button variant="outline" onClick={() => setIsAddStudentDialogOpen(false)}
                   className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10">
@@ -1468,9 +1465,11 @@ function AdminDashboard() {
 
           <Dialog open={isRemoveStudentDialogOpen} onOpenChange={setIsRemoveStudentDialogOpen}>
             <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle className="text-xl text-[#1a2332]">إزالة طالب</DialogTitle>
-                <DialogDescription className="text-sm text-neutral-500">اختر الحلقة ثم اختر الطالب المراد إزالته</DialogDescription>
+              <DialogHeader className="space-y-0">
+                <DialogTitle className="pr-6 -mt-1 text-xl text-[#1a2332] flex items-center gap-2">
+                  <UserMinus className="w-5 h-5 text-[#C9A961]" />
+                  إزالة طالب
+                </DialogTitle>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="space-y-2">
@@ -1528,7 +1527,7 @@ function AdminDashboard() {
                 </Button>
                 <Button
                   onClick={handleRemoveStudent}
-                  className="bg-red-600 hover:bg-red-700 text-white text-sm h-9 rounded-lg font-medium"
+                  className="text-sm h-9 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
                   disabled={!selectedStudentToRemove || !selectedCircleToRemove || isSubmitting}
                 >
                   {isSubmitting ? "جاري الإزالة..." : "إزالة"}
@@ -1791,7 +1790,9 @@ function AdminDashboard() {
                   <div className="mt-6">
                     <h3 className="text-sm font-medium text-neutral-600 mb-4">سجلات الطالب: {selectedStudentName}</h3>
                     {isLoadingRecords ? (
-                      <div className="text-center py-8 text-neutral-400 text-sm">جاري تحميل السجلات...</div>
+                      <div className="flex justify-center py-8">
+                        <SiteLoader size="sm" />
+                      </div>
                     ) : studentRecords.length === 0 ? (
                       <div className="text-center py-8 text-neutral-400 text-sm">لا توجد سجلات حضور لهذا الطالب</div>
                     ) : (
@@ -1802,7 +1803,7 @@ function AdminDashboard() {
                             <TableHead className="text-right">الحالة</TableHead>
                             <TableHead className="text-right">الحفظ</TableHead>
                             <TableHead className="text-right">التكرار</TableHead>
-                            <TableHead className="text-right">السماع</TableHead>
+                            <TableHead className="text-right">المراجعة</TableHead>
                             <TableHead className="text-right">الربط</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -1812,7 +1813,7 @@ function AdminDashboard() {
                               ? record.evaluations[record.evaluations.length - 1]
                               : null;
                             console.log('[DEBUG][Dashboard] آخر تقييم:', lastEval);
-                              if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+                              if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader /></div>);
 
   return (
                               <TableRow key={record.id}>

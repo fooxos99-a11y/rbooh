@@ -1,17 +1,30 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, RotateCcw, MessageSquare, Loader2 } from "lucide-react"
+import { ArrowRight, RotateCcw, MessageSquare } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
+import { getAyahByPageFloat, getInclusiveEndAyah, SURAHS } from "@/lib/quran-data"
 
 type EvaluationLevel = "excellent" | "very_good" | "good" | "not_completed" | null
+type EvaluationType = "hafiz" | "tikrar" | "samaa" | "rabet"
+type ContentfulEvaluationType = "hafiz" | "samaa" | "rabet"
+
+interface EvaluationContent {
+	fromSurah?: string
+	fromVerse?: string
+	toSurah?: string
+	toVerse?: string
+}
+
+type ReadingDetails = Partial<Record<ContentfulEvaluationType, EvaluationContent>>
 
 interface EvaluationOption {
 	hafiz?: EvaluationLevel
@@ -21,22 +34,288 @@ interface EvaluationOption {
 }
 
 interface StudentAttendance {
-	id: number
+	id: string
 	name: string
 	halaqah: string
+	hasPlan: boolean
 	attendance: "present" | "absent" | "excused" | null
 	evaluation?: EvaluationOption
+	readingDetails?: ReadingDetails
+	planReadingDetails?: ReadingDetails
 	notes?: string
+	savedToday?: boolean
+}
+
+interface SavedAttendanceRecord {
+	student_id: string
+	status: "present" | "absent" | "excused"
+	hafiz_level?: EvaluationLevel
+	tikrar_level?: EvaluationLevel
+	samaa_level?: EvaluationLevel
+	rabet_level?: EvaluationLevel
+	hafiz_from_surah?: string | null
+	hafiz_from_verse?: string | null
+	hafiz_to_surah?: string | null
+	hafiz_to_verse?: string | null
+	samaa_from_surah?: string | null
+	samaa_from_verse?: string | null
+	samaa_to_surah?: string | null
+	samaa_to_verse?: string | null
+	rabet_from_surah?: string | null
+	rabet_from_verse?: string | null
+	rabet_to_surah?: string | null
+	rabet_to_verse?: string | null
+}
+
+interface MissedDayRecord {
+	date: string
+	sessionIndex: number
+	content: string
+	hafiz_from_surah?: string
+	hafiz_from_verse?: string
+	hafiz_to_surah?: string
+	hafiz_to_verse?: string
+}
+
+interface StudentPlan {
+	student_id: string
+	start_surah_number: number
+	end_surah_number: number
+	daily_pages: number
+	total_pages: number
+	total_days: number
+	direction?: "asc" | "desc"
+	has_previous?: boolean
+	prev_start_surah?: number | null
+	prev_end_surah?: number | null
+	muraajaa_pages?: number | null
+	rabt_pages?: number | null
+}
+
+interface PlanProgressResponse {
+	plan: StudentPlan | null
+	completedDays?: number
 }
 
 // دالة للحصول على التاريخ الحالي بتوقيت السعودية (بصيغة YYYY-MM-DD)
 const getKsaDateString = () => {
-	return new Intl.DateTimeFormat('en-CA', {
-		timeZone: 'Asia/Riyadh',
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit'
-	}).format(new Date());
+	const formatter = new Intl.DateTimeFormat("en-CA", {
+		timeZone: "Asia/Riyadh",
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+	})
+	const parts = formatter.formatToParts(new Date())
+	const year = parts.find((part) => part.type === "year")?.value
+	const month = parts.find((part) => part.type === "month")?.value
+	const day = parts.find((part) => part.type === "day")?.value
+
+	return `${year}-${month}-${day}`
+}
+
+const buildReadingContent = (sessionStart: number, size: number): EvaluationContent | null => {
+	if (size <= 0) return null
+
+	const sessionEnd = Math.min(sessionStart + size, 605)
+	const startRef = getAyahByPageFloat(Math.max(1, sessionStart))
+	const endRef = getInclusiveEndAyah(sessionEnd)
+	const startSurahName = SURAHS.find((surah) => surah.number === startRef.surah)?.name
+	const endSurahName = SURAHS.find((surah) => surah.number === endRef.surah)?.name
+
+	if (!startSurahName || !endSurahName) return null
+
+	return {
+		fromSurah: startSurahName,
+		fromVerse: String(startRef.ayah),
+		toSurah: endSurahName,
+		toVerse: String(endRef.ayah),
+	}
+}
+
+const getSessionReadingContent = (
+	planStartPage: number,
+	dailyPages: number,
+	sessionNum: number,
+	totalPages: number,
+	direction: "asc" | "desc",
+) => {
+	const sessionStart = direction === "desc"
+		? planStartPage + totalPages - sessionNum * dailyPages
+		: planStartPage + (sessionNum - 1) * dailyPages
+
+	return buildReadingContent(sessionStart, dailyPages)
+}
+
+const getOffsetReadingContent = (
+	planStartPage: number,
+	offset: number,
+	size: number,
+	totalPages: number,
+	direction: "asc" | "desc",
+) => {
+	const sessionStart = direction === "desc"
+		? planStartPage + totalPages - offset - size
+		: planStartPage + offset
+
+	return buildReadingContent(sessionStart, size)
+}
+
+const getPlanReadingDetails = (plan: StudentPlan | null, completedDays: number): ReadingDetails => {
+	if (!plan) return {}
+
+	const daily = Number(plan.daily_pages) || 0
+	const totalPages = Number(plan.total_pages) || 0
+	const totalDays = Number(plan.total_days) || 0
+	const direction = plan.direction || "asc"
+	const startSurahData = SURAHS.find((surah) => surah.number === Math.min(plan.start_surah_number, plan.end_surah_number))
+	const planStartPage = startSurahData?.startPage || 1
+	const activeDayNum = Math.max(1, Math.min(completedDays + 1, totalDays || 1))
+
+	const hafiz = getSessionReadingContent(planStartPage, daily, activeDayNum, totalPages, direction)
+
+	let samaa: EvaluationContent | null = null
+	let rabet: EvaluationContent | null = null
+
+	const rootSurahNum = plan.prev_start_surah || plan.start_surah_number
+	const rootSurah = SURAHS.find((surah) => surah.number === rootSurahNum)
+
+	if (rootSurah) {
+		const rootStartPage = rootSurah.startPage
+		let previousVolume = 0
+
+		if (plan.has_previous && plan.prev_start_surah && plan.prev_end_surah) {
+			const previousStart = SURAHS.find((surah) => surah.number === plan.prev_start_surah)
+			const previousEnd = SURAHS.find((surah) => surah.number === plan.prev_end_surah)
+			if (previousStart && previousEnd) {
+				let endPage = 605
+				if (previousEnd.number < 114) {
+					const nextSurah = SURAHS.find((surah) => surah.number === previousEnd.number + 1)
+					if (nextSurah) endPage = nextSurah.startPage
+				}
+				previousVolume = Math.abs(endPage - previousStart.startPage)
+			}
+		}
+
+		const completedCurrentPlanPages = (activeDayNum - 1) * daily
+		const totalMemorizedPool = previousVolume + completedCurrentPlanPages
+
+		if (totalMemorizedPool > 0) {
+			const rabtPref = Number(plan.rabt_pages) || 0
+			const rabtSize = Math.min(rabtPref, totalMemorizedPool)
+			if (rabtSize > 0) {
+				const rabtOffset = totalMemorizedPool - rabtSize
+				rabet = getOffsetReadingContent(rootStartPage, rabtOffset, rabtSize, 0, direction)
+			}
+
+			const muraajaaPool = totalMemorizedPool - rabtSize
+			const muraajaaPref = Number(plan.muraajaa_pages) || 0
+			if (muraajaaPool > 0 && muraajaaPref > 0) {
+				const baseOffset = ((activeDayNum - 1) * muraajaaPref) % muraajaaPool
+				const muraajaaSize = Math.min(muraajaaPref, muraajaaPool - baseOffset)
+				if (muraajaaSize > 0) {
+					samaa = getOffsetReadingContent(rootStartPage, baseOffset, muraajaaSize, 0, direction)
+				}
+			}
+		}
+	}
+
+	return {
+		...(hafiz ? { hafiz } : {}),
+		...(samaa ? { samaa } : {}),
+		...(rabet ? { rabet } : {}),
+	}
+}
+
+const formatReadingDetails = (details?: EvaluationContent | null) => {
+	if (!details?.fromSurah || !details?.fromVerse || !details?.toSurah || !details?.toVerse) {
+		return null
+	}
+
+	return `من سورة ${details.fromSurah} آية ${details.fromVerse} إلى سورة ${details.toSurah} آية ${details.toVerse}`
+}
+
+const buildSavedReadingDetails = (record: SavedAttendanceRecord): ReadingDetails => {
+	const readingDetails: ReadingDetails = {}
+
+	if (record.hafiz_from_surah && record.hafiz_from_verse && record.hafiz_to_surah && record.hafiz_to_verse) {
+		readingDetails.hafiz = {
+			fromSurah: record.hafiz_from_surah,
+			fromVerse: record.hafiz_from_verse,
+			toSurah: record.hafiz_to_surah,
+			toVerse: record.hafiz_to_verse,
+		}
+	}
+
+	if (record.samaa_from_surah && record.samaa_from_verse && record.samaa_to_surah && record.samaa_to_verse) {
+		readingDetails.samaa = {
+			fromSurah: record.samaa_from_surah,
+			fromVerse: record.samaa_from_verse,
+			toSurah: record.samaa_to_surah,
+			toVerse: record.samaa_to_verse,
+		}
+	}
+
+	if (record.rabet_from_surah && record.rabet_from_verse && record.rabet_to_surah && record.rabet_to_verse) {
+		readingDetails.rabet = {
+			fromSurah: record.rabet_from_surah,
+			fromVerse: record.rabet_from_verse,
+			toSurah: record.rabet_to_surah,
+			toVerse: record.rabet_to_verse,
+		}
+	}
+
+	return readingDetails
+}
+
+const hasCompleteSavedRecord = (record: SavedAttendanceRecord, student: StudentAttendance) => {
+	if (record.status !== "present") return true
+	if (!student.hasPlan) return false
+
+	return !!(
+		record.hafiz_level &&
+		record.tikrar_level &&
+		record.samaa_level &&
+		record.rabet_level
+	)
+}
+
+const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendanceRecord): StudentAttendance => {
+	if (!record) return { ...student, savedToday: false }
+
+	const savedReadingDetails = buildSavedReadingDetails(record)
+	const hasSavedReadingDetails = Object.keys(savedReadingDetails).length > 0
+	const isLockedForToday = hasCompleteSavedRecord(record, student)
+
+	return {
+		...student,
+		attendance: record.status,
+		evaluation: {
+			hafiz: record.hafiz_level || undefined,
+			tikrar: record.tikrar_level || undefined,
+			samaa: record.samaa_level || undefined,
+			rabet: record.rabet_level || undefined,
+		},
+		readingDetails: hasSavedReadingDetails ? savedReadingDetails : student.planReadingDetails,
+		savedToday: isLockedForToday,
+	}
+}
+
+const hasCompletePresentEvaluation = (student: StudentAttendance) => {
+	if (student.attendance !== "present") return false
+	if (!student.hasPlan) return false
+
+	return !!(
+		student.evaluation?.hafiz &&
+		student.evaluation?.tikrar &&
+		student.evaluation?.samaa &&
+		student.evaluation?.rabet
+	)
+}
+
+const isStudentReadyToSave = (student: StudentAttendance) => {
+	if (student.savedToday || student.attendance === null) return false
+	if (student.attendance !== "present") return true
+	return hasCompletePresentEvaluation(student)
 }
 
 export default function HalaqahManagement() {
@@ -49,16 +328,18 @@ export default function HalaqahManagement() {
 	const [hasCircle, setHasCircle] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
 	const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success">("idle")
-	const [hasSavedToday, setHasSavedToday] = useState(false) // حالة جديدة للتحقق من حفظ اليوم
-	const [notesStudentId, setNotesStudentId] = useState<number | null>(null)
+	const [hasSavedToday, setHasSavedToday] = useState(false)
+	const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
 	const [notesText, setNotesText] = useState("")
 	const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false)
         const [isCompDialogOpen, setIsCompDialogOpen] = useState(false)
-        const [compStudentId, setCompStudentId] = useState<number | null>(null)
-        const [missedDays, setMissedDays] = useState<any[]>([])
+	const [compStudentId, setCompStudentId] = useState<string | null>(null)
+		const [missedDays, setMissedDays] = useState<MissedDayRecord[]>([])
         const [isCompLoading, setIsCompLoading] = useState(false)
+	const evaluationRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
 	const showAlert = useAlertDialog()
+	const evaluationOrder: EvaluationType[] = ["hafiz", "tikrar", "samaa", "rabet"]
 
 	useEffect(() => {
 		const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -73,28 +354,33 @@ export default function HalaqahManagement() {
 		}
 	}, [router])
 
-	// التحقق مما إذا كان المعلم قد قام بالحفظ مسبقاً في هذا اليوم — يتحقق من قاعدة البيانات
 	useEffect(() => {
-		if (teacherData?.halaqah) {
-			// تحقق أولاً من localStorage للسرعة
-			const todayKSA = getKsaDateString();
-			const lastSaveDate = localStorage.getItem(`last_save_${teacherData.halaqah}`);
-			if (lastSaveDate === todayKSA) {
-				setHasSavedToday(true);
-				return;
-			}
-			// تحقق من قاعدة البيانات للأجهزة الأخرى
-			fetch(`/api/attendance?halaqah=${encodeURIComponent(teacherData.halaqah)}`)
-				.then((r) => r.json())
-				.then((data) => {
-					if (data.savedToday) {
-						setHasSavedToday(true);
-						localStorage.setItem(`last_save_${teacherData.halaqah}`, todayKSA);
-					}
-				})
-				.catch(() => {});
+		if (!teacherData?.halaqah) return
+
+		const refreshStudentsState = () => {
+			void fetchStudents(teacherData.halaqah)
 		}
-	}, [teacherData])
+
+		const handlePageShow = () => {
+			refreshStudentsState()
+		}
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				refreshStudentsState()
+			}
+		}
+
+		window.addEventListener("focus", refreshStudentsState)
+		window.addEventListener("pageshow", handlePageShow)
+		document.addEventListener("visibilitychange", handleVisibilityChange)
+
+		return () => {
+			window.removeEventListener("focus", refreshStudentsState)
+			window.removeEventListener("pageshow", handlePageShow)
+			document.removeEventListener("visibilitychange", handleVisibilityChange)
+		}
+	}, [teacherData?.halaqah])
 
 	const fetchTeacherData = async (accountNumber: string) => {
 		try {
@@ -123,20 +409,66 @@ export default function HalaqahManagement() {
 		}
 	}
 
+	const loadSavedStudentsForToday = async (halaqah: string, baseStudents?: StudentAttendance[]) => {
+		try {
+			const response = await fetch(
+				`/api/attendance-by-date?date=${getKsaDateString()}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
+				{ cache: "no-store" },
+			)
+			const data = await response.json()
+			const records: SavedAttendanceRecord[] = Array.isArray(data.records) ? data.records : []
+			const savedMap = new Map(records.map((record) => [record.student_id, record] as const))
+
+			const applySavedState = (list: StudentAttendance[]) =>
+				list.map((student) => mergeSavedAttendance(student, savedMap.get(student.id)))
+
+			const nextStudents = applySavedState(baseStudents ?? students)
+			setStudents(nextStudents)
+			setHasSavedToday(nextStudents.some((student) => student.savedToday))
+			return nextStudents
+		} catch (error) {
+			console.error("Error loading saved attendance for today:", error)
+		}
+	}
+
 	const fetchStudents = async (halaqah: string) => {
 		try {
 			const response = await fetch(`/api/students?circle=${encodeURIComponent(halaqah)}`)
 			const data = await response.json()
 
 			if (data.students) {
-				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => ({
-					id: student.id,
-					name: student.name,
-					halaqah: student.circle_name || halaqah,
-					attendance: null,
-					evaluation: {},
-				}))
-				setStudents(mappedStudents)
+				const planEntries = await Promise.all(
+					data.students.map(async (student: any) => {
+						try {
+							const planResponse = await fetch(`/api/student-plans?student_id=${student.id}`, { cache: "no-store" })
+							if (!planResponse.ok) return [student.id, { plan: null, completedDays: 0 }] as const
+							const planData: PlanProgressResponse = await planResponse.json()
+							return [student.id, planData] as const
+						} catch {
+							return [student.id, { plan: null, completedDays: 0 }] as const
+						}
+					}),
+				)
+
+				const planMap = new Map<string, PlanProgressResponse>(planEntries)
+
+				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => {
+					const planData = planMap.get(student.id)
+					const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+
+					return {
+						id: student.id,
+						name: student.name,
+						halaqah: student.circle_name || halaqah,
+						hasPlan: !!planData?.plan,
+						attendance: null,
+						evaluation: {},
+						readingDetails: planReadingDetails,
+						planReadingDetails,
+						savedToday: false,
+					}
+				})
+				await loadSavedStudentsForToday(halaqah, mappedStudents)
 			}
 			setIsLoading(false)
 		} catch (error) {
@@ -148,7 +480,7 @@ export default function HalaqahManagement() {
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
-				<div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+				<SiteLoader size="lg" />
 			</div>
 		)
 	}
@@ -174,21 +506,45 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const toggleAttendance = (id: number, status: "present" | "absent" | "excused") => {
+	const toggleAttendance = (id: string, status: "present" | "absent" | "excused") => {
+		const student = students.find((s) => s.id === id)
+		if (student?.savedToday) return
+
 		setStudents(
 			students.map((s) =>
 				s.id === id
 					? {
 							...s,
 							attendance: status,
-							evaluation: status === "absent" || status === "excused" ? {} : s.evaluation,
+							evaluation:
+								status === "absent" || status === "excused"
+									? {}
+									: s.hasPlan
+										? s.evaluation
+										: { ...s.evaluation, hafiz: "not_completed" },
+							readingDetails: s.planReadingDetails || s.readingDetails,
 						}
 					: s,
 			),
 		)
 	}
 
-	const setEvaluation = (studentId: number, type: "hafiz" | "tikrar" | "samaa" | "rabet", level: EvaluationLevel) => {
+	const focusNextEvaluation = (studentId: string, type: EvaluationType) => {
+		const currentIndex = evaluationOrder.indexOf(type)
+		const nextType = evaluationOrder[currentIndex + 1]
+		if (!nextType) return
+
+		requestAnimationFrame(() => {
+			const nextCard = evaluationRefs.current[`${studentId}-${nextType}`]
+			nextCard?.scrollIntoView({ behavior: "smooth", block: "center" })
+			nextCard?.focus()
+		})
+	}
+
+	const setEvaluation = (studentId: string, type: EvaluationType, level: EvaluationLevel) => {
+		const student = students.find((s) => s.id === studentId)
+		if (student?.savedToday || (type === "hafiz" && !student?.hasPlan)) return
+
 		setStudents(
 			students.map((s) =>
 				s.id === studentId
@@ -199,16 +555,20 @@ export default function HalaqahManagement() {
 					: s,
 			),
 		)
+		focusNextEvaluation(studentId, type)
 	}
 
-	const setAllEvaluations = (studentId: number, level: EvaluationLevel) => {
+	const setAllEvaluations = (studentId: string, level: EvaluationLevel) => {
+		const student = students.find((s) => s.id === studentId)
+		if (student?.savedToday) return
+
 		setStudents(
 			students.map((s) =>
 				s.id === studentId
 					? {
 							...s,
 							evaluation: {
-								hafiz: level,
+								hafiz: s.hasPlan ? level : "not_completed",
 								tikrar: level,
 								samaa: level,
 								rabet: level,
@@ -220,21 +580,34 @@ export default function HalaqahManagement() {
 	}
 
 	const handleReset = () => {
-		setStudents(students.map((s) => ({ ...s, attendance: null, evaluation: {} })))
+		setStudents(
+			students.map((s) =>
+				s.savedToday ? s : { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} },
+			),
+		)
 	}
 
 	const handleSave = async () => {
-		// 1. التأكد من تحضير جميع الطلاب أولاً (لم يترك أي طالب بدون حالة)
-		const allStudentsHaveAttendance = students.every((s) => s.attendance !== null)
-		if (!allStudentsHaveAttendance) {
-			await showAlert("الرجاء إدخال حالة الحضور (حاضر، غائب، أو مستأذن) لجميع الطلاب قبل الحفظ", "تحذير")
+		const refreshedStudents = (await loadSavedStudentsForToday(teacherData.halaqah, students)) ?? students
+
+		const studentsToSave = refreshedStudents.filter(isStudentReadyToSave)
+		const hasIncompletePresentStudents = refreshedStudents.some(
+			(student) => !student.savedToday && student.attendance === "present" && !hasCompletePresentEvaluation(student),
+		)
+
+		if (studentsToSave.length === 0) {
+			await showAlert(
+				hasIncompletePresentStudents
+					? "يجب إكمال جميع فروع التقييم للطالب الحاضر قبل الحفظ."
+					: "لا يوجد طلاب جدد جاهزون للحفظ اليوم",
+				"تحذير",
+			)
 			return
 		}
 
-		// 2. التأكد من أن جميع الطلاب الحاضرين تم تقييمهم في كافة الفروع
-		const allPresentsEvaluated = students
+		const allPresentsEvaluated = studentsToSave
 			.filter((s) => s.attendance === "present")
-			.every((s) => s.evaluation?.hafiz && s.evaluation?.tikrar && s.evaluation?.samaa && s.evaluation?.rabet)
+			.every(hasCompletePresentEvaluation)
 
 		if (!allPresentsEvaluated) {
 			await showAlert("لم يتم تقييم جميع الطلاب الحاضرين في كل الفروع! تأكد من إكمال التقييم قبل الحفظ", "تحذير")
@@ -245,46 +618,88 @@ export default function HalaqahManagement() {
 		setSaveStatus("saving")
 
 		try {
-			const studentsToSave = students.filter((s) => s.attendance !== null)
+			const saveResults = await Promise.all(
+				studentsToSave.map(async (student) => {
+					const requestBody: any = {
+						student_id: student.id,
+						teacher_id: teacherData.id,
+						halaqah: teacherData.halaqah,
+						status: student.attendance,
+						hafiz_level: "not_completed",
+						tikrar_level: "not_completed",
+						samaa_level: "not_completed",
+						rabet_level: "not_completed",
+						hafiz_from_surah: null,
+						hafiz_from_verse: null,
+						hafiz_to_surah: null,
+						hafiz_to_verse: null,
+						samaa_from_surah: null,
+						samaa_from_verse: null,
+						samaa_to_surah: null,
+						samaa_to_verse: null,
+						rabet_from_surah: null,
+						rabet_from_verse: null,
+						rabet_to_surah: null,
+						rabet_to_verse: null,
+						notes: student.notes || null,
+					}
 
-			// تجهيز جميع الطلبات لإرسالها دفعة واحدة
-			const savePromises = studentsToSave.map((student) => {
-			let requestBody: any = {
-				student_id: student.id,
-				teacher_id: teacherData.id,
-				halaqah: teacherData.halaqah,
-				status: student.attendance,
-				hafiz_level: "not_completed",
-				tikrar_level: "not_completed",
-				samaa_level: "not_completed",
-				rabet_level: "not_completed",
-				notes: student.notes || null,
-			};
+					if (student.attendance === "present" && student.evaluation) {
+						requestBody.hafiz_level = student.evaluation.hafiz || "not_completed"
+						requestBody.tikrar_level = student.evaluation.tikrar || "not_completed"
+						requestBody.samaa_level = student.evaluation.samaa || "not_completed"
+						requestBody.rabet_level = student.evaluation.rabet || "not_completed"
+						requestBody.hafiz_from_surah = student.readingDetails?.hafiz?.fromSurah?.trim() || null
+						requestBody.hafiz_from_verse = student.readingDetails?.hafiz?.fromVerse?.trim() || null
+						requestBody.hafiz_to_surah = student.readingDetails?.hafiz?.toSurah?.trim() || null
+						requestBody.hafiz_to_verse = student.readingDetails?.hafiz?.toVerse?.trim() || null
+						requestBody.samaa_from_surah = student.readingDetails?.samaa?.fromSurah?.trim() || null
+						requestBody.samaa_from_verse = student.readingDetails?.samaa?.fromVerse?.trim() || null
+						requestBody.samaa_to_surah = student.readingDetails?.samaa?.toSurah?.trim() || null
+						requestBody.samaa_to_verse = student.readingDetails?.samaa?.toVerse?.trim() || null
+						requestBody.rabet_from_surah = student.readingDetails?.rabet?.fromSurah?.trim() || null
+						requestBody.rabet_from_verse = student.readingDetails?.rabet?.fromVerse?.trim() || null
+						requestBody.rabet_to_surah = student.readingDetails?.rabet?.toSurah?.trim() || null
+						requestBody.rabet_to_verse = student.readingDetails?.rabet?.toVerse?.trim() || null
+					}
 
-				if (student.attendance === "present" && student.evaluation) {
-					requestBody.hafiz_level = student.evaluation.hafiz || "not_completed";
-					requestBody.tikrar_level = student.evaluation.tikrar || "not_completed";
-					requestBody.samaa_level = student.evaluation.samaa || "not_completed";
-					requestBody.rabet_level = student.evaluation.rabet || "not_completed";
+					const response = await fetch("/api/attendance", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(requestBody),
+					})
+					const data = await response.json().catch(() => ({}))
+
+					return {
+						ok: response.ok,
+						status: response.status,
+						studentId: student.id,
+						data,
+					}
+				}),
+			)
+
+			const blockingError = saveResults.find((result) => !result.ok && result.status !== 409)
+			if (blockingError) {
+				throw new Error(blockingError.data?.error || "حدث خطأ أثناء حفظ البيانات")
+			}
+
+			await loadSavedStudentsForToday(teacherData.halaqah)
+
+			const successfulSavesCount = saveResults.filter((result) => result.ok).length
+			const duplicateSavesCount = saveResults.filter((result) => result.status === 409).length
+
+			if (successfulSavesCount > 0) {
+				setSaveStatus("success")
+				if (duplicateSavesCount > 0) {
+					await showAlert("تم حفظ الطلاب الجدد فقط.", "نجاح")
+				} else {
+					await showAlert("تم حفظ البيانات بنجاح!", "نجاح")
 				}
-
-				// إرجاع الـ Promise بدون استخدام await هنا
-				return fetch("/api/attendance", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(requestBody),
-				});
-			});
-
-			// تنفيذ جميع الطلبات في نفس الوقت (توازي)
-			await Promise.all(savePromises);
-
-			// تسجيل تاريخ الحفظ لمنع التكرار في نفس اليوم
-			localStorage.setItem(`last_save_${teacherData.halaqah}`, getKsaDateString());
-			setHasSavedToday(true);
-
-			setSaveStatus("success")
-			await showAlert("تم حفظ البيانات بنجاح!", "نجاح")
+			} else if (duplicateSavesCount > 0) {
+				setSaveStatus("idle")
+				await showAlert("هذا الطالب محفوظ مسبقًا اليوم ولا يمكن حفظه مرة أخرى.", "تنبيه")
+			}
 
 			setTimeout(() => {
 				setSaveStatus("idle")
@@ -299,60 +714,117 @@ export default function HalaqahManagement() {
 	}
 
 	const markAllPresent = () => {
-		setStudents(students.map((s) => ({ ...s, attendance: "present", evaluation: s.evaluation || {} })))
+		setStudents(
+			students.map((s) =>
+				s.savedToday ? s : { ...s, attendance: "present", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {} },
+			),
+		)
 	}
 
 	const markAllAbsent = () => {
-		setStudents(students.map((s) => ({ ...s, attendance: "absent", evaluation: {} })))
+		setStudents(
+			students.map((s) =>
+				s.savedToday ? s : { ...s, attendance: "absent", evaluation: {}, readingDetails: s.planReadingDetails || {} },
+			),
+		)
 	}
 
 	const markAllExcused = () => {
-		setStudents(students.map((s) => ({ ...s, attendance: "excused", evaluation: {} })))
+		setStudents(
+			students.map((s) =>
+				s.savedToday ? s : { ...s, attendance: "excused", evaluation: {}, readingDetails: s.planReadingDetails || {} },
+			),
+		)
 	}
 
-	const openCompDialog = async (studentId: number) => {
-                setCompStudentId(studentId)
-                setMissedDays([])
-                setIsCompDialogOpen(true)
-                setIsCompLoading(true)
-                try {
-                        const res = await fetch(`/api/compensation/missed?student_id=${studentId}`)
-                        const data = await res.json()
-                        setMissedDays(data.missedDays || [])
-                } catch (e) {
-                        console.error(e)
-                } finally {
-                        setIsCompLoading(false)
-                }
-        }
+	const loadMissedDays = async (studentId: string) => {
+		setIsCompLoading(true)
+		try {
+			const res = await fetch(`/api/compensation/missed?student_id=${studentId}&t=${Date.now()}`, {
+				cache: "no-store",
+			})
+			const data = await res.json()
+			setMissedDays(data.missedDays || [])
+		} catch (e) {
+			console.error(e)
+			setMissedDays([])
+		} finally {
+			setIsCompLoading(false)
+		}
+	}
 
-        const handleCompensate = async (date: string) => {
-                try {
-                        const res = await fetch(`/api/compensation`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                        student_id: compStudentId,
-                                        teacher_id: teacherData.id,
-                                        halaqah: teacherData.halaqah,
-                                        date
-                                })
-                        })
-                        const data = await res.json()
-                        if (data.success) {
-                                // أزل اليوم من القائمة
-                                setMissedDays(prev => prev.filter(d => d.date !== date))
-                                await showAlert(`تم التعويض بنجاح وتم إضافة ${data.pointsAdded} نقطة للطالب.`, "نجاح")
-                        } else {
-                                await showAlert(data.error || "خطأ في التعويض", "خطأ")
-                        }
-                } catch (e) {
-                        await showAlert("حدث خطأ في النظام", "خطأ")
-                }
-        }
+	const refreshStudentPlanState = async (studentId: string) => {
+		try {
+			const planResponse = await fetch(`/api/student-plans?student_id=${studentId}&t=${Date.now()}`, {
+				cache: "no-store",
+			})
+			if (!planResponse.ok) return
 
-        const openNotesDialog = (studentId: number) => {
+			const planData: PlanProgressResponse = await planResponse.json()
+			const nextReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+
+			setStudents((prev) =>
+				prev.map((student) =>
+					student.id === studentId
+						? {
+								...student,
+								hasPlan: !!planData?.plan,
+								readingDetails: nextReadingDetails,
+								planReadingDetails: nextReadingDetails,
+							}
+						: student,
+				),
+			)
+		} catch (error) {
+			console.error("Error refreshing student plan after compensation:", error)
+		}
+	}
+
+	const openCompDialog = async (studentId: string) => {
+		setCompStudentId(studentId)
+		setMissedDays([])
+		setIsCompDialogOpen(true)
+		await loadMissedDays(studentId)
+	}
+
+	const handleCompensate = async (missedDay: MissedDayRecord) => {
+		if (!compStudentId) {
+			await showAlert("تعذر تحديد الطالب المطلوب تعويضه", "خطأ")
+			return
+		}
+
+		try {
+			const res = await fetch(`/api/compensation`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					student_id: compStudentId,
+					teacher_id: teacherData.id,
+					halaqah: teacherData.halaqah,
+					date: missedDay.date,
+					hafiz_from_surah: missedDay.hafiz_from_surah || null,
+					hafiz_from_verse: missedDay.hafiz_from_verse || null,
+					hafiz_to_surah: missedDay.hafiz_to_surah || null,
+					hafiz_to_verse: missedDay.hafiz_to_verse || null,
+					compensated_content: missedDay.content,
+				}),
+			})
+			const data = await res.json()
+			if (data.success) {
+				await loadMissedDays(compStudentId)
+				await refreshStudentPlanState(compStudentId)
+				await showAlert(`تم تعويض المقطع بنجاح وتم إضافة ${data.pointsAdded} نقطة للطالب.`, "نجاح")
+			} else {
+				await showAlert(data.error || "خطأ في التعويض", "خطأ")
+			}
+		} catch (e) {
+			await showAlert("حدث خطأ في النظام", "خطأ")
+		}
+	}
+
+		const openNotesDialog = (studentId: string) => {
 		const student = students.find((s) => s.id === studentId)
+			if (student?.savedToday) return
 		setNotesStudentId(studentId)
 		setNotesText(student?.notes || "")
 		setIsNotesDialogOpen(true)
@@ -371,68 +843,127 @@ export default function HalaqahManagement() {
 		studentId,
 		type,
 		label,
-		notCompletedText,
 	}: {
-		studentId: number
-		type: "hafiz" | "tikrar" | "samaa" | "rabet"
+		studentId: string
+		type: EvaluationType
 		label: string
-		notCompletedText: string
 	}) => {
 		const student = students.find((s) => s.id === studentId)
 		const currentLevel = student?.evaluation?.[type] || null
+		const currentDetails = type === "hafiz" || type === "samaa" || type === "rabet" ? student?.readingDetails?.[type] : null
+		const showsReadingFields = type === "hafiz" || type === "samaa" || type === "rabet"
+		const readingSummary = formatReadingDetails(currentDetails)
+		const emptyReadingMessage =
+			type === "samaa"
+				? "لا يوجد لديه مراجعة لليوم"
+				: type === "rabet"
+					? "لا يوجد لديه ربط لليوم"
+					: "لا يوجد لديه حفظ لليوم"
+		const isSavedLocked = !!student?.savedToday
+		const isHafizLocked = type === "hafiz" && !student?.hasPlan
+		const isDisabled = isSavedLocked || isHafizLocked
 
 		return (
-			<div className="space-y-2">
+			<div
+				className={`space-y-2 rounded-xl border p-3 ${
+					isSavedLocked
+						? "border-[#D4AF37]/35 bg-[#f8f3df]/80 opacity-75"
+						: isHafizLocked
+							? "border-red-200 bg-red-50/40"
+							: "border-[#D4AF37]/15"
+				}`}
+				ref={(node) => {
+					evaluationRefs.current[`${studentId}-${type}`] = node
+				}}
+				tabIndex={-1}
+			>
 				<div className="font-semibold text-[#1a2332] text-center">{label}</div>
 		<div className="grid grid-cols-2 gap-2">
 				<Button
 					variant="outline"
 					onClick={() => setEvaluation(studentId, type, "excellent")}
+					disabled={isDisabled}
 					className={`text-xs transition-all ${
 						currentLevel === "excellent"
-							? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600"
+							? "font-bold"
+							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 					}`}
+					style={currentLevel === "excellent" ? {
+						backgroundColor: "rgba(212, 175, 55, 0.2)",
+						borderColor: "#D4AF37",
+						color: "#262626",
+					} : undefined}
 				>
 					ممتاز
 				</Button>
 				<Button
 					variant="outline"
 					onClick={() => setEvaluation(studentId, type, "very_good")}
+					disabled={isDisabled}
 					className={`text-xs transition-all ${
 						currentLevel === "very_good"
-							? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600"
+							? "font-bold"
+							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 					}`}
+					style={currentLevel === "very_good" ? {
+						backgroundColor: "rgba(212, 175, 55, 0.2)",
+						borderColor: "#D4AF37",
+						color: "#262626",
+					} : undefined}
 				>
 					جيد جداً
 				</Button>
 				<Button
 					variant="outline"
 					onClick={() => setEvaluation(studentId, type, "good")}
+					disabled={isDisabled}
 					className={`text-xs transition-all ${
 						currentLevel === "good"
-							? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600"
+							? "font-bold"
+							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 					}`}
+					style={currentLevel === "good" ? {
+						backgroundColor: "rgba(212, 175, 55, 0.2)",
+						borderColor: "#D4AF37",
+						color: "#262626",
+					} : undefined}
 				>
 					جيد
 				</Button>
 				<Button
 					variant="outline"
 					onClick={() => setEvaluation(studentId, type, "not_completed")}
+					disabled={isDisabled}
 					className={`text-xs transition-all ${
 						currentLevel === "not_completed"
-							? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600"
+							? "font-bold"
+							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 					}`}
+					style={currentLevel === "not_completed" ? {
+						backgroundColor: "rgba(212, 175, 55, 0.2)",
+						borderColor: "#D4AF37",
+						color: "#262626",
+					} : undefined}
 				>
 					لم يكمل
 				</Button>
 			</div>
+			{showsReadingFields && !isHafizLocked && (
+				<div className="pt-2">
+					<div className="rounded-xl border border-[#D4AF37]/20 bg-[#faf7f0] px-3 py-2 text-center">
+						<p className="text-xs leading-6 text-[#1a2332]">
+							{readingSummary || emptyReadingMessage}
+						</p>
+					</div>
+				</div>
+			)}
 			</div>
 		)
 	}
+
+	const savedStudentsCount = students.filter((student) => student.savedToday).length
+	const pendingStudentsCount = students.filter(isStudentReadyToSave).length
+	const hasPendingStudents = pendingStudentsCount > 0
 
 	return (
 		<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
@@ -449,27 +980,29 @@ export default function HalaqahManagement() {
 							<Button
 								variant="outline"
 								onClick={markAllPresent}
-								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 transition-all"
+								disabled={isSaving}
+								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 							>
 								حاضر
 							</Button>
 							<Button
 								variant="outline"
 								onClick={markAllAbsent}
-								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 transition-all"
+								disabled={isSaving}
+								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 							>
 								غائب
 							</Button>
 							<Button
 								variant="outline"
 								onClick={markAllExcused}
-								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 transition-all"
+								disabled={isSaving}
+								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 							>
 								مستأذن
 							</Button>
 						</div>
 					</div>
-
 					{students.length === 0 ? (
 						<div className="flex flex-col items-center justify-center min-h-[300px] space-y-4">
 							<p className="text-2xl font-bold text-[#1a2332]">لا يوجد طلاب في هذه الحلقة</p>
@@ -480,100 +1013,137 @@ export default function HalaqahManagement() {
 							{/* Student List */}
 							<div className="space-y-4">
 								{students.map((student) => (
-									<Card key={student.id} className="border-2 border-[#35A4C7]/20 shadow-lg">
+										(() => {
+											const isNoPlanLocked = !student.hasPlan && !student.savedToday
+
+											return (
+									<Card
+										key={student.id}
+										className={`border-2 shadow-lg transition-all ${
+											student.savedToday
+												? "border-[#D4AF37]/35 bg-[#fbf8ee]/85 opacity-80 pointer-events-none select-none"
+												: isNoPlanLocked
+													? "border-[#D4AF37]/25 bg-[#fbf8ee]/60 opacity-75 pointer-events-none select-none"
+												: "border-[#D4AF37]/20"
+										}`}
+									>
 										<CardContent className="pt-0 pb-0">
 											<div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
 												<div className="lg:col-span-1">
 													<div className="space-y-2">
 														<div className="flex flex-col gap-2">
-                                                                                                                        <div className="flex items-center gap-2">
-                                                                                                                                <p className="text-base font-bold text-[#1a2332]">{student.name}</p>
-                                                                                                                                <Button
-                                                                                                                                        variant="outline"
-                                                                                                                                        onClick={() => openNotesDialog(student.id)}
-                                                                                                                                        title="الملاحظات"
-                                                                                                                                        className={`h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 ${
-                                                                                                                                                student.notes
-                                                                                                                                                        ? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800"
-                                                                                                                                                        : "border-[#D4AF37]/80 text-neutral-600"
-                                                                                                                                        }`}
-                                                                                                                                >
-                                                                                                                                        <MessageSquare className="w-3 h-3" />
-                                                                                                                                </Button>
-                                                                                                                                <Button
-                                                                                                                                        variant="outline"
-                                                                                                                                        onClick={() => openCompDialog(student.id)}
-                                                                                                                                        title="تعويض الحفظ"
-                                                                                                                                        className="h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-                                                                                                                                >
-                                                                                                                                        <RotateCcw className="w-3 h-3" />
-                                                                                                                                </Button>
-                                                                                                                        </div>
+															<div className="flex items-center gap-2 flex-wrap">
+																<p className="text-base font-bold text-[#1a2332]">{student.name}</p>
+																<Button
+																	variant="outline"
+																	onClick={() => openNotesDialog(student.id)}
+																	title="الملاحظات"
+																	disabled={student.savedToday}
+																	className={`h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 ${
+																		student.notes
+																			? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 hover:bg-[#D4AF37]/25 hover:border-[#D4AF37] focus-visible:bg-[#D4AF37]/20 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
+																			: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
+																	}`}
+																>
+																	<MessageSquare className="w-3 h-3" />
+																</Button>
+																<Button
+																	variant="outline"
+																	onClick={() => openCompDialog(student.id)}
+																	title="تعويض الحفظ"
+																	disabled={student.savedToday}
+																	className="h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
+																>
+																	<RotateCcw className="w-3 h-3" />
+																</Button>
+															</div>
                                                                                                                 </div>
 														<div className="flex flex-row gap-2 w-full">
 															<Button
 																variant="outline"
 																onClick={() => toggleAttendance(student.id, "present")}
+																disabled={student.savedToday}
 																className={`flex-1 text-sm h-9 rounded-lg transition-all ${
 																	student.attendance === "present"
-																		? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600"
+																		? "font-bold"
+																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 																}`}
+																style={student.attendance === "present" ? {
+																	backgroundColor: "rgba(212, 175, 55, 0.2)",
+																	borderColor: "#D4AF37",
+																	color: "#262626",
+																} : undefined}
 															>
 																حاضر
 															</Button>
 															<Button
 																variant="outline"
 																onClick={() => toggleAttendance(student.id, "absent")}
+																disabled={student.savedToday}
 																className={`flex-1 text-sm h-9 rounded-lg transition-all ${
 																	student.attendance === "absent"
-																		? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600"
+																		? "font-bold"
+																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 																}`}
+																style={student.attendance === "absent" ? {
+																	backgroundColor: "rgba(212, 175, 55, 0.2)",
+																	borderColor: "#D4AF37",
+																	color: "#262626",
+																} : undefined}
 															>
 																غائب
 															</Button>
 															<Button
 																variant="outline"
 																onClick={() => toggleAttendance(student.id, "excused")}
+																disabled={student.savedToday}
 																className={`flex-1 text-sm h-9 rounded-lg transition-all ${
 																	student.attendance === "excused"
-																		? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600"
+																		? "font-bold"
+																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
 																}`}
+																style={student.attendance === "excused" ? {
+																	backgroundColor: "rgba(212, 175, 55, 0.2)",
+																	borderColor: "#D4AF37",
+																	color: "#262626",
+																} : undefined}
 															>
 																مستأذن
 															</Button>
 														</div>
-														{student.attendance === "present" && (
+														{student.attendance === "present" && !student.savedToday && student.hasPlan && (
 															<div className="space-y-2 pt-2">
 																<p className="text-sm font-semibold text-[#1a2332] text-center">تقييم الكل:</p>
 																<div className="grid grid-cols-2 gap-2">
 																	<Button
 																		variant="outline"
 																		onClick={() => setAllEvaluations(student.id, "excellent")}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 transition-all"
+																		disabled={student.savedToday}
+																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 																	>
 																		ممتاز
 																	</Button>
 																	<Button
 																		variant="outline"
 																		onClick={() => setAllEvaluations(student.id, "very_good")}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 transition-all"
+																		disabled={student.savedToday}
+																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 																	>
 																		جيد جداً
 																	</Button>
 																	<Button
 																		variant="outline"
 																		onClick={() => setAllEvaluations(student.id, "good")}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 transition-all"
+																		disabled={student.savedToday}
+																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 																	>
 																		جيد
 																	</Button>
 																	<Button
 																		variant="outline"
 																		onClick={() => setAllEvaluations(student.id, "not_completed")}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 transition-all"
+																		disabled={student.savedToday}
+																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
 																	>
 																		لم يكمل
 																	</Button>
@@ -584,37 +1154,42 @@ export default function HalaqahManagement() {
 												</div>
 
 												{/* Evaluation Options */}
-												{student.attendance === "present" && (
+												{isNoPlanLocked && (
+													<div className="lg:col-span-3 flex items-center justify-center">
+														<div className="w-full rounded-2xl border border-[#D4AF37]/20 bg-[#f8f3df]/60 px-5 py-8 text-center opacity-80">
+															<p className="text-sm font-semibold text-[#8b6b16]">لا توجد لديه خطة</p>
+														</div>
+													</div>
+												)}
+												{student.attendance === "present" && !student.savedToday && student.hasPlan && (
 													<div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-6">
 														<EvaluationOption
 															studentId={student.id}
 															type="hafiz"
 															label="الحفظ"
-															notCompletedText="لم يحفظ"
 														/>
 														<EvaluationOption
 															studentId={student.id}
 															type="tikrar"
 															label="التكرار"
-															notCompletedText="لم يكرر"
 														/>
 														<EvaluationOption
 															studentId={student.id}
 															type="samaa"
-															label="السماع"
-															notCompletedText="لم يسمع"
+															label="المراجعة"
 														/>
 														<EvaluationOption
 															studentId={student.id}
 															type="rabet"
 															label="الربط"
-															notCompletedText="لم يربط"
 														/>
 													</div>
 												)}
 											</div>
 										</CardContent>
 									</Card>
+											)
+										})()
 								))}
 							</div>
 
@@ -622,8 +1197,8 @@ export default function HalaqahManagement() {
 								<Button
 									onClick={handleReset}
 									variant="outline"
-									className="text-base h-12 px-8 rounded-lg border-[#D4AF37]/80 text-neutral-600 transition-all"
-									disabled={isSaving || hasSavedToday}
+									className="text-base h-12 px-8 rounded-lg border-[#D4AF37]/80 bg-white/90 text-neutral-600 transition-all hover:bg-[#D4AF37]/12 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:border-[#D4AF37] focus-visible:ring-[#D4AF37]/30 active:bg-[#D4AF37]/18"
+									disabled={isSaving}
 								>
 									<RotateCcw className="w-4 h-4 ml-2" />
 									إعادة تعيين
@@ -631,17 +1206,13 @@ export default function HalaqahManagement() {
 								<Button
 									onClick={handleSave}
 									variant="outline"
-									className={`text-base h-12 px-8 rounded-lg transition-all ${
-										hasSavedToday
-											? "border-[#D4AF37]/40 text-neutral-400 cursor-not-allowed"
-											: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] hover:text-neutral-800"
-									}`}
-									disabled={isSaving || hasSavedToday}
+									className="text-base h-12 px-8 rounded-lg transition-all border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] hover:text-neutral-800"
+									disabled={isSaving || !hasPendingStudents}
 								>
-									{hasSavedToday && "تم حفظ بيانات اليوم"}
-									{!hasSavedToday && saveStatus === "saving" && "جاري الحفظ..."}
-									{!hasSavedToday && saveStatus === "success" && "تم الحفظ!"}
-									{!hasSavedToday && saveStatus === "idle" && "حفظ"}
+									{saveStatus === "saving" && "جاري الحفظ..."}
+									{saveStatus === "success" && "تم الحفظ!"}
+									{saveStatus === "idle" && hasPendingStudents && "حفظ"}
+									{saveStatus === "idle" && !hasPendingStudents && (hasSavedToday ? "حفظ" : "اختر الطلاب أولاً")}
 								</Button>
 							</div>
 						</>
@@ -658,22 +1229,22 @@ export default function HalaqahManagement() {
                                         <DialogTitle className="text-xl font-bold text-center text-[#1a2332] mb-4">تعويض الحفظ السابق</DialogTitle>
                                         <div className="space-y-4">
                                                 {isCompLoading ? (
-                                                        <div className="flex justify-center items-center py-6"><Loader2 className="w-6 h-6 animate-spin text-[#D4AF37]" /></div>
+													<div className="flex justify-center items-center py-6"><SiteLoader size="sm" /></div>
                                                 ) : missedDays.length === 0 ? (
                                                         <div className="text-center text-[#D4AF37] font-bold py-6">لا يوجد أيام تم التفريط فيها</div>
                                                 ) : (
                                                         <div className="space-y-3">
-                                                                {missedDays.map((md, idx) => (
+																{missedDays.map((md, idx) => (
                                                                         <div key={idx} className="flex items-center justify-between bg-neutral-50 p-3 rounded-lg border border-neutral-200">
                                                                                 <div>
                                                                                         <p className="font-semibold text-sm text-[#1a2332] mb-1">{md.content}</p>
                                                                                 </div>
                                                                                 <Button 
                                                                                         size="sm" 
-                                                                                        onClick={() => handleCompensate(md.date)}
-                                                                                        className="bg-[#D4AF37] hover:bg-[#C9A961] text-white rounded-lg px-3 py-1 h-8 text-xs font-bold transition-all shrink-0"
+																			onClick={() => handleCompensate(md)}
+																					className="rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 h-8 text-xs font-medium text-[#C9A961] transition-colors hover:bg-[#D4AF37]/20 shrink-0"
                                                                                 >
-                                                                                        تم التعويض
+																					تعويض
                                                                                 </Button>
                                                                         </div>
                                                                 ))}

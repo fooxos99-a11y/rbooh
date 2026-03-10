@@ -1,5 +1,6 @@
 
 "use client";
+import { SiteLoader } from "@/components/ui/site-loader";
 // دالة لتحويل رقم المستوى إلى نص عربي (خارج الكومبوننت)
 function getLevelTitle(levelId: number) {
   const titles = [
@@ -168,9 +169,8 @@ export default function LevelPage() {
       <div className="w-full flex justify-center items-start">
         <div className="w-full max-w-2xl">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-16">
-            <span className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#d8a355] mb-4"></span>
-            <p className="text-[#00312e] text-lg">جاري التحميل...</p>
+          <div className="flex justify-center py-16">
+            <SiteLoader size="lg" color="#d8a355" />
           </div>
         ) : error ? (
           <div className="bg-red-100 text-red-700 rounded-lg p-4 text-center font-bold shadow">{error}</div>

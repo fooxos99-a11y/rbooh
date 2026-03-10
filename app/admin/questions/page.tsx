@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
 import {
   Dialog,
   DialogContent,
@@ -11,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Trash2, Edit, Plus, ChevronDown, ChevronUp } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
@@ -220,17 +223,20 @@ export default function QuestionsDatabase() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#faf8f5] via-[#f5ead8] to-[#faf8f5] p-8">
-        <div className="max-w-6xl mx-auto text-center py-12">
-          <p className="text-2xl text-[#1a2332]">جاري التحميل...</p>
+        <div className="max-w-6xl mx-auto flex justify-center py-12">
+          <SiteLoader />
         </div>
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#faf8f5] via-[#f5ead8] to-[#faf8f5] p-4 sm:p-8">
+    <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
+      <Header />
+
+      <div className="flex-1 bg-gradient-to-br from-[#faf8f5] via-[#f5ead8] to-[#faf8f5] p-4 sm:p-8">
       <div className="max-w-6xl mx-auto">
         <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8 border-2 border-[#d8a355]/20">
           {/* العنوان */}
@@ -509,6 +515,10 @@ export default function QuestionsDatabase() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      </div>
+
+      <Footer />
     </div>
   )
 }

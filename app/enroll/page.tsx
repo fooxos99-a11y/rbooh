@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase-client";
 import { toast } from "@/hooks/use-toast";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { SiteLoader } from "@/components/ui/site-loader"
 import { UserPlus, User, Phone, Hash, GraduationCap, Flag, Lock } from "lucide-react";
 
 export default function EnrollPage() {
@@ -100,8 +101,7 @@ export default function EnrollPage() {
 
             {isLoadingStatus ? (
               <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-300">
-                <div className="w-10 h-10 border-4 border-[#d8a355] border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-[#023232] text-lg font-medium">جاري التحميل...</p>
+                <SiteLoader size="lg" />
               </div>
             ) : !isEnrollmentOpen ? (
               <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-300">
@@ -221,7 +221,7 @@ export default function EnrollPage() {
               >
                 {isSubmitting ? (
                   <>
-                    <div className="w-5 h-5 border-2 border-neutral-600 border-t-transparent rounded-full animate-spin"></div>
+                    <SiteLoader color="#525252" />
                     <span>جاري الإرسال...</span>
                   </>
                 ) : (

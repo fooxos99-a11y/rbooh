@@ -182,16 +182,56 @@ export function getSurahEndPage(surahNumber: number): number {
   return SURAHS[idx + 1].startPage - 1
 }
 
+function compareAyahRefs(
+  leftSurahNumber: number,
+  leftAyahNumber: number,
+  rightSurahNumber: number,
+  rightAyahNumber: number,
+) {
+  if (leftSurahNumber !== rightSurahNumber) {
+    return leftSurahNumber - rightSurahNumber
+  }
+
+  return leftAyahNumber - rightAyahNumber
+}
+
+export function getPageForAyah(surahNumber: number, ayahNumber: number): number {
+  let page = 1
+
+  for (let index = 0; index < PAGE_REFERENCES.length; index += 1) {
+    const reference = PAGE_REFERENCES[index]
+    if (compareAyahRefs(reference.surah, reference.ayah, surahNumber, ayahNumber) <= 0) {
+      page = index + 1
+      continue
+    }
+
+    break
+  }
+
+  return page
+}
+
 /**
  * حساب إجمالي عدد الأوجه بين سورتين (يدعم الاتجاهين تصاعدياً وتنازلياً)
  */
-export function calculateTotalPages(startSurahNumber: number, endSurahNumber: number): number {
-  const minNum = Math.min(startSurahNumber, endSurahNumber)
-  const maxNum = Math.max(startSurahNumber, endSurahNumber)
-  const startSurah = SURAHS.find((s) => s.number === minNum)
-  if (!startSurah) return 0
-  const endPage = getSurahEndPage(maxNum)
-  return endPage - startSurah.startPage + 1
+export function calculateTotalPages(
+  startSurahNumber: number,
+  endSurahNumber: number,
+  startVerseNumber?: number | null,
+  endVerseNumber?: number | null,
+): number {
+  const startSurah = SURAHS.find((s) => s.number === startSurahNumber)
+  const endSurah = SURAHS.find((s) => s.number === endSurahNumber)
+
+  if (!startSurah || !endSurah) return 0
+
+  const safeStartVerse = startVerseNumber && startVerseNumber > 0 ? startVerseNumber : 1
+  const safeEndVerse = endVerseNumber && endVerseNumber > 0 ? endVerseNumber : endSurah.verseCount
+
+  const startPage = getPageForAyah(startSurahNumber, safeStartVerse)
+  const endPage = getPageForAyah(endSurahNumber, safeEndVerse)
+
+  return Math.abs(endPage - startPage) + 1
 }
 
 /**
@@ -199,6 +239,63 @@ export function calculateTotalPages(startSurahNumber: number, endSurahNumber: nu
  */
 export function calculateTotalDays(totalPages: number, dailyPages: number): number {
   return Math.ceil(totalPages / dailyPages)
+}
+
+export function calculateCompletedPlanPages(
+  totalPages: number,
+  dailyPages: number,
+  completedDays: number,
+): number {
+  if (!Number.isFinite(totalPages) || totalPages <= 0) return 0
+  if (!Number.isFinite(dailyPages) || dailyPages <= 0) return 0
+  if (!Number.isFinite(completedDays) || completedDays <= 0) return 0
+
+  return Math.min(totalPages, completedDays * dailyPages)
+}
+
+export function calculatePreviousMemorizedPages(plan: {
+  has_previous?: boolean | null
+  prev_start_surah?: number | null
+  prev_start_verse?: number | null
+  prev_end_surah?: number | null
+  prev_end_verse?: number | null
+}): number {
+  if (!plan.has_previous || !plan.prev_start_surah || !plan.prev_end_surah) {
+    return 0
+  }
+
+  return calculateTotalPages(
+    plan.prev_start_surah,
+    plan.prev_end_surah,
+    plan.prev_start_verse,
+    plan.prev_end_verse,
+  )
+}
+
+export function calculateQuranMemorizationProgress(plan: {
+  total_pages?: number | null
+  daily_pages?: number | null
+  has_previous?: boolean | null
+  prev_start_surah?: number | null
+  prev_start_verse?: number | null
+  prev_end_surah?: number | null
+  prev_end_verse?: number | null
+}, completedDays: number) {
+  const currentPlanPages = calculateCompletedPlanPages(
+    Number(plan.total_pages) || 0,
+    Number(plan.daily_pages) || 0,
+    completedDays,
+  )
+  const previousPages = calculatePreviousMemorizedPages(plan)
+  const memorizedPages = Math.min(TOTAL_MUSHAF_PAGES, previousPages + currentPlanPages)
+  const progressPercent = Math.max(0, Math.min(100, (memorizedPages / TOTAL_MUSHAF_PAGES) * 100))
+  const level = Math.max(0, Math.min(100, Math.round(progressPercent)))
+
+  return {
+    memorizedPages,
+    progressPercent,
+    level,
+  }
 }
 
 /**
@@ -236,11 +333,12 @@ export function getSurahTotalLines(surahNumber: number): number {
 
 
 export function getAyahByPageFloat(p: number): { surah: number; ayah: number; customText?: string } {
+  if (!Number.isFinite(p) || p <= 1) return { surah: 1, ayah: 1 };
   if (p >= 605) return { surah: 114, ayah: 6 };
   const MathFloorP = Math.floor(p);
   const fraction = p % 1;
   const idx = MathFloorP - 1;
-  const start = PAGE_REFERENCES[idx];
+  const start = PAGE_REFERENCES[idx] || PAGE_REFERENCES[0];
   if (fraction === 0) return start;
 
   const end = PAGE_REFERENCES[idx + 1] || { surah: 114, ayah: 6 };
@@ -279,6 +377,7 @@ export function getAyahByPageFloat(p: number): { surah: number; ayah: number; cu
 }
 
 export function getInclusiveEndAyah(p: number) {
+  if (!Number.isFinite(p) || p <= 1) return { surah: 1, ayah: 1 }
   const next = getAyahByPageFloat(p);
   if (next.surah === 114 && next.ayah === 7) return { surah: 114, ayah: 6 };
   if (next.ayah > 1) {
@@ -297,9 +396,8 @@ export function getSessionContent(
   direction: "asc" | "desc" = "asc"
 ): { text: string; fromSurah: string; toSurah: string } {
   let sessionStart = direction === "desc" ? (planStartPage + totalPages - sessionNum * dailyPages) : planStartPage + (sessionNum - 1) * dailyPages;
-  let sessionEnd = sessionStart + dailyPages;
-  // Make sure sessionEnd does not jump over the end of Quran
-  sessionEnd = Math.min(sessionEnd, 605);
+  sessionStart = Math.max(1, Math.min(sessionStart, 605))
+  let sessionEnd = Math.max(sessionStart, Math.min(sessionStart + dailyPages, 605));
   
   const startRef = getAyahByPageFloat(sessionStart);
   const endRef = getInclusiveEndAyah(sessionEnd);
@@ -332,9 +430,8 @@ export function getOffsetContent(
   direction: "asc" | "desc" = "asc"
 ) {
   let sessionStart = direction === "desc" ? (planStartPage + totalPages - offset - size) : planStartPage + offset;
-  let sessionEnd = Math.min(sessionStart + size, 605);
-  // Ensure we don't go below 1 or total limits depending on strict bounds if needed
-  sessionStart = Math.max(1, sessionStart);
+  sessionStart = Math.max(1, Math.min(sessionStart, 605));
+  let sessionEnd = Math.max(sessionStart, Math.min(sessionStart + size, 605));
   
   if (size <= 0) return null;
 

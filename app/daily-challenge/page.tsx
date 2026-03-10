@@ -8,6 +8,7 @@ import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { useToast } from "@/hooks/use-toast"
 import { Zap, Trophy, XCircle, X, Sparkles, Clock, Award, Lock } from 'lucide-react'
 import { SizeOrderingChallenge } from "@/components/challenges/size-ordering-challenge"
@@ -292,10 +293,7 @@ export default function DailyChallengeStudent() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#faf8f5] via-[#f5f0e8] to-[#ebe4d8]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-[#d8a355]/20 border-t-[#d8a355] rounded-full animate-spin" />
-          <div className="text-xl font-medium text-gray-700">جاري التحميل...</div>
-        </div>
+        <SiteLoader size="lg" />
       </div>
     )
   }

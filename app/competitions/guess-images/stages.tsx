@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getGuessStages } from "@/lib/guess-stages";
 import { Button } from "@/components/ui/button";
+import { SiteLoader } from "@/components/ui/site-loader";
 
 export default function GuessImagesStages() {
   const [stages, setStages] = useState<any[]>([]);
@@ -21,7 +22,7 @@ export default function GuessImagesStages() {
       <div className="max-w-lg w-full bg-white rounded-xl shadow-lg p-8">
         <h1 className="text-3xl font-bold text-center mb-8 text-[#1a2332]">مراحل لعبة خمن الصورة</h1>
         {loading ? (
-          <div className="text-center text-lg">جاري التحميل...</div>
+          <div className="flex justify-center py-4"><SiteLoader /></div>
         ) : (
           <div className="space-y-4">
             {stages.map((stage) => (

@@ -1,6 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+function getKsaDateString() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  const parts = formatter.formatToParts(new Date())
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  return `${year}-${month}-${day}`
+}
+
 function calculatePoints(level: string): number {
   switch (level) {
     case "excellent":
@@ -16,6 +31,20 @@ function calculatePoints(level: string): number {
   }
 }
 
+function hasCompleteEvaluation(levels: {
+  hafiz_level?: string | null
+  tikrar_level?: string | null
+  samaa_level?: string | null
+  rabet_level?: string | null
+}) {
+  return !!(
+    levels.hafiz_level &&
+    levels.tikrar_level &&
+    levels.samaa_level &&
+    levels.rabet_level
+  )
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -25,9 +54,7 @@ export async function GET(request: NextRequest) {
     // Check if attendance was already saved today for a halaqah
     if (halaqah) {
       const supabase = await createClient()
-      const today = new Date()
-      const saDate = new Date(today.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }))
-      const todayDate = saDate.toISOString().split("T")[0]
+      const todayDate = getKsaDateString()
 
       const { data, error } = await supabase
         .from("attendance_records")
@@ -84,6 +111,18 @@ export async function GET(request: NextRequest) {
           tikrar_level: isAbsent ? "not_completed" : (lastEval?.tikrar_level || null),
           samaa_level: isAbsent ? "not_completed" : (lastEval?.samaa_level || null),
           rabet_level: isAbsent ? "not_completed" : (lastEval?.rabet_level || null),
+          hafiz_from_surah: lastEval?.hafiz_from_surah || null,
+          hafiz_from_verse: lastEval?.hafiz_from_verse || null,
+          hafiz_to_surah: lastEval?.hafiz_to_surah || null,
+          hafiz_to_verse: lastEval?.hafiz_to_verse || null,
+          samaa_from_surah: lastEval?.samaa_from_surah || null,
+          samaa_from_verse: lastEval?.samaa_from_verse || null,
+          samaa_to_surah: lastEval?.samaa_to_surah || null,
+          samaa_to_verse: lastEval?.samaa_to_verse || null,
+          rabet_from_surah: lastEval?.rabet_from_surah || null,
+          rabet_from_verse: lastEval?.rabet_from_verse || null,
+          rabet_to_surah: lastEval?.rabet_to_surah || null,
+          rabet_to_verse: lastEval?.rabet_to_verse || null,
         }
       }),
     )
@@ -98,7 +137,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { student_id, teacher_id, halaqah, status, hafiz_level, tikrar_level, samaa_level, rabet_level, debug_today, notes } = body
+    const {
+      student_id,
+      teacher_id,
+      halaqah,
+      status,
+      hafiz_level,
+      tikrar_level,
+      samaa_level,
+      rabet_level,
+      hafiz_from_surah,
+      hafiz_from_verse,
+      hafiz_to_surah,
+      hafiz_to_verse,
+      samaa_from_surah,
+      samaa_from_verse,
+      samaa_to_surah,
+      samaa_to_verse,
+      rabet_from_surah,
+      rabet_from_verse,
+      rabet_to_surah,
+      rabet_to_verse,
+      debug_today,
+      notes,
+    } = body
 
     // طباعة القيم المستلمة للتشخيص
     console.log("[DEBUG][API] Received attendance POST:")
@@ -115,13 +177,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
+    const normalizedStatus = status || "present"
+    const isPresent = normalizedStatus === "present"
+
+    if (
+      isPresent &&
+      !hasCompleteEvaluation({ hafiz_level, tikrar_level, samaa_level, rabet_level })
+    ) {
+      return NextResponse.json(
+        { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر قبل الحفظ" },
+        { status: 400 },
+      )
+    }
+
     const supabase = await createClient()
 
     // Get today's date in YYYY-MM-DD format (Asia/Riyadh timezone)
-    const today = new Date()
-    // تحويل التوقيت إلى توقيت السعودية
-    const saDate = new Date(today.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }))
-    const todayDate = saDate.toISOString().split("T")[0]
+    const todayDate = getKsaDateString()
     console.log("[DEBUG] تاريخ اليوم في السيرفر (Asia/Riyadh):", todayDate)
     if (debug_today) {
       console.log("[DEBUG] debug_today من المتصفح:", debug_today)
@@ -142,286 +214,151 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to check existing attendance" }, { status: 500 })
     }
 
-    let attendanceRecord
-    let isUpdate = false
-
     if (existingRecord) {
-      console.log("[v0] Updating existing attendance record for today:", existingRecord.id)
-      isUpdate = true
-
-      // First, get the old evaluation to subtract old points
-      const { data: oldEvaluation } = await supabase
-        .from("evaluations")
-        .select("*")
-        .eq("attendance_record_id", existingRecord.id)
-        .maybeSingle()
-
-      // Calculate old points to subtract
-      let oldPoints = 0
-      if (oldEvaluation) {
-        oldPoints =
-          calculatePoints(oldEvaluation.hafiz_level) +
-          calculatePoints(oldEvaluation.tikrar_level) +
-          calculatePoints(oldEvaluation.samaa_level) +
-          calculatePoints(oldEvaluation.rabet_level)
-
-        console.log("[v0] Old points to subtract:", oldPoints)
-
-        // Delete old evaluation
-        const { error: deleteEvalError } = await supabase
-          .from("evaluations")
-          .delete()
-          .eq("attendance_record_id", existingRecord.id)
-
-        if (deleteEvalError) {
-          console.error("[v0] Error deleting old evaluation:", deleteEvalError)
-        }
-      }
-
-      // Update attendance record status
-      const { data: updatedRecord, error: updateError } = await supabase
-        .from("attendance_records")
-        .update({
-          status: status || "present",
-          notes: notes ?? null,
-        })
-        .eq("id", existingRecord.id)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error("[v0] Error updating attendance record:", updateError)
-        return NextResponse.json({ error: "Failed to update attendance record" }, { status: 500 })
-      }
-
-      attendanceRecord = updatedRecord
-
-      // Subtract old points from student if there were any
-      if (oldPoints > 0) {
-        const { data: studentData } = await supabase.from("students").select("points").eq("id", student_id).single()
-
-        if (studentData) {
-          const currentPoints = studentData.points || 0
-          const newPoints = Math.max(0, currentPoints - oldPoints)
-
-          console.log("[v0] Subtracting old points:", {
-            currentPoints,
-            subtract: oldPoints,
-            newPoints,
-          })
-
-          await supabase.from("students").update({ points: newPoints }).eq("id", student_id)
-        }
-      }
-
-      // إذا كان غائب أو مستأذن، احذف أي تقييمات قديمة ولا تدخل تقييمات جديدة
-      if (status === "absent" || status === "excused") {
-        await supabase.from("evaluations").delete().eq("attendance_record_id", attendanceRecord.id);
-        return NextResponse.json({
-          success: true,
-          attendance: attendanceRecord,
-          evaluation: null,
-          pointsAdded: 0,
-          isUpdate,
-        });
-      }
-      // Add new points to student if new evaluation data is provided
-      if (hafiz_level && tikrar_level && samaa_level && rabet_level) {
-        const hafizPoints = calculatePoints(hafiz_level)
-        const tikrarPoints = calculatePoints(tikrar_level)
-        const samaaPoints = calculatePoints(samaa_level)
-        const rabetPoints = calculatePoints(rabet_level)
-
-        const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints
-
-        console.log("[v0] Points breakdown:", {
-          hafiz: hafizPoints,
-          tikrar: tikrarPoints,
-          samaa: samaaPoints,
-          rabet: rabetPoints,
-          total: totalPoints,
-        })
-
-        const { data: evaluation, error: evaluationError } = await supabase
-          .from("evaluations")
-          .insert({
-            attendance_record_id: attendanceRecord.id,
-            hafiz_level,
-            tikrar_level,
-            samaa_level,
-            rabet_level,
-          })
-          .select()
-          .single()
-
-        if (evaluationError) {
-          console.error("[v0] Error creating evaluation:", evaluationError)
-          return NextResponse.json({
-            success: true,
-            attendance: attendanceRecord,
-            warning: "Attendance created but evaluation failed",
-          })
-        }
-
-        console.log("[v0] Evaluation created:", evaluation.id)
-
-        if (totalPoints > 0) {
-          const { data: studentData, error: fetchError } = await supabase
-            .from("students")
-            .select("points, store_points")
-            .eq("id", student_id)
-            .single()
-
-          if (fetchError) {
-            console.error("[v0] Error fetching student points:", fetchError)
-          } else {
-            const currentPoints = studentData.points || 0
-            const currentStorePoints = studentData.store_points || 0
-            const newPoints = currentPoints + totalPoints
-            const newStorePoints = currentStorePoints + totalPoints
-
-            console.log("[v0] Updating student points and store_points:", {
-              currentPoints,
-              currentStorePoints,
-              addedPoints: totalPoints,
-              newPoints,
-              newStorePoints,
-            })
-
-            const { error: updateError } = await supabase
-              .from("students")
-              .update({ points: newPoints, store_points: newStorePoints })
-              .eq("id", student_id)
-
-            if (updateError) {
-              console.error("[v0] Error updating student points/store_points:", updateError)
-            } else {
-              console.log("[v0] Student points and store_points updated successfully to:", newPoints, newStorePoints)
-            }
-          }
-        }
-
-        return NextResponse.json({
-          success: true,
-          attendance: attendanceRecord,
-          evaluation,
-          pointsAdded: totalPoints,
-          isUpdate,
-        })
-      }
-    } else {
-      // Create new attendance record
-      const { data: newRecord, error: attendanceError } = await supabase
-        .from("attendance_records")
-        .insert({
-          student_id,
-          teacher_id,
-          halaqah,
-          status: status || "present",
-          date: todayDate,
-          notes: notes ?? null,
-        })
-        .select()
-        .single()
-
-      if (attendanceError) {
-        console.error("[v0] Error creating attendance record:", attendanceError)
-        return NextResponse.json({ error: "Failed to create attendance record" }, { status: 500 })
-      }
-
-      attendanceRecord = newRecord
-
-      // Create evaluation record if evaluation data is provided
-      if (hafiz_level && tikrar_level && samaa_level && rabet_level) {
-        const hafizPoints = calculatePoints(hafiz_level)
-        const tikrarPoints = calculatePoints(tikrar_level)
-        const samaaPoints = calculatePoints(samaa_level)
-        const rabetPoints = calculatePoints(rabet_level)
-
-        const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints
-
-        console.log("[v0] Points breakdown:", {
-          hafiz: hafizPoints,
-          tikrar: tikrarPoints,
-          samaa: samaaPoints,
-          rabet: rabetPoints,
-          total: totalPoints,
-        })
-
-        const { data: evaluation, error: evaluationError } = await supabase
-          .from("evaluations")
-          .insert({
-            attendance_record_id: attendanceRecord.id,
-            hafiz_level,
-            tikrar_level,
-            samaa_level,
-            rabet_level,
-          })
-          .select()
-          .single()
-
-        if (evaluationError) {
-          console.error("[v0] Error creating evaluation:", evaluationError)
-          return NextResponse.json({
-            success: true,
-            attendance: attendanceRecord,
-            warning: "Attendance created but evaluation failed",
-          })
-        }
-
-        console.log("[v0] Evaluation created:", evaluation.id)
-
-        if (totalPoints > 0) {
-          const { data: studentData, error: fetchError } = await supabase
-            .from("students")
-            .select("points, store_points")
-            .eq("id", student_id)
-            .single()
-
-          if (fetchError) {
-            console.error("[v0] Error fetching student points:", fetchError)
-          } else {
-            const currentPoints = studentData.points || 0;
-            const currentStorePoints = studentData.store_points || 0;
-            const newPoints = currentPoints + totalPoints;
-            const newStorePoints = currentStorePoints + totalPoints;
-
-            console.log("[v0] Updating student points and store_points:", {
-              currentPoints,
-              currentStorePoints,
-              addedPoints: totalPoints,
-              newPoints,
-              newStorePoints,
-            });
-
-            const { error: updateError } = await supabase
-              .from("students")
-              .update({ points: newPoints, store_points: newStorePoints })
-              .eq("id", student_id);
-
-            if (updateError) {
-              console.error("[v0] Error updating student points/store_points:", updateError);
-            } else {
-              console.log("[v0] Student points and store_points updated successfully to:", newPoints, newStorePoints);
-            }
-          }
-        }
-
-        return NextResponse.json({
-          success: true,
-          attendance: attendanceRecord,
-          evaluation,
-          pointsAdded: totalPoints,
-          isUpdate,
-        })
-      }
+      console.log("[v0] Attendance already exists for student today:", existingRecord.id)
+      return NextResponse.json(
+        {
+          error: "تم حفظ هذا الطالب مسبقاً اليوم ولا يمكن إعادة حفظه مرة أخرى",
+          alreadySaved: true,
+          attendanceRecordId: existingRecord.id,
+        },
+        { status: 409 },
+      )
     }
 
-    return NextResponse.json({
-      success: true,
-      attendance: attendanceRecord,
-      isUpdate,
-    })
+    let attendanceRecord
+    const isUpdate = false
+
+    // Create new attendance record
+    const { data: newRecord, error: attendanceError } = await supabase
+      .from("attendance_records")
+      .insert({
+        student_id,
+        teacher_id,
+        halaqah,
+        status: normalizedStatus,
+        date: todayDate,
+        notes: notes ?? null,
+      })
+      .select()
+      .single()
+
+    if (attendanceError) {
+      console.error("[v0] Error creating attendance record:", attendanceError)
+      return NextResponse.json({ error: "Failed to create attendance record" }, { status: 500 })
+    }
+
+    attendanceRecord = newRecord
+
+    if (normalizedStatus !== "present") {
+      return NextResponse.json({
+        success: true,
+        attendance: attendanceRecord,
+        pointsAdded: 0,
+        isUpdate,
+      })
+    }
+
+    if (hasCompleteEvaluation({ hafiz_level, tikrar_level, samaa_level, rabet_level })) {
+      const hafizPoints = calculatePoints(hafiz_level)
+      const tikrarPoints = calculatePoints(tikrar_level)
+      const samaaPoints = calculatePoints(samaa_level)
+      const rabetPoints = calculatePoints(rabet_level)
+
+      const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints
+
+      console.log("[v0] Points breakdown:", {
+        hafiz: hafizPoints,
+        tikrar: tikrarPoints,
+        samaa: samaaPoints,
+        rabet: rabetPoints,
+        total: totalPoints,
+      })
+
+      const { data: evaluation, error: evaluationError } = await supabase
+        .from("evaluations")
+        .insert({
+          attendance_record_id: attendanceRecord.id,
+          hafiz_level,
+          tikrar_level,
+          samaa_level,
+          rabet_level,
+          hafiz_from_surah,
+          hafiz_from_verse,
+          hafiz_to_surah,
+          hafiz_to_verse,
+          samaa_from_surah,
+          samaa_from_verse,
+          samaa_to_surah,
+          samaa_to_verse,
+          rabet_from_surah,
+          rabet_from_verse,
+          rabet_to_surah,
+          rabet_to_verse,
+        })
+        .select()
+        .single()
+
+      if (evaluationError) {
+        console.error("[v0] Error creating evaluation:", evaluationError)
+        await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
+        return NextResponse.json(
+          { error: "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور" },
+          { status: 500 },
+        )
+      }
+
+      console.log("[v0] Evaluation created:", evaluation.id)
+
+      if (totalPoints > 0) {
+        const { data: studentData, error: fetchError } = await supabase
+          .from("students")
+          .select("points, store_points")
+          .eq("id", student_id)
+          .single()
+
+        if (fetchError) {
+          console.error("[v0] Error fetching student points:", fetchError)
+        } else {
+          const currentPoints = studentData.points || 0
+          const currentStorePoints = studentData.store_points || 0
+          const newPoints = currentPoints + totalPoints
+          const newStorePoints = currentStorePoints + totalPoints
+
+          console.log("[v0] Updating student points and store_points:", {
+            currentPoints,
+            currentStorePoints,
+            addedPoints: totalPoints,
+            newPoints,
+            newStorePoints,
+          })
+
+          const { error: updateError } = await supabase
+            .from("students")
+            .update({ points: newPoints, store_points: newStorePoints })
+            .eq("id", student_id)
+
+          if (updateError) {
+            console.error("[v0] Error updating student points/store_points:", updateError)
+          } else {
+            console.log("[v0] Student points and store_points updated successfully to:", newPoints, newStorePoints)
+          }
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        attendance: attendanceRecord,
+        evaluation,
+        pointsAdded: totalPoints,
+        isUpdate,
+      })
+    }
+
+    return NextResponse.json(
+      { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر قبل الحفظ" },
+      { status: 400 },
+    )
   } catch (error) {
     console.error("[v0] Error in attendance POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

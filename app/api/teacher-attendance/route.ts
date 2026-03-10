@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { getSaudiDateString } from "@/lib/saudi-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -63,8 +64,7 @@ export async function POST(request: NextRequest) {
     const supabase = await createClient()
 
     // Get today's date
-    const today = new Date()
-    const attendanceDate = today.toISOString().split("T")[0]
+    const attendanceDate = getSaudiDateString()
 
     const attendanceRecord = {
       teacher_id,

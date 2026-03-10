@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import { useSearchParams } from "next/navigation";
 import { useState, useEffect, Suspense } from "react";
 import { getNextQuestionForAccount } from "../get-next-question";
+import { SiteLoader } from "@/components/ui/site-loader";
 
 // قائمة الحروف الأساسية
 const BASE_LETTERS = [
@@ -336,7 +337,7 @@ function GameContent() {
 // التصدير الأساسي مغلف بـ Suspense
 export default function LetterHiveGame() {
   return (
-    <Suspense fallback={<div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>جاري تحميل اللعبة...</div>}>
+    <Suspense fallback={<div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><SiteLoader size="lg" /></div>}>
       <GameContent />
     </Suspense>
   );

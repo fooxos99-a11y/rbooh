@@ -1,6 +1,16 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
-import { getSessionContent, calculateTotalPages, calculateTotalDays } from "@/lib/quran-data"
+import { getAyahByPageFloat, getInclusiveEndAyah, getSessionContent, SURAHS } from "@/lib/quran-data"
+
+interface MissedDayItem {
+  date: string
+  sessionIndex: number
+  content: string
+  hafiz_from_surah: string
+  hafiz_from_verse: string
+  hafiz_to_surah: string
+  hafiz_to_verse: string
+}
 
 export async function GET(request: Request) {
   try {
@@ -65,40 +75,11 @@ export async function GET(request: Request) {
         }
     }
 
-    // Get the total completed days up to TODAY (to calculate what day they are ACTUALLY ON in terms of the plan's session index)
-    // Wait, the missed days should show what exact portion of the plan they missed? "حفظ الايام بالترتيب"
-    // So if they missed 3 days, it will show plan sessions for those days?
-    // Actually, "حفظ الايام" simply means the content of the sessions they missed.
-    // If they completed 5 sessions, the 6th session is their next one. If they have 3 missed dates, the sessions to compensate would be session 6, 7, 8!
-    // Why? Because the plan is purely a sequence! The missed date is just a date, but the *content* to compensate is the next uncompleted sessions.
+    const missedDaysList: MissedDayItem[] = []
     
-    // Fetch total lifetime completed days:
-    let totalCompleted = 0;
-    const { data: allAtt } = await supabase
-      .from("attendance_records")
-      .select("status, evaluations(hafiz_level)")
-      .eq("student_id", studentId)
-      .gte("date", plan.start_date)
-
-    if (allAtt) {
-        for (const r of allAtt) {
-            if (r.status === "present") {
-                const evals = Array.isArray(r.evaluations) ? r.evaluations : r.evaluations ? [r.evaluations] : []
-                if (evals.length > 0) {
-                    const ev = evals[evals.length - 1]
-                    if (POSITIVE_LEVELS.includes(ev.hafiz_level ?? "")) {
-                        totalCompleted++
-                    }
-                }
-            }
-        }
-    }
-
-    let missedDaysList = []
-    
-    // Iterate from start_date to yesterday
+    // اربط كل يوم تدريبي بمقطع الخطة الأصلي لذلك اليوم، وليس بعدّاد المنجز الحالي.
     let d = new Date(plan.start_date)
-    let sessionCounter = totalCompleted + 1; // start compensating from the current uncompleted sequence!
+    let sessionCounter = 1
 
     while (d <= saDate) {
         const dStr = d.toISOString().split("T")[0]
@@ -106,28 +87,35 @@ export async function GET(request: Request) {
         
         // Skip Friday (5) and Saturday (6)
         if (dayOfWeek !== 5 && dayOfWeek !== 6) {
-            if (!completedDates.has(dStr)) {
-                // This date is a missed date. What is the content?
-                // The content is sessionCounter.
-                
-                // Generate the content text for sessionCounter:
-                const sSurahs = require("@/lib/quran-data").SURAHS;
-                const startSurahData = sSurahs.find((s: any) => s.number === Math.min(plan.start_surah_number, plan.end_surah_number))
-                const planStartPage = startSurahData?.startPage || 1
-                const dir = plan.direction || "asc";
-                const dailyStr = String(plan.daily_pages)
-                const daily = dailyStr === "0.3333" ? 0.3333 : dailyStr === "0.25" ? 0.25 : plan.daily_pages;
+        const startSurahData = SURAHS.find((s) => s.number === Math.min(plan.start_surah_number, plan.end_surah_number))
+        const planStartPage = startSurahData?.startPage || 1
+        const dir = plan.direction || "asc"
+        const dailyStr = String(plan.daily_pages)
+        const daily = dailyStr === "0.3333" ? 0.3333 : dailyStr === "0.25" ? 0.25 : plan.daily_pages
+        const sessionContent = getSessionContent(planStartPage, daily, sessionCounter, plan.total_pages, dir)
+        let sessionStart = dir === "desc"
+          ? planStartPage + plan.total_pages - sessionCounter * daily
+          : planStartPage + (sessionCounter - 1) * daily
+        sessionStart = Math.max(1, Math.min(sessionStart, 605))
+        const sessionEnd = Math.max(sessionStart, Math.min(sessionStart + daily, 605))
+        const startRef = getAyahByPageFloat(sessionStart)
+        const endRef = getInclusiveEndAyah(sessionEnd)
+        const startSurah = SURAHS.find((surah) => surah.number === startRef.surah)
+        const endSurah = SURAHS.find((surah) => surah.number === endRef.surah)
 
-                const sessionContent = getSessionContent(planStartPage, daily, sessionCounter, plan.total_pages, dir)
-                
+            if (!completedDates.has(dStr)) {
                 missedDaysList.push({
                     date: dStr,
                     sessionIndex: sessionCounter,
-                    content: sessionContent.text
+            content: sessionContent.text,
+            hafiz_from_surah: startSurah?.name || sessionContent.fromSurah,
+            hafiz_from_verse: String(startRef.ayah),
+            hafiz_to_surah: endSurah?.name || sessionContent.toSurah,
+            hafiz_to_verse: String(endRef.ayah),
                 })
-                
-                sessionCounter++;
             }
+
+        sessionCounter++
         }
         d.setDate(d.getDate() + 1)
     }

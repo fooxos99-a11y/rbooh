@@ -5,7 +5,17 @@ import { NextResponse } from "next/server"
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    const { student_id, teacher_id, halaqah, date } = await request.json()
+    const {
+      student_id,
+      teacher_id,
+      halaqah,
+      date,
+      hafiz_from_surah,
+      hafiz_from_verse,
+      hafiz_to_surah,
+      hafiz_to_verse,
+      compensated_content,
+    } = await request.json()
 
     if (!student_id || !teacher_id || !halaqah || !date) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -24,7 +34,11 @@ export async function POST(request: Request) {
       // تحديث إلى حاضر
       await supabase
         .from("attendance_records")
-        .update({ status: "present", is_compensation: true })
+        .update({
+          status: "present",
+          is_compensation: true,
+          notes: compensated_content ? `تم تعويض الحفظ: ${compensated_content}` : "تم تعويض الحفظ",
+        })
         .eq("id", existingRecord.id)
       recordId = existingRecord.id
     } else {
@@ -37,7 +51,8 @@ export async function POST(request: Request) {
           halaqah,
           date,
           status: "present",
-          is_compensation: true
+          is_compensation: true,
+          notes: compensated_content ? `تم تعويض الحفظ: ${compensated_content}` : "تم تعويض الحفظ",
         })
         .select("id")
         .single()
@@ -46,24 +61,37 @@ export async function POST(request: Request) {
       recordId = newRecord.id
     }
 
-    // 2. إعطاء تقييم جيد للحفظ
-    await supabase.from("evaluations").upsert({
+    // 2. تثبيت تقييم التعويض مع نفس النطاق الحفظي حتى يظهر في الملف الشخصي
+    await supabase.from("evaluations").delete().eq("attendance_record_id", recordId)
+
+    const { error: evaluationError } = await supabase.from("evaluations").insert({
       attendance_record_id: recordId,
       hafiz_level: "good",
-      notes: "تم تعويض الحفظ"
-    }, { onConflict: "attendance_record_id" })
+      tikrar_level: "not_completed",
+      samaa_level: "not_completed",
+      rabet_level: "not_completed",
+      hafiz_from_surah: hafiz_from_surah || null,
+      hafiz_from_verse: hafiz_from_verse || null,
+      hafiz_to_surah: hafiz_to_surah || null,
+      hafiz_to_verse: hafiz_to_verse || null,
+    })
+
+    if (evaluationError) {
+      throw evaluationError
+    }
 
     // 3. إضافة 10 نقاط للطالب
     const { data: studentData } = await supabase
       .from("students")
-      .select("points")
+      .select("points, store_points")
       .eq("id", student_id)
       .single()
 
     const newPoints = (studentData?.points || 0) + 10
+    const newStorePoints = (studentData?.store_points || 0) + 10
     await supabase
       .from("students")
-      .update({ points: newPoints })
+      .update({ points: newPoints, store_points: newStorePoints })
       .eq("id", student_id)
 
     return NextResponse.json({ success: true, pointsAdded: 10, newPoints })

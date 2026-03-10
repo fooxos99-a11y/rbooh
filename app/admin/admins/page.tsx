@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { UserPlus, ArrowRight, Shield, PlusCircle, Trash2 } from 'lucide-react'
 import { createClient } from "@/lib/supabase/client"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface UserEntry {
   id: string
@@ -215,12 +216,12 @@ export default function AdminsManagement() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fafaf9]" dir="rtl">

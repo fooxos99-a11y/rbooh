@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase-client"
-import { Bell, CheckCircle2, Loader2, Clock } from "lucide-react"
+import { Bell, CheckCircle2, Clock } from "lucide-react"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface Notification {
   id: string
@@ -14,6 +15,12 @@ interface Notification {
 export default function NotificationsClient() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
+
+  const fetchNotificationStartAt = async (accountNumber: string) => {
+    const response = await fetch(`/api/account-created-at?account_number=${accountNumber}`, { cache: "no-store" })
+    const data = await response.json()
+    return typeof data.created_at === "string" ? data.created_at : null
+  }
 
   useEffect(() => {
     fetchNotifications()
@@ -27,11 +34,18 @@ export default function NotificationsClient() {
     }
 
     try {
-      const { data, error } = await supabase
+      const createdAt = await fetchNotificationStartAt(accNum)
+      let query = supabase
         .from("notifications")
         .select("*")
         .eq("user_account_number", accNum)
         .order("created_at", { ascending: false })
+
+      if (createdAt) {
+        query = query.gte("created_at", createdAt)
+      }
+
+      const { data, error } = await query
 
       if (error) throw error
 
@@ -55,8 +69,7 @@ export default function NotificationsClient() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <Loader2 className="w-10 h-10 text-[#d8a355] animate-spin border-t-transparent" />
-        <p className="mt-4 text-[#023232]">جاري تحميل الإشعارات...</p>
+        <SiteLoader size="md" color="#d8a355" />
       </div>
     )
   }

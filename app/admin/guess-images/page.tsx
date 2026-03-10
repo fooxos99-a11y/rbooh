@@ -10,6 +10,9 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Plus, Pencil, Trash2, Upload, ImageIcon, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
@@ -315,110 +318,116 @@ export default function GuessImagesManagement() {
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-xl">جاري التحميل...</p>
-      </div>
-    )
+    return <SiteLoader fullScreen />
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
-    <div className="container mx-auto p-4 sm:p-8">
-      <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8 border-2 border-[#d8a355]/20">
-        <div className="flex flex-col gap-4 mb-6">
-          <h1 className="text-2xl sm:text-4xl font-bold text-[#1a2332]">
-            إدارة قاعدة خمن الصورة
-          </h1>
-          {/* قائمة المراحل */}
-          <div className="flex flex-wrap gap-2 items-center">
-            {stageLoading ? (
-              <span>جاري التحميل...</span>
-            ) : stages.length === 0 ? (
-              <span>لا توجد مراحل</span>
-            ) : (
-              stages.map(stage => (
-                <div key={stage.id} className={`flex items-center border rounded px-3 py-1 gap-1 ${selectedStageId === stage.id ? 'bg-[#d8a355]/20 border-[#d8a355]' : 'border-gray-300'}`}>
-                  <button
-                    className={`font-bold ${selectedStageId === stage.id ? 'text-[#d8a355]' : ''}`}
-                    style={{ cursor: 'pointer', background: 'none', border: 'none', outline: 'none' }}
-                    onClick={() => setSelectedStageId(stage.id)}
-                  >
-                    {stage.name}
-                  </button>
-                  <button onClick={() => deleteStage(stage.id)} title="حذف المرحلة" className="text-red-500 hover:text-red-700"><X size={16} /></button>
-                </div>
-              ))
-            )}
-            <Button size="sm" variant="outline" onClick={() => setShowAddStage(true)}><Plus className="w-4 h-4 ml-1" />إضافة مرحلة</Button>
-          </div>
-          {/* نافذة إضافة مرحلة */}
-          {showAddStage && (
-            <form onSubmit={addStage} className="flex gap-2 items-center mt-2">
-              <Input value={newStage} onChange={e => setNewStage(e.target.value)} placeholder="اسم المرحلة الجديدة" required />
-              <Button type="submit" disabled={stageLoading || !newStage.trim()}>حفظ</Button>
-              <Button type="button" variant="outline" onClick={() => setShowAddStage(false)}>إلغاء</Button>
-            </form>
-          )}
-        </div>
+    <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
+      <Header />
 
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold">صور المرحلة المختارة</h2>
-          <Button
-            onClick={() => {
-              setEditingImage(null);
-              setFormData({ image_url: "", answer: "" });
-              setPreviewUrl("");
-              setSelectedFile(null);
-              setDialogOpen(true);
-            }}
-            disabled={!selectedStageId}
-            className="bg-gradient-to-r from-[#d8a355] to-[#c89547] text-white"
-          >
-            <Plus className="ml-2 w-4 h-4" /> إضافة صورة جديدة
-          </Button>
-        </div>
-        {selectedStageId ? (
-          loading ? (
-            <div className="text-center py-12">جاري التحميل...</div>
-          ) : images.length === 0 ? (
-            <div className="text-center py-12">
-              <ImageIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-xl text-gray-500">لا توجد صور في هذه المرحلة</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {images.map((image) => (
-                <div
-                  key={image.id}
-                  className={`border-2 rounded-lg p-4 relative ${
-                    image.active ? "border-[#d8a355]" : "border-gray-300 opacity-60"
-                  }`}
-                >
-                  <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                    <img
-                      src={image.image_url}
-                      alt={image.answer}
-                      className="w-full h-full object-cover"
-                    />
+      <main className="flex-1 py-10 px-4">
+        <div className="container mx-auto max-w-6xl">
+          <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8 border-2 border-[#d8a355]/20">
+            <div className="flex flex-col gap-4 mb-6">
+              <h1 className="text-2xl sm:text-4xl font-bold text-[#1a2332]">
+                إدارة قاعدة خمن الصورة
+              </h1>
+              {/* قائمة المراحل */}
+              <div className="flex flex-wrap gap-2 items-center">
+                {stageLoading ? (
+                  <div className="py-1">
+                    <SiteLoader />
                   </div>
-                  <h3 className="font-bold text-lg mb-2">{image.answer}</h3>
-                  <button
-                    title="حذف الصورة"
-                    onClick={() => handleDelete(image.id)}
-                    className="absolute top-2 left-2 text-red-500 hover:text-red-700 bg-white rounded-full p-1 shadow"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              ))}
+                ) : stages.length === 0 ? (
+                  <span>لا توجد مراحل</span>
+                ) : (
+                  stages.map(stage => (
+                    <div key={stage.id} className={`flex items-center border rounded px-3 py-1 gap-1 ${selectedStageId === stage.id ? 'bg-[#d8a355]/20 border-[#d8a355]' : 'border-gray-300'}`}>
+                      <button
+                        className={`font-bold ${selectedStageId === stage.id ? 'text-[#d8a355]' : ''}`}
+                        style={{ cursor: 'pointer', background: 'none', border: 'none', outline: 'none' }}
+                        onClick={() => setSelectedStageId(stage.id)}
+                      >
+                        {stage.name}
+                      </button>
+                      <button onClick={() => deleteStage(stage.id)} title="حذف المرحلة" className="text-red-500 hover:text-red-700"><X size={16} /></button>
+                    </div>
+                  ))
+                )}
+                <Button size="sm" variant="outline" onClick={() => setShowAddStage(true)}><Plus className="w-4 h-4 ml-1" />إضافة مرحلة</Button>
+              </div>
+              {/* نافذة إضافة مرحلة */}
+              {showAddStage && (
+                <form onSubmit={addStage} className="flex gap-2 items-center mt-2">
+                  <Input value={newStage} onChange={e => setNewStage(e.target.value)} placeholder="اسم المرحلة الجديدة" required />
+                  <Button type="submit" disabled={stageLoading || !newStage.trim()}>حفظ</Button>
+                  <Button type="button" variant="outline" onClick={() => setShowAddStage(false)}>إلغاء</Button>
+                </form>
+              )}
             </div>
-          )
-        ) : (
-          <div className="text-center py-12 text-xl text-gray-500">اختر المرحلة لعرض صورها</div>
-        )}
-      </div>
+
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">صور المرحلة المختارة</h2>
+              <Button
+                onClick={() => {
+                  setEditingImage(null);
+                  setFormData({ image_url: "", answer: "" });
+                  setPreviewUrl("");
+                  setSelectedFile(null);
+                  setDialogOpen(true);
+                }}
+                disabled={!selectedStageId}
+                className="bg-gradient-to-r from-[#d8a355] to-[#c89547] text-white"
+              >
+                <Plus className="ml-2 w-4 h-4" /> إضافة صورة جديدة
+              </Button>
+            </div>
+            {selectedStageId ? (
+              loading ? (
+                <div className="py-12 flex justify-center">
+                  <SiteLoader />
+                </div>
+              ) : images.length === 0 ? (
+                <div className="text-center py-12">
+                  <ImageIcon className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                  <p className="text-xl text-gray-500">لا توجد صور في هذه المرحلة</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {images.map((image) => (
+                    <div
+                      key={image.id}
+                      className={`border-2 rounded-lg p-4 relative ${
+                        image.active ? "border-[#d8a355]" : "border-gray-300 opacity-60"
+                      }`}
+                    >
+                      <div className="aspect-video bg-gray-100 rounded-lg mb-4 overflow-hidden">
+                        <img
+                          src={image.image_url}
+                          alt={image.answer}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <h3 className="font-bold text-lg mb-2">{image.answer}</h3>
+                      <button
+                        title="حذف الصورة"
+                        onClick={() => handleDelete(image.id)}
+                        className="absolute top-2 left-2 text-red-500 hover:text-red-700 bg-white rounded-full p-1 shadow"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="text-center py-12 text-xl text-gray-500">اختر المرحلة لعرض صورها</div>
+            )}
+          </div>
+        </div>
+      </main>
 
       {/* Dialog للإضافة والتعديل */}
       <Dialog open={dialogOpen} onOpenChange={handleCloseDialog}>
@@ -514,6 +523,8 @@ export default function GuessImagesManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Footer />
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { createBrowserClient } from "@supabase/ssr"
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Card,
   CardContent,
@@ -37,7 +38,6 @@ import {
   LinkIcon,
   Upload,
   BookOpen,
-  ArrowRight,
 } from "lucide-react"
 
 /* -------------------------------------------------------------------------- */
@@ -379,7 +379,7 @@ export default function AdminPathwaysPage() {
   const icon = (t: string) =>
     t === "pdf" ? <FileText /> : t === "video" ? <Video /> : <LinkIcon />
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
     <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
@@ -413,12 +413,6 @@ export default function AdminPathwaysPage() {
               </div>
           <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => router.back()}
-                className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
               <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-[#D4AF37]" />
               </div>
@@ -694,7 +688,7 @@ export default function AdminPathwaysPage() {
             <div className="overflow-y-auto pr-2 space-y-3">
               {isLoadingResults ? (
                 <div className="flex justify-center items-center py-10">
-                  <div className="w-8 h-8 rounded-full border-4 border-[#D4AF37]/20 border-t-[#D4AF37] animate-spin" />
+                  <SiteLoader />
                 </div>
               ) : levelResults.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">

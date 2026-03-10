@@ -10,13 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart, BookMarked, CheckCircle2, Clock, BookOpen, Library, Check, PlayCircle, Lock } from "lucide-react"
-import { getSessionContent, getOffsetContent, SURAHS } from "@/lib/quran-data"
+import { calculateCompletedPlanPages, calculateTotalPages, getPageForAyah, getSessionContent, getOffsetContent, SURAHS } from "@/lib/quran-data"
 import { Button } from "@/components/ui/button"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { EffectSelector } from "@/components/effect-selector"
 import { BadgeSelector } from "@/components/badge-selector"
 import { FontSelector } from "@/components/font-selector"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 interface StudentData {
   id: string
@@ -28,6 +29,66 @@ interface StudentData {
   points: number
   rank: number | null
   created_at: string
+  completed_juzs?: number[]
+  current_juzs?: number[]
+}
+
+const JUZ_START_PAGES = [1, 22, 42, 62, 82, 102, 122, 142, 162, 182, 202, 222, 242, 262, 282, 302, 322, 342, 362, 382, 402, 422, 442, 462, 482, 502, 522, 542, 562, 582]
+
+function getJuzPageRange(juzNumber: number) {
+  const startPage = JUZ_START_PAGES[juzNumber - 1]
+  const nextStartPage = JUZ_START_PAGES[juzNumber]
+
+  return {
+    startPage,
+    endPage: nextStartPage ? nextStartPage - 1 : 604,
+  }
+}
+
+function getMemorizedJuzs(plan: any, completedDays: number) {
+  if (!plan) return new Set<number>()
+
+  const direction = (plan.direction as "asc" | "desc") || "asc"
+  const previousPages = plan.has_previous && plan.prev_start_surah && plan.prev_end_surah
+    ? calculateTotalPages(
+        Number(plan.prev_start_surah),
+        Number(plan.prev_end_surah),
+        Number(plan.prev_start_verse) || 1,
+        Number(plan.prev_end_verse) || null,
+      )
+    : 0
+  const currentPlanPages = calculateCompletedPlanPages(
+    Number(plan.total_pages) || 0,
+    Number(plan.daily_pages) || 0,
+    completedDays,
+  )
+  const totalMemorizedPages = previousPages + currentPlanPages
+
+  if (totalMemorizedPages <= 0) return new Set<number>()
+
+  const anchorSurah = plan.has_previous && plan.prev_start_surah
+    ? Number(plan.prev_start_surah)
+    : Number(plan.start_surah_number)
+  const anchorVerse = plan.has_previous && plan.prev_start_surah
+    ? Number(plan.prev_start_verse) || 1
+    : Number(plan.start_verse) || 1
+  const anchorPage = getPageForAyah(anchorSurah, anchorVerse)
+
+  const memorizedStartPage = direction === "desc"
+    ? Math.max(1, anchorPage - totalMemorizedPages + 1)
+    : anchorPage
+  const memorizedEndPage = direction === "desc"
+    ? anchorPage
+    : Math.min(604, anchorPage + totalMemorizedPages - 1)
+
+  const juzs = new Set<number>()
+  for (let juzNumber = 1; juzNumber <= 30; juzNumber += 1) {
+    const { startPage, endPage } = getJuzPageRange(juzNumber)
+    const overlaps = memorizedStartPage <= endPage && memorizedEndPage >= startPage
+    if (overlaps) juzs.add(juzNumber)
+  }
+
+  return juzs
 }
 
 interface AttendanceRecord {
@@ -38,6 +99,18 @@ interface AttendanceRecord {
   tikrar_level: string | null
   samaa_level: string | null
   rabet_level: string | null
+  hafiz_from_surah?: string | null
+  hafiz_from_verse?: string | null
+  hafiz_to_surah?: string | null
+  hafiz_to_verse?: string | null
+  samaa_from_surah?: string | null
+  samaa_from_verse?: string | null
+  samaa_to_surah?: string | null
+  samaa_to_verse?: string | null
+  rabet_from_surah?: string | null
+  rabet_from_verse?: string | null
+  rabet_to_surah?: string | null
+  rabet_to_verse?: string | null
 }
 
 interface StudentAchievement {
@@ -225,7 +298,7 @@ function ProfilePage() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 student_id: studentId,
-                title: `إنجاز خطة (${plan.start_surah_name} إلى ${plan.end_surah_name})`,
+                title: `إنجاز خطة (${((plan.direction as "asc" | "desc") || "asc") === "asc" ? plan.start_surah_name : plan.end_surah_name} إلى ${((plan.direction as "asc" | "desc") || "asc") === "asc" ? plan.end_surah_name : plan.start_surah_name})`,
                 category: "خطة حفظ",
                 date: new Date().toISOString().split("T")[0],
                 description: descKey,
@@ -287,7 +360,7 @@ function ProfilePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
@@ -322,12 +395,18 @@ function ProfilePage() {
     }
   }
 
+  function formatReadingRange(fromSurah?: string | null, fromVerse?: string | null, toSurah?: string | null, toVerse?: string | null) {
+    if (!fromSurah || !fromVerse || !toSurah || !toVerse) return null
+    return `${fromSurah} ${fromVerse} - ${toSurah} ${toVerse}`
+  }
+
+  const memorizedJuzs = getMemorizedJuzs(planData, planCompletedDays)
+
   return (
     <>
       {isLoggingOut && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
-          <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center gap-4">
-            <div className="w-16 h-16 border-4 border-[#d8a355]/20 border-t-[#d8a355] rounded-full animate-spin" />
+          <div className="bg-white rounded-2xl p-8 shadow-2xl flex flex-col items-center">
             <p className="text-xl font-bold text-[#d8a355]">جاري تسجيل الخروج...</p>
           </div>
         </div>
@@ -338,75 +417,6 @@ function ProfilePage() {
 
         <main className="flex-1 py-6 md:py-12 px-3 md:px-4">
           <div className="container mx-auto max-w-6xl">
-            {/* بطاقة ملف الطالب */}
-            <div className="w-full rounded-2xl overflow-hidden mb-3 md:mb-4 shadow-lg bg-white">
-
-              {/* رأس البطاقة */}
-              <div className="px-0 pt-0 pb-0 bg-white">
-                {/* تم حذف المستطيل العلوي نهائياً ليبدأ المكون مباشرة بمربعات الإحصاءات */}
-              </div>
-
-              {/* فاصل */}
-              <div className="h-px bg-[#d8a355]/15" />
-
-              {/* بطاقات الإحصاءات */}
-              <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[#d8a355]/12">
-                {[
-                  { icon: <Trophy className="w-4 h-4 text-[#d8a355]" />,                       label: "المركز العام", value: rankingData?.globalRank || "-", sub: "بين جميع الطلاب"          },
-                  { icon: <Award  className="w-4 h-4 text-[#d8a355]" />,                       label: "الحلقة",       value: rankingData?.circleRank  || "-", sub: rankingData?.circleName || "—" },
-                  { icon: <Star   className="w-4 h-4 text-[#d8a355] fill-[#d8a355]" />,        label: "النقاط",       value: studentData.points,               sub: "نقطة"                        },
-                ].map((stat) => (
-                  <div key={stat.label} className="flex flex-col items-center justify-center py-4 px-2 gap-1 bg-white border-2 border-[#d8a355]/40 rounded-xl shadow-sm">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-1" style={{ background: "rgba(216,163,85,0.08)" }}>
-                      {stat.icon}
-                    </div>
-                    <div className="text-xl md:text-2xl font-black text-[#1a2332]">{stat.value}</div>
-                    <div className="text-[9px] font-bold text-[#1a2332]/45 text-center">{stat.label}</div>
-                    <div className="text-[8px] text-[#1a2332]/30 truncate max-w-full text-center">{stat.sub}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* فاصل */}
-              <div className="h-px bg-[#d8a355]/15" />
-
-              {/* شريط خطة الحفظ */}
-              <div className="px-5 py-3.5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <BookMarked className="w-3.5 h-3.5 text-[#d8a355] flex-shrink-0" />
-                    <span className="text-[11px] font-bold text-[#1a2332]/65">خطة الحفظ</span>
-                    {planData && (
-                      <span className="text-[9px] text-[#1a2332]/35 truncate">{planData?.start_surah_name} ← {planData?.end_surah_name}</span>
-                    )}
-                  </div>
-                  <span className="text-xs font-black text-[#d8a355] flex-shrink-0 mr-2">{planData ? `${planProgress}%` : "0%"}</span>
-                </div>
-                <div className="relative h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(26,35,50,0.07)" }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-700 relative overflow-hidden"
-                    style={{
-                      width: `${planData ? planProgress : 0}%`,
-                      background: "linear-gradient(90deg, #b8860b 0%, #d8a355 50%, #f0d060 100%)",
-                    }}
-                  >
-                    <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)", animation: "shimmer 2s infinite" }} />
-                  </div>
-                  {[25, 50, 75].map((t) => (
-                    <div key={t} className="absolute top-0 bottom-0 w-px bg-[#1a2332]/10" style={{ left: `${t}%` }} />
-                  ))}
-                </div>
-                <div className="flex justify-between mt-1.5">
-                  {[0, 25, 50, 75, 100].map((lvl) => (
-                    <div key={lvl} className={`w-1.5 h-1.5 rounded-full transition-all ${(planData ? planProgress : 0) >= lvl ? "bg-[#d8a355] shadow-[0_0_4px_rgba(216,163,85,0.6)]" : "bg-[#1a2332]/12"}`} />
-                  ))}
-                </div>
-                <p className="text-[9px] text-[#1a2332]/30 mt-1 text-left">
-                  {planData && planCompletedDays > 0 ? `${planCompletedDays} يوم مكتمل` : null}
-                </p>
-              </div>
-            </div>
-
             {/* قسم البيانات - موحد */}
             <div className="w-full bg-white rounded-xl shadow-md border border-[#d8a355]/20 overflow-hidden mb-3 md:mb-6">
               <div className="px-4 py-2 border-b border-[#d8a355]/20 bg-gradient-to-r from-[#d8a355]/10 to-transparent">
@@ -543,8 +553,8 @@ function ProfilePage() {
                   </CardHeader>
                   <CardContent className="pt-6 space-y-4">
                     {isLoadingRecords ? (
-                      <div className="text-center py-8">
-                        <p className="text-xl font-bold text-[#c99347]/80">جاري تحميل السجلات...</p>
+                      <div className="flex justify-center py-8">
+                        <SiteLoader size="md" color="#d8a355" />
                       </div>
                     ) : attendanceRecords.length === 0 ? (
                       <div className="text-center py-12">
@@ -592,6 +602,11 @@ function ProfilePage() {
                                 <span className="text-lg font-extrabold text-[#1a2332]">
                                   {getEvaluationText(record.hafiz_level)}
                                 </span>
+                                {formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse) && (
+                                  <span className="text-[11px] text-neutral-500 mt-1 leading-4">
+                                    {formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex flex-col">
                                 <span className="text-base font-bold text-[#c99347] mb-1">التكرار</span>
@@ -600,16 +615,26 @@ function ProfilePage() {
                                 </span>
                               </div>
                               <div className="flex flex-col">
-                                <span className="text-base font-bold text-[#c99347] mb-1">السماع</span>
+                                <span className="text-base font-bold text-[#c99347] mb-1">المراجعة</span>
                                 <span className="text-lg font-extrabold text-[#1a2332]">
                                   {getEvaluationText(record.samaa_level)}
                                 </span>
+                                {formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse) && (
+                                  <span className="text-[11px] text-neutral-500 mt-1 leading-4">
+                                    {formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)}
+                                  </span>
+                                )}
                               </div>
                               <div className="flex flex-col">
                                 <span className="text-base font-bold text-[#c99347] mb-1">الربط</span>
                                 <span className="text-lg font-extrabold text-[#1a2332]">
                                   {getEvaluationText(record.rabet_level)}
                                 </span>
+                                {formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse) && (
+                                  <span className="text-[11px] text-neutral-500 mt-1 leading-4">
+                                    {formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -621,9 +646,8 @@ function ProfilePage() {
               </TabsContent>
               <TabsContent value="plan" className="space-y-4">
                 {isLoadingPlan ? (
-                  <div className="text-center py-12">
-                    <div className="w-10 h-10 rounded-full border-2 border-[#d8a355]/40 border-t-[#d8a355] animate-spin mx-auto" />
-                    <p className="mt-4 text-base text-[#c99347]/70">جاري تحميل الخطة...</p>
+                  <div className="flex justify-center py-12">
+                    <SiteLoader size="md" color="#d8a355" />
                   </div>
                 ) : !planData ? (
                   <div className="text-center py-14">
@@ -636,6 +660,8 @@ function ProfilePage() {
                   const totalDays = planData.total_days as number
                   const totalPages = planData.total_pages as number
                   const planDirection = (planData.direction as "asc" | "desc") || "asc"
+                  const planFromSurah = planDirection === "asc" ? planData.start_surah_name : planData.end_surah_name
+                  const planToSurah = planDirection === "asc" ? planData.end_surah_name : planData.start_surah_name
                   const startSurahData = SURAHS.find((s) => s.number === Math.min(planData.start_surah_number, planData.end_surah_number))
                   const planStartPage = startSurahData?.startPage || 1
 
@@ -731,9 +757,22 @@ function ProfilePage() {
                         <div className="flex-1 min-w-0 text-right">
                           <p className="text-[11px] text-[#c99347]/70 font-semibold mb-0.5">خطة الحفظ</p>
                           <p className="text-base font-black text-[#1a2332] leading-snug">
-                            من سورة {planDirection === "asc" ? planData.start_surah_name : planData.end_surah_name} إلى سورة {planDirection === "asc" ? planData.end_surah_name : planData.start_surah_name}
+                            من سورة {planFromSurah} إلى سورة {planToSurah}
                           </p>
-                          <p className="text-[11px] text-neutral-400 mt-0.5">{planData.daily_pages === 0.25 ? "ربع وجه يومياً" : planData.daily_pages === 0.5 ? "نصف وجه يومياً" : planData.daily_pages === 1 ? "وجه يومياً" : "وجهان يومياً"}</p>
+                          <div className="mt-3 max-w-md mr-0 ml-auto">
+                            <div className="flex items-center justify-end text-[11px] font-semibold text-[#8b6b3f] mb-1.5">
+                              <span>{Math.round(planProgress)}%</span>
+                            </div>
+                            <div className="h-2.5 rounded-full bg-[#d8a355]/12 overflow-hidden flex justify-end">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${Math.max(0, Math.min(100, planProgress))}%`,
+                                  background: "linear-gradient(270deg, #e8c27a 0%, #d8a355 55%, #c99347 100%)",
+                                }}
+                              />
+                            </div>
+                          </div>
                         </div>
                         {(() => {
                           const todayDateStr = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Riyadh" })).toISOString().split("T")[0];
@@ -842,7 +881,7 @@ function ProfilePage() {
                   <CardContent className="pt-2 md:pt-3 space-y-4 md:space-y-6">
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                       {Array.from({ length: 30 }, (_, i) => i + 1).map((juzNum) => {
-                        const isCompleted = studentData?.completed_juzs?.includes(juzNum);
+                        const isCompleted = (studentData?.completed_juzs?.includes(juzNum) ?? false) || memorizedJuzs.has(juzNum);
                         const isCurrent = studentData?.current_juzs?.includes(juzNum);
                         
                         let bgColor = "bg-white";

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Award, Upload } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
@@ -67,7 +68,7 @@ export default function AchievementsManagementPage() {
     setIsSubmitting(false)
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return <SiteLoader fullScreen />;
 
   return (
     <div className="max-w-2xl mx-auto p-6">

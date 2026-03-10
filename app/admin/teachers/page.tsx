@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Dialog,
   DialogContent,
@@ -18,6 +19,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserPlus, Trash2, ArrowRight, Settings, Users, User, Edit2 } from 'lucide-react'
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
@@ -215,12 +217,12 @@ export default function TeacherManagement() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
-        <div className="w-10 h-10 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fafaf9]" dir="rtl">
@@ -327,7 +329,7 @@ export default function TeacherManagement() {
           {/* Teachers List */}
           {isLoadingData ? (
             <div className="flex justify-center py-20">
-              <div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" />
+              <SiteLoader />
             </div>
           ) : teachers.length === 0 ? (
             <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-16 text-center">

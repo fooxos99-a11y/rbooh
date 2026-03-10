@@ -7,6 +7,7 @@
 
 
 import { Header } from "@/components/header"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 
 
@@ -26,7 +27,7 @@ import { createBrowserClient } from "@supabase/ssr"
 
 
 
-import { Lock, Zap, Trophy, BookOpen, Check, CircleDollarSign } from 'lucide-react'
+import { Lock, Trophy, BookOpen, Check, Star } from 'lucide-react'
 
 
 
@@ -481,7 +482,7 @@ export default function PathwaysPage() {
 
 
 
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
 
 
 
@@ -872,17 +873,12 @@ export default function PathwaysPage() {
 
 
 
-                {/* Coin circle */}
+                {/* Points star */}
 
-                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center mb-4"
-
-                  style={{ background: 'linear-gradient(145deg, #f5c96a, #b8843a)', boxShadow: '0 0 24px 6px rgba(216,163,85,0.4), inset 0 2px 4px rgba(255,255,255,0.3)' }}>
-
-                  <div className="absolute inset-1 rounded-full border border-white/20" />
-
-                  <CircleDollarSign className="w-7 h-7 md:w-9 md:h-9 text-[#3d2000]" strokeWidth={2.5} />
-
-                </div>
+                <Star
+                  className="w-12 h-12 md:w-16 md:h-16 mb-4 text-[#f4d03f] fill-[#f4d03f] drop-shadow-[0_0_14px_rgba(244,208,63,0.5)]"
+                  strokeWidth={2.1}
+                />
 
 
 
@@ -1012,7 +1008,7 @@ export default function PathwaysPage() {
                   <div className="mt-auto pt-3">
                     {/* Points */}
                     <div className="flex items-center gap-1 mb-3">
-                      <Zap className={`w-4 h-4 ${level.isLocked ? 'text-gray-300' : 'text-[#d8a355]'}`} />
+                      <Star className={`w-4 h-4 ${level.isLocked ? 'text-gray-300 fill-gray-300' : 'text-[#f4d03f] fill-[#f4d03f] drop-shadow-[0_0_4px_rgba(244,208,63,0.35)]'}`} strokeWidth={1.8} />
                       <span className={`text-sm font-bold ${level.isLocked ? 'text-gray-300' : 'text-[#d8a355]'}`}>
                         {level.userPoints} نقطة
                       </span>

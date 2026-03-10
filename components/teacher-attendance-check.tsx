@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { TeacherAttendanceModal } from "./teacher-attendance-modal"
+import { getSaudiDateString } from "@/lib/saudi-time"
 
 interface TeacherAttendanceCheckProps {
   teacherId?: string
@@ -35,7 +36,7 @@ export function TeacherAttendanceCheck({
 
       // Get the last checked date
       const lastCheckedDate = localStorage.getItem("lastAttendanceCheckDate")
-      const today = new Date().toISOString().split("T")[0]
+      const today = getSaudiDateString()
 
       if (isLoggedIn && userRole === "teacher") {
         // Show modal if it's a new day

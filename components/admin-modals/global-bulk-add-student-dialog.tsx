@@ -38,7 +38,7 @@ export function GlobalBulkAddStudentDialog() {
   const handleClose = (open: boolean) => {
     setIsOpen(open)
     if (!open) {
-       router.push("?", { scroll: false })
+       router.push(window.location.pathname, { scroll: false })
     }
   }
 
@@ -145,7 +145,7 @@ export function GlobalBulkAddStudentDialog() {
             disabled={!bulkCircle || bulkRows.every(r => !r.name.trim() || !r.account.trim()) || isBulkSubmitting}
             className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
           >
-            {isBulkSubmitting ? "جاري الحفظ..." : "حفظ الجميع"}
+            {isBulkSubmitting ? "جاري الحفظ..." : "حفظ"}
           </Button>
         </div>
       </DialogContent>

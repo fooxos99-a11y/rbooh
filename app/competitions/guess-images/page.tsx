@@ -9,6 +9,7 @@ import { ArrowRight } from "lucide-react";
 import TrophyIcon from "@/components/TrophyIcon";
 import { getGuessStages, getGuessImagesByStage } from "@/lib/guess-stages";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { SiteLoader } from "@/components/ui/site-loader";
 
 export default function GuessImagesGame() {
   const [step, setStep] = useState<'stage' | 'teams' | 'game'>("stage");
@@ -83,7 +84,7 @@ export default function GuessImagesGame() {
               <div className="text-2xl text-[#1a2332] font-bold mb-4">اكتشف معنى الصورة قبل الفريق الآخر</div>
 
             {loading ? (
-              <div className="text-2xl text-gray-500">جاري التحميل...</div>
+              <SiteLoader size="lg" />
             ) : (
               <div className="flex flex-wrap gap-8 justify-center">
                 {stages.map((stage) => (

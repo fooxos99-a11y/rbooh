@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import {
   Dialog,
   DialogContent,
@@ -51,7 +52,6 @@ export default function TeacherDashboard() {
       router.push("/login")
     } else {
       fetchTeacherData(accountNumber || "")
-      setIsLoading(false)
     }
   }, [router])
 
@@ -66,11 +66,13 @@ export default function TeacherDashboard() {
 
         // Fetch students in teacher's circle
         if (teacher.halaqah) {
-          fetchMyStudents(teacher.halaqah)
+          await fetchMyStudents(teacher.halaqah)
         }
       }
     } catch (error) {
       console.error("Error fetching teacher data:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -213,7 +215,7 @@ export default function TeacherDashboard() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }

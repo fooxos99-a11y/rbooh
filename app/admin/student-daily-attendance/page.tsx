@@ -2,15 +2,15 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Calendar } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 function translateLevel(level: string | null | undefined) {
   if (!level) return null;
@@ -50,6 +50,7 @@ interface AttendanceRecord {
   id: string
   student_id: string
   student_name: string
+  halaqah?: string | null
   status: string | null
   created_at: string
   notes?: string | null
@@ -57,15 +58,43 @@ interface AttendanceRecord {
   tikrar_level?: string | null
   samaa_level?: string | null
   rabet_level?: string | null
+  hafiz_from_surah?: string | null
+  hafiz_from_verse?: string | null
+  hafiz_to_surah?: string | null
+  hafiz_to_verse?: string | null
+  samaa_from_surah?: string | null
+  samaa_from_verse?: string | null
+  samaa_to_surah?: string | null
+  samaa_to_verse?: string | null
+  rabet_from_surah?: string | null
+  rabet_from_verse?: string | null
+  rabet_to_surah?: string | null
+  rabet_to_verse?: string | null
   attendance_date?: string
+}
+
+function formatReadingRange(fromSurah?: string | null, fromVerse?: string | null, toSurah?: string | null, toVerse?: string | null) {
+  if (!fromSurah || !fromVerse || !toSurah || !toVerse) return null
+  return `${fromSurah} ${fromVerse} - ${toSurah} ${toVerse}`
+}
+
+function EvaluationCell({ level, detail }: { level: string | null | undefined, detail?: string | null }) {
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <LevelBadge level={level} />
+      {detail && <span className="text-[11px] leading-4 text-neutral-500">{detail}</span>}
+    </div>
+  )
 }
 
 export default function StudentDailyAttendancePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير");
 
   const [isLoading, setIsLoading] = useState(true)
+  const [isFetchingRecords, setIsFetchingRecords] = useState(false)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
+  const [selectedCircle, setSelectedCircle] = useState("all")
 
   const getSaudiDate = () => {
     const now = new Date();
@@ -74,20 +103,18 @@ export default function StudentDailyAttendancePage() {
   }
 
   const [selectedDate, setSelectedDate] = useState(getSaudiDate())
-  const router = useRouter()
-
   useEffect(() => {
     if (!authLoading && authVerified) {
       fetchAttendanceRecords()
-      setIsLoading(false)
     }
-  }, [authLoading, authVerified])
+  }, [authLoading, authVerified, selectedDate])
 
   useEffect(() => {
     filterRecords()
-  }, [attendanceRecords, selectedDate])
+  }, [attendanceRecords, selectedDate, selectedCircle])
 
   const fetchAttendanceRecords = async () => {
+    setIsFetchingRecords(true)
     try {
       const response = await fetch(`/api/student-attendance/all?date=${selectedDate}`)
       if (!response.ok) throw new Error("فشل في جلب البيانات من السيرفر")
@@ -96,21 +123,26 @@ export default function StudentDailyAttendancePage() {
     } catch (error) {
       setAttendanceRecords([])
       console.error("[v0] Error fetching attendance:", error)
+    } finally {
+      setIsFetchingRecords(false)
+      setIsLoading(false)
     }
   }
 
   const filterRecords = () => {
     setFilteredRecords(
-      selectedDate
-        ? attendanceRecords.filter((r) => r.attendance_date === selectedDate)
-        : attendanceRecords
+      attendanceRecords.filter((r) => {
+        const matchesDate = selectedDate ? r.attendance_date === selectedDate : true
+        const matchesCircle = selectedCircle === "all" ? true : (r.halaqah || "") === selectedCircle
+        return matchesDate && matchesCircle
+      })
     )
   }
 
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f5f1e8] to-white">
-        <div className="text-xl text-[#1a2332] animate-pulse">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
@@ -129,7 +161,15 @@ export default function StudentDailyAttendancePage() {
     return (order[a.status ?? ""] ?? 3) - (order[b.status ?? ""] ?? 3);
   });
 
-  if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+  const availableCircles = Array.from(
+    new Set(
+      attendanceRecords
+        .map((record) => (record.halaqah || "").trim())
+        .filter((circleName) => circleName.length > 0)
+    )
+  ).sort((a, b) => a.localeCompare(b, "ar"))
+
+  if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
@@ -147,14 +187,29 @@ export default function StudentDailyAttendancePage() {
           {/* Date Filter */}
           <Card className="border border-[#d8a355]/25 shadow-sm transition-shadow duration-300 hover:shadow-md animate-in fade-in slide-in-from-top-3 duration-500">
             <CardContent className="pt-5 pb-4">
-              <div className="flex items-center gap-3 max-w-xs">
-                <Calendar className="w-4 h-4 text-[#d8a355] flex-shrink-0" />
-                <Input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="text-base border-[#d8a355]/40 focus-visible:ring-[#d8a355]/40 transition-all duration-200"
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-4 h-4 text-[#d8a355] flex-shrink-0" />
+                  <Input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="text-base border-[#d8a355]/40 focus-visible:ring-[#d8a355]/40 transition-all duration-200"
+                  />
+                </div>
+                <div>
+                  <Select value={selectedCircle} onValueChange={setSelectedCircle}>
+                    <SelectTrigger className="text-base border-[#d8a355]/40 focus:ring-[#d8a355]/40">
+                      <SelectValue placeholder="اختر الحلقة" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      <SelectItem value="all">كل الحلقات</SelectItem>
+                      {availableCircles.map((circle) => (
+                        <SelectItem key={circle} value={circle}>{circle}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -166,10 +221,11 @@ export default function StudentDailyAttendancePage() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-[#f5f1e8]/60 border-b border-[#d8a355]/20 hover:bg-[#f5f1e8]/60">
+                      <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold w-24 px-1 text-base">الحفظ</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold w-24 px-1 text-base">التكرار</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold w-24 px-1 text-base">السماع</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold w-24 px-1 text-base">المراجعة</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold w-24 px-1 text-base">الربط</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">الحالة</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">الملاحظات</TableHead>
@@ -178,8 +234,16 @@ export default function StudentDailyAttendancePage() {
                   <TableBody>
                     {isFuture ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-gray-400">
+                        <TableCell colSpan={8} className="text-center py-12 text-gray-400">
                           لا يمكن عرض بيانات الحضور لتاريخ مستقبلي
+                        </TableCell>
+                      </TableRow>
+                    ) : isFetchingRecords ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="py-12">
+                          <div className="flex justify-center">
+                            <SiteLoader size="md" />
+                          </div>
                         </TableCell>
                       </TableRow>
                     ) : sorted.length > 0 ? sorted.map((record, i) => (
@@ -188,11 +252,12 @@ export default function StudentDailyAttendancePage() {
                         className="transition-colors duration-150 hover:bg-[#f5f1e8]/50 border-b border-[#d8a355]/10"
                         style={{ animationDelay: `${i * 30}ms` }}
                       >
+                        <TableCell className="font-medium text-neutral-600 text-base">{record.halaqah || "—"}</TableCell>
                         <TableCell className="font-semibold text-[#1a2332] text-base">{record.student_name}</TableCell>
                         <TableCell className="text-center">
                           {(record.status === "absent" || record.status === "excused")
                             ? <span className="text-gray-300">—</span>
-                            : <LevelBadge level={record.hafiz_level} />}
+                            : <EvaluationCell level={record.hafiz_level} detail={formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)} />}
                         </TableCell>
                         <TableCell className="text-center px-1">
                           {(record.status === "absent" || record.status === "excused")
@@ -202,12 +267,12 @@ export default function StudentDailyAttendancePage() {
                         <TableCell className="text-center px-1">
                           {(record.status === "absent" || record.status === "excused")
                             ? <span className="text-gray-300">—</span>
-                            : <LevelBadge level={record.samaa_level} />}
+                            : <EvaluationCell level={record.samaa_level} detail={formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)} />}
                         </TableCell>
                         <TableCell className="text-center px-1">
                           {(record.status === "absent" || record.status === "excused")
                             ? <span className="text-gray-300">—</span>
-                            : <LevelBadge level={record.rabet_level} />}
+                            : <EvaluationCell level={record.rabet_level} detail={formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)} />}
                         </TableCell>
                         <TableCell className="text-center">
                           <StatusBadge status={record.status} />
@@ -220,8 +285,10 @@ export default function StudentDailyAttendancePage() {
                       </TableRow>
                     )) : (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-gray-400">
-                          لا توجد سجلات للعرض في التاريخ المحدد
+                        <TableCell colSpan={8} className="text-center py-12 text-gray-400">
+                          {selectedCircle === "all"
+                            ? "لا توجد سجلات للعرض في التاريخ المحدد"
+                            : "لا يوجد طلاب أو سجلات لهذه الحلقة في التاريخ المحدد"}
                         </TableCell>
                       </TableRow>
                     )}

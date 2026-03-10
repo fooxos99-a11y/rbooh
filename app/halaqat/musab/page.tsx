@@ -3,6 +3,7 @@
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Badge } from "@/components/ui/badge"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Award, Calendar, Star, MonitorPlay, X} from "lucide-react"
 import { useEffect, useState } from "react"
@@ -217,7 +218,7 @@ export default function MusabHalaqahPage() {
       <div className="min-h-screen flex flex-col bg-white">
         {!isAutoScrolling && <Header />}
         <main className="flex-1 flex items-center justify-center">
-          <div className="text-2xl text-[#023232]">جاري التحميل...</div>
+          <SiteLoader size="lg" />
         </main>
         <Footer />
       </div>

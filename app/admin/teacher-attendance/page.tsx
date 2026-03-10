@@ -4,12 +4,18 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Calendar, Clock } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { SiteLoader } from "@/components/ui/site-loader"
+import { formatSaudiTimeWithPeriod, getSaudiDateString } from "@/lib/saudi-time"
+import { DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES, TEACHER_ATTENDANCE_DELAY_SETTING_ID } from "@/lib/site-settings-constants"
 
 interface AttendanceRecord {
   id: string
@@ -20,6 +26,17 @@ interface AttendanceRecord {
   check_in_time: string
   status: string
   created_at: string
+  asrTime: string | null
+  graceDeadline: string | null
+  checkInTimeLocal: string | null
+  isLate: boolean | null
+  isEarly: boolean | null
+  isOnTime: boolean | null
+  timingCategory: "late" | "early" | "on-time" | null
+  lateMinutes: number | null
+  city: string
+  graceMinutes: number
+  source: string
 }
 
 export default function TeacherAttendancePage() {
@@ -28,14 +45,14 @@ export default function TeacherAttendancePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
-  // تاريخ اليوم بتوقيت السعودية
-  const getSaudiDate = () => {
-    const now = new Date()
-    const saDate = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }))
-    return saDate.toISOString().split("T")[0]
-  }
-  const [selectedDate, setSelectedDate] = useState(getSaudiDate())
+  const [graceMinutes, setGraceMinutes] = useState(50)
+  const [todayAsrTime, setTodayAsrTime] = useState<string | null>(null)
+  const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
+  const [isDelayDialogOpen, setIsDelayDialogOpen] = useState(false)
+  const [delayMinutes, setDelayMinutes] = useState(String(DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES))
+  const [isSavingDelay, setIsSavingDelay] = useState(false)
   const router = useRouter()
+  const showAlert = useAlertDialog()
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -45,9 +62,35 @@ export default function TeacherAttendancePage() {
       router.push("/login")
     } else {
       fetchAttendanceRecords()
-      setIsLoading(false)
     }
   }, [router])
+
+  useEffect(() => {
+    const refreshData = () => {
+      void fetchAttendanceRecords()
+    }
+
+    const refreshOnVisibility = () => {
+      if (document.visibilityState === "visible") {
+        refreshData()
+      }
+    }
+
+    const refreshInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        refreshData()
+      }
+    }, 60000)
+
+    window.addEventListener("focus", refreshData)
+    document.addEventListener("visibilitychange", refreshOnVisibility)
+
+    return () => {
+      window.removeEventListener("focus", refreshData)
+      document.removeEventListener("visibilitychange", refreshOnVisibility)
+      window.clearInterval(refreshInterval)
+    }
+  }, [])
 
   useEffect(() => {
     filterRecords()
@@ -61,8 +104,17 @@ export default function TeacherAttendancePage() {
       if (data.records) {
         setAttendanceRecords(data.records)
       }
+
+      if (typeof data.meta?.graceMinutes === "number") {
+        setGraceMinutes(data.meta.graceMinutes)
+        setDelayMinutes(String(data.meta.graceMinutes))
+      }
+
+      setTodayAsrTime(typeof data.meta?.todayAsrTime === "string" ? data.meta.todayAsrTime : null)
     } catch (error) {
       console.error("[v0] Error fetching attendance:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -75,17 +127,71 @@ export default function TeacherAttendancePage() {
     setFilteredRecords(filtered)
   }
 
+  const handleSaveDelaySetting = async () => {
+    const parsedMinutes = Number.parseInt(delayMinutes, 10)
+    if (!Number.isFinite(parsedMinutes) || parsedMinutes < 0) {
+      await showAlert("أدخل مدة تأخير صحيحة بالدقائق", "تنبيه")
+      return
+    }
+
+    try {
+      setIsSavingDelay(true)
+      const response = await fetch("/api/site-settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: TEACHER_ATTENDANCE_DELAY_SETTING_ID,
+          value: { minutes: parsedMinutes },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "فشل في حفظ مدة التأخير")
+      }
+
+      setGraceMinutes(parsedMinutes)
+      setDelayMinutes(String(parsedMinutes))
+      setIsDelayDialogOpen(false)
+      await fetchAttendanceRecords()
+      await showAlert(`تم ضبط مدة التأخير إلى ${parsedMinutes} دقيقة بعد أذان العصر في بريدة`, "نجاح")
+    } catch (error) {
+      console.error("[teacher-attendance] Error saving teacher delay setting:", error)
+      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ مدة التأخير", "خطأ")
+    } finally {
+      setIsSavingDelay(false)
+    }
+  }
+
   const formatTime = (timestamp: string) => {
     try {
-      const date = new Date(timestamp)
-      return date.toLocaleTimeString("ar-SA", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
+      return formatSaudiTimeWithPeriod(timestamp)
     } catch {
       return "-"
     }
+  }
+
+  const renderAttendanceStatus = (record: AttendanceRecord) => {
+    if (record.status !== "present") {
+      return <span className="text-red-600 font-bold">✗ لم يحضر</span>
+    }
+
+    if (record.timingCategory === "late") {
+      return <span className="font-bold text-amber-600">متأخر {record.lateMinutes} د</span>
+    }
+
+    if (record.timingCategory === "early") {
+      return <span className="text-emerald-600 font-bold">مبكر</span>
+    }
+
+    if (record.timingCategory === "on-time") {
+      return <span className="text-sky-700 font-bold">حاضر</span>
+    }
+
+    return <span className="text-neutral-500 font-bold">حاضر</span>
   }
 
   const formatDate = (dateString: string) => {
@@ -104,12 +210,12 @@ export default function TeacherAttendancePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><div className="w-8 h-8 rounded-full border-2 border-[#D4AF37] border-t-transparent animate-spin" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
@@ -119,9 +225,19 @@ export default function TeacherAttendancePage() {
         <div className="container mx-auto max-w-7xl">
           <div className="space-y-6">
             {/* Page Header */}
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332] mb-2">تحضير المعلمين</h1>
-              <p className="text-gray-600">عرض وإدارة حضور المعلمين وتسجيل الوقت بالضبط</p>
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332] mb-2">تحضير المعلمين</h1>
+                <p className="text-gray-600">يحتسب التأخر بعد {graceMinutes} دقيقة من أذان العصر</p>
+                <p className="text-sm text-[#8E6B16] mt-2">أذان العصر اليوم: {todayAsrTime ? formatSaudiTimeWithPeriod(todayAsrTime) : "-"}</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setIsDelayDialogOpen(true)}
+                className="self-start border-[#D4AF37]/50 bg-white text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37]"
+              >
+                مدة التأخير
+              </Button>
             </div>
 
             {/* Filters Card */}
@@ -188,14 +304,10 @@ export default function TeacherAttendancePage() {
                               <TableCell className="text-[#1a2332] text-lg">{record.account_number}</TableCell>
                               <TableCell className="text-[#1a2332] text-lg">{formatDate(record.attendance_date)}</TableCell>
                               <TableCell className="text-[#1a2332] font-mono text-lg font-semibold">
-                                {formatTime(record.check_in_time)}
+                                {record.checkInTimeLocal ? formatSaudiTimeWithPeriod(record.checkInTimeLocal) : formatTime(record.check_in_time)}
                               </TableCell>
                               <TableCell className="text-[#1a2332] text-lg">
-                                {record.status === "present" ? (
-                                  <span className="text-green-600 font-bold">✓ حاضر</span>
-                                ) : (
-                                  <span className="text-red-600 font-bold">✗ لم يحضر</span>
-                                )}
+                                {renderAttendanceStatus(record)}
                               </TableCell>
                             </TableRow>
                           ))
@@ -215,6 +327,35 @@ export default function TeacherAttendancePage() {
           </div>
         </div>
       </main>
+
+      <Dialog open={isDelayDialogOpen} onOpenChange={setIsDelayDialogOpen}>
+        <DialogContent className="sm:max-w-[420px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-[#1a2332] text-right">مدة التأخير</DialogTitle>
+            <DialogDescription className="text-sm text-neutral-500 text-right">يتم احتساب التأخير بعد أذان العصر في بريدة بهذه المدة</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4 text-right">
+            <div className="space-y-2">
+              <Label htmlFor="teacherDelayMinutes" className="text-sm font-semibold text-[#1a2332]">عدد الدقائق بعد أذان العصر</Label>
+              <Input
+                id="teacherDelayMinutes"
+                value={delayMinutes}
+                onChange={(e) => setDelayMinutes(e.target.value)}
+                placeholder="50"
+                dir="ltr"
+                type="number"
+                min="0"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3" dir="rtl">
+            <Button variant="outline" onClick={() => setIsDelayDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
+            <Button onClick={handleSaveDelaySetting} disabled={isSavingDelay} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] disabled:opacity-60 disabled:cursor-not-allowed">
+              {isSavingDelay ? "جاري الحفظ..." : "حفظ"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Footer />
     </div>

@@ -1,6 +1,21 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+function getKsaDateString() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Riyadh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  const parts = formatter.formatToParts(new Date())
+  const year = parts.find((part) => part.type === "year")?.value
+  const month = parts.find((part) => part.type === "month")?.value
+  const day = parts.find((part) => part.type === "day")?.value
+
+  return `${year}-${month}-${day}`
+}
+
 function calculatePoints(level: string): number {
   switch (level) {
     case "excellent":
@@ -16,6 +31,20 @@ function calculatePoints(level: string): number {
   }
 }
 
+function hasCompleteEvaluation(levels: {
+  hafiz_level?: string | null
+  tikrar_level?: string | null
+  samaa_level?: string | null
+  rabet_level?: string | null
+}) {
+  return !!(
+    levels.hafiz_level &&
+    levels.tikrar_level &&
+    levels.samaa_level &&
+    levels.rabet_level
+  )
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -24,10 +53,27 @@ export async function POST(request: NextRequest) {
     if (!Array.isArray(students) || !teacher_id || !halaqah) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
+
+    for (const student of students) {
+      const status = student.attendance || "present"
+      if (
+        status === "present" &&
+        !hasCompleteEvaluation({
+          hafiz_level: student.evaluation?.hafiz,
+          tikrar_level: student.evaluation?.tikrar,
+          samaa_level: student.evaluation?.samaa,
+          rabet_level: student.evaluation?.rabet,
+        })
+      ) {
+        return NextResponse.json(
+          { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر قبل الحفظ", student_id: student.id },
+          { status: 400 },
+        )
+      }
+    }
+
     const supabase = await createClient()
-    const today = new Date()
-    const saDate = new Date(today.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }))
-    const todayDate = saDate.toISOString().split("T")[0]
+    const todayDate = getKsaDateString()
     const results = []
     for (const student of students) {
       const { id: student_id, attendance, evaluation } = student;
@@ -48,6 +94,8 @@ export async function POST(request: NextRequest) {
         .eq("date", todayDate)
         .maybeSingle();
       let attendanceRecord;
+      let oldPoints = 0;
+
       if (existingRecord) {
         // حذف التقييم القديم وخصم النقاط القديمة
         const { data: oldEvaluation } = await supabase
@@ -55,7 +103,6 @@ export async function POST(request: NextRequest) {
           .select("*")
           .eq("attendance_record_id", existingRecord.id)
           .maybeSingle();
-        let oldPoints = 0;
         if (oldEvaluation) {
           oldPoints =
             calculatePoints(oldEvaluation.hafiz_level) +
@@ -77,66 +124,7 @@ export async function POST(request: NextRequest) {
             await supabase.from("students").update({ points: newPoints }).eq("id", student_id);
           }
         }
-        // إذا كانت الحالة حاضر، أدخل التقييمات الجديدة دائماً
-        if (!isAbsent && hafiz_level && tikrar_level && samaa_level && rabet_level) {
-          const hafizPoints = calculatePoints(hafiz_level);
-          const tikrarPoints = calculatePoints(tikrar_level);
-          const samaaPoints = calculatePoints(samaa_level);
-          const rabetPoints = calculatePoints(rabet_level);
-          const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints;
-          const { data: evaluationResult, error: evaluationError } = await supabase
-            .from("evaluations")
-            .insert({
-              attendance_record_id: attendanceRecord.id,
-              hafiz_level,
-              tikrar_level,
-              samaa_level,
-              rabet_level,
-            })
-            .select()
-            .single();
-          console.log(`[DEBUG][API] التقييم المخزن في قاعدة البيانات:`, evaluationResult);
-          if (totalPoints > 0) {
-            const { data: studentData } = await supabase.from("students").select("points").eq("id", student_id).single();
-            if (studentData) {
-              const currentPoints = studentData.points || 0;
-              const newPoints = currentPoints + totalPoints;
-              await supabase.from("students").update({ points: newPoints }).eq("id", student_id);
-            }
-          }
-          results.push({ student_id, success: true, pointsAdded: totalPoints });
-        }
       } else {
-        // سجل حضور جديد
-        // تحقق من وجود تقييم قديم لهذا الطالب في هذا اليوم (في حال تم حذف سجل الحضور وأعيد إدخاله)
-        let oldPoints = 0;
-        const { data: oldAttendanceRecord } = await supabase
-          .from("attendance_records")
-          .select("id")
-          .eq("student_id", student_id)
-          .eq("date", todayDate)
-          .maybeSingle();
-        if (oldAttendanceRecord) {
-          const { data: oldEvaluation } = await supabase
-            .from("evaluations")
-            .select("*")
-            .eq("attendance_record_id", oldAttendanceRecord.id)
-            .maybeSingle();
-          if (oldEvaluation) {
-            oldPoints =
-              calculatePoints(oldEvaluation.hafiz_level) +
-              calculatePoints(oldEvaluation.tikrar_level) +
-              calculatePoints(oldEvaluation.samaa_level) +
-              calculatePoints(oldEvaluation.rabet_level);
-            await supabase.from("evaluations").delete().eq("attendance_record_id", oldAttendanceRecord.id);
-            const { data: studentData } = await supabase.from("students").select("points").eq("id", student_id).single();
-            if (studentData) {
-              const currentPoints = studentData.points || 0;
-              const newPoints = Math.max(0, currentPoints - oldPoints);
-              await supabase.from("students").update({ points: newPoints }).eq("id", student_id);
-            }
-          }
-        }
         const { data: newRecord } = await supabase
           .from("attendance_records")
           .insert({ student_id, teacher_id, halaqah, status, date: todayDate })
@@ -144,37 +132,46 @@ export async function POST(request: NextRequest) {
           .single();
         attendanceRecord = newRecord;
       }
+
       // إضافة التقييم الجديد وحساب النقاط فقط إذا لم يكن غائب أو مستأذن
       if (!isAbsent) {
-        if (hafiz_level && tikrar_level && samaa_level && rabet_level) {
-          const hafizPoints = calculatePoints(hafiz_level);
-          const tikrarPoints = calculatePoints(tikrar_level);
-          const samaaPoints = calculatePoints(samaa_level);
-          const rabetPoints = calculatePoints(rabet_level);
-          const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints;
-          const { data: evaluation, error: evaluationError } = await supabase
-            .from("evaluations")
-            .insert({
-              attendance_record_id: attendanceRecord.id,
-              hafiz_level,
-              tikrar_level,
-              samaa_level,
-              rabet_level,
-            })
-            .select()
-            .single();
-          if (totalPoints > 0) {
-            const { data: studentData } = await supabase.from("students").select("points").eq("id", student_id).single();
-            if (studentData) {
-              const currentPoints = studentData.points || 0;
-              const newPoints = currentPoints + totalPoints;
-              await supabase.from("students").update({ points: newPoints }).eq("id", student_id);
-            }
+        const hafizPoints = calculatePoints(hafiz_level);
+        const tikrarPoints = calculatePoints(tikrar_level);
+        const samaaPoints = calculatePoints(samaa_level);
+        const rabetPoints = calculatePoints(rabet_level);
+        const totalPoints = hafizPoints + tikrarPoints + samaaPoints + rabetPoints;
+        const { data: evaluationResult, error: evaluationError } = await supabase
+          .from("evaluations")
+          .insert({
+            attendance_record_id: attendanceRecord.id,
+            hafiz_level,
+            tikrar_level,
+            samaa_level,
+            rabet_level,
+          })
+          .select()
+          .single();
+
+        if (evaluationError) {
+          if (!existingRecord) {
+            await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
           }
-          results.push({ student_id, success: true, pointsAdded: totalPoints });
-        } else {
-          results.push({ student_id, success: true, pointsAdded: 0 });
+          return NextResponse.json(
+            { error: "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور", student_id },
+            { status: 500 },
+          )
         }
+
+        console.log(`[DEBUG][API] التقييم المخزن في قاعدة البيانات:`, evaluationResult);
+        if (totalPoints > 0) {
+          const { data: studentData } = await supabase.from("students").select("points").eq("id", student_id).single();
+          if (studentData) {
+            const currentPoints = studentData.points || 0;
+            const newPoints = currentPoints + totalPoints;
+            await supabase.from("students").update({ points: newPoints }).eq("id", student_id);
+          }
+        }
+        results.push({ student_id, success: true, pointsAdded: totalPoints });
       } else {
         // إذا كان غائب أو مستأذن لا يتم إضافة تقييمات ولا نقاط، ويتم حذف أي تقييمات قديمة
         await supabase.from("evaluations").delete().eq("attendance_record_id", attendanceRecord.id);

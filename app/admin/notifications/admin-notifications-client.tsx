@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase-client"
 import { toast } from "@/hooks/use-toast"
-import { Bell, Send, CheckSquare, Square, Users, GraduationCap, ShieldCheck, Search, Loader2 } from "lucide-react"
+import { SiteLoader } from "@/components/ui/site-loader"
+import { Bell, Send, CheckSquare, Square, Users, GraduationCap, ShieldCheck, Search } from "lucide-react"
 
 interface User {
   id: string
@@ -263,7 +264,7 @@ export default function AdminNotificationsClient() {
               disabled={sending || Object.keys(selectedUsers).length === 0}
               className="h-10 px-6 bg-[#D4AF37] hover:bg-[#C9A961] text-white font-bold rounded-lg flex items-center gap-2 disabled:opacity-50 transition-all shadow-sm"
             >
-              {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+              {sending ? <SiteLoader color="#ffffff" /> : <Send className="w-5 h-5" />}
               <span className="hidden sm:inline">إرسال</span>
             </button>
           </div>
@@ -272,7 +273,7 @@ export default function AdminNotificationsClient() {
         {/* Users List */}
         <div className="max-h-[600px] overflow-y-auto p-4 bg-gray-50/20">
           {loading ? (
-            <div className="flex justify-center py-12"><Loader2 className="w-8 h-8 text-[#D4AF37] animate-spin" /></div>
+            <div className="flex justify-center py-12"><SiteLoader /></div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">لا يوجد مستخدمين لعرضهم</div>
           ) : (

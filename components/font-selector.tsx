@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { toast } from "sonner"
 
 const fonts = [
@@ -88,7 +89,9 @@ export function FontSelector({ studentId }: FontSelectorProps) {
     return (
       <div className="space-y-4">
         <h3 className="text-xl font-bold text-[#1a2332]">الخط</h3>
-        <p className="text-base text-[#1a2332]/60">جاري التحميل...</p>
+        <div className="flex justify-center py-2">
+          <SiteLoader size="sm" />
+        </div>
       </div>
     )
   }

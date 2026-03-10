@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight, Check } from "lucide-react"
 
 type DBQuestion = {
@@ -326,7 +327,7 @@ export default function CategoriesGame() {
 
             {loading ? (
               <div className="text-center py-12">
-                <p className="text-xl text-[#1a2332]">جاري التحميل...</p>
+                <SiteLoader />
               </div>
             ) : (
               <>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Palette } from "lucide-react"
+import { SiteLoader } from "@/components/ui/site-loader"
 
 const THEMES = {
   beige_default: {
@@ -217,7 +218,9 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
           <Palette className="w-5 h-5 md:w-6 md:h-6 text-[#d8a355]" />
           <h3 className="text-lg md:text-xl font-bold text-[#1a2332]">اختر المظهر</h3>
         </div>
-        <div className="text-center py-4 text-gray-500">جاري التحميل...</div>
+        <div className="flex justify-center py-4">
+          <SiteLoader size="sm" />
+        </div>
       </div>
     )
   }

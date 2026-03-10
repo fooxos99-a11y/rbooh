@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { Award, Upload, FileText } from "lucide-react"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
 export default function AdminAchievementsPage() {
@@ -113,7 +114,7 @@ export default function AdminAchievementsPage() {
       <hr className="my-6" />
       <h2 className="text-xl font-bold mb-4">قائمة الإنجازات العامة</h2>
       {isLoading ? (
-        <div className="text-center py-8 text-gray-500">جاري التحميل...</div>
+        <div className="flex justify-center py-8"><SiteLoader /></div>
       ) : achievements.length === 0 ? (
         <div className="text-center py-8 text-gray-500">لا توجد إنجازات عامة حالياً</div>
       ) : (

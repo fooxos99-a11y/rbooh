@@ -13,12 +13,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { toast } from "@/hooks/use-toast"
 
 export function GlobalAddStudentDialog() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const pathname = usePathname()
+  const showAlert = useAlertDialog()
   
   const [isOpen, setIsOpen] = useState(false)
   
@@ -62,7 +64,7 @@ export function GlobalAddStudentDialog() {
       const currentSearchParams = new URLSearchParams(searchParams?.toString() || "");
       currentSearchParams.delete("action");
       const newQuery = currentSearchParams.toString();
-      const targetUrl = newQuery ? `?${newQuery}` : pathname;
+      const targetUrl = newQuery ? `?${newQuery}` : (pathname || "/");
       router.push(targetUrl, { scroll: false });
     }
   }
@@ -98,11 +100,11 @@ export function GlobalAddStudentDialog() {
           setNewGuardianPhone("")
           handleClose(false)
         } else {
-          alert(data.error || "فشل في إضافة الطالب")
+          await showAlert(data.error || "فشل في إضافة الطالب", "خطأ")
         }
       } catch (error) {
         console.error(error)
-        alert("حدث خطأ أثناء إضافة الطالب")
+        await showAlert("حدث خطأ أثناء إضافة الطالب", "خطأ")
       } finally {
         setIsSubmitting(false)
       }
@@ -115,8 +117,9 @@ export function GlobalAddStudentDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto" dir="rtl">
-        <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent text-right">
-          <DialogTitle className="text-lg font-bold text-[#1a2332] pr-8">
+        <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
+          <DialogTitle className="text-lg font-bold text-[#1a2332] flex items-center gap-2 pr-8">
+            <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] text-base">＋</span>
             إضافة طالب جديد
           </DialogTitle>
         </DialogHeader>
@@ -187,12 +190,11 @@ export function GlobalAddStudentDialog() {
 
         <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
           <Button
-            variant="outline"
             onClick={handleAddStudent}
             disabled={!newStudentName.trim() || !newStudentIdNumber.trim() || !newStudentAccountNumber.trim() || !selectedCircleToAdd || isSubmitting}
-            className="flex-1 border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10 disabled:opacity-50"
+            className="flex-1 h-10 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
           >
-            {isSubmitting ? "جاري الحفظ..." : "حفظ الطالب"}
+            {isSubmitting ? "جاري الحفظ..." : "حفظ"}
           </Button>
           <Button variant="outline" onClick={() => handleClose(false)}
             className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10">

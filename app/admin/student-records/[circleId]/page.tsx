@@ -4,6 +4,7 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
@@ -95,8 +96,8 @@ export default function CircleAttendancePage() {
           </div>
 
           {loading ? (
-            <div className="text-center py-12">
-              <p className="text-xl text-gray-600">جاري التحميل...</p>
+            <div className="flex justify-center py-12">
+              <SiteLoader />
             </div>
           ) : students.length === 0 ? (
             <Card className="border-2 border-[#d8a355]">

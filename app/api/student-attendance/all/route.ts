@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   // جلب جميع التقييمات لهذا اليوم
   const { data: evaluations, error: evalError } = await supabase
     .from("evaluations")
-    .select("attendance_record_id, hafiz_level, tikrar_level, samaa_level, rabet_level")
+    .select("attendance_record_id, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
 
   if (evalError) {
     console.error("Supabase evaluations error:", evalError)
@@ -66,6 +66,18 @@ export async function GET(request: Request) {
         tikrar_level: evalRec?.tikrar_level ?? null,
         samaa_level: evalRec?.samaa_level ?? null,
         rabet_level: evalRec?.rabet_level ?? null,
+        hafiz_from_surah: evalRec?.hafiz_from_surah ?? null,
+        hafiz_from_verse: evalRec?.hafiz_from_verse ?? null,
+        hafiz_to_surah: evalRec?.hafiz_to_surah ?? null,
+        hafiz_to_verse: evalRec?.hafiz_to_verse ?? null,
+        samaa_from_surah: evalRec?.samaa_from_surah ?? null,
+        samaa_from_verse: evalRec?.samaa_from_verse ?? null,
+        samaa_to_surah: evalRec?.samaa_to_surah ?? null,
+        samaa_to_verse: evalRec?.samaa_to_verse ?? null,
+        rabet_from_surah: evalRec?.rabet_from_surah ?? null,
+        rabet_from_verse: evalRec?.rabet_from_verse ?? null,
+        rabet_to_surah: evalRec?.rabet_to_surah ?? null,
+        rabet_to_verse: evalRec?.rabet_to_verse ?? null,
       }
     } else {
       return {
@@ -82,6 +94,18 @@ export async function GET(request: Request) {
         tikrar_level: null,
         samaa_level: null,
         rabet_level: null,
+        hafiz_from_surah: null,
+        hafiz_from_verse: null,
+        hafiz_to_surah: null,
+        hafiz_to_verse: null,
+        samaa_from_surah: null,
+        samaa_from_verse: null,
+        samaa_to_surah: null,
+        samaa_to_verse: null,
+        rabet_from_surah: null,
+        rabet_from_verse: null,
+        rabet_to_surah: null,
+        rabet_to_verse: null,
       }
     }
   })

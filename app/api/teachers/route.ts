@@ -178,15 +178,41 @@ export async function PATCH(request: Request) {
   try {
     const supabase = await createClient()
     const body = await request.json()
-    const { id, phone_number, id_number } = body
+    const { id, name, phone_number, id_number, account_number, halaqah, role } = body
 
     if (!id) {
       return NextResponse.json({ error: "معرف المعلم مطلوب" }, { status: 400 })
     }
 
     const updateData: any = {}
+    if (name !== undefined) updateData.name = name
     if (phone_number !== undefined) updateData.phone_number = phone_number
     if (id_number !== undefined) updateData.id_number = id_number
+    if (account_number !== undefined) updateData.account_number = account_number
+    if (halaqah !== undefined) updateData.halaqah = halaqah
+    if (role !== undefined) updateData.role = role === "deputy_teacher" ? "deputy_teacher" : "teacher"
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "لا توجد بيانات لتحديثها" }, { status: 400 })
+    }
+
+    if (account_number !== undefined) {
+      const { data: existingUser, error: accountError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("account_number", account_number)
+        .neq("id", id)
+        .maybeSingle()
+
+      if (accountError) {
+        console.error("[v0] Error checking teacher account number:", accountError)
+        return NextResponse.json({ error: "تعذر التحقق من رقم الحساب" }, { status: 500 })
+      }
+
+      if (existingUser) {
+        return NextResponse.json({ error: "رقم الحساب مستخدم بالفعل" }, { status: 400 })
+      }
+    }
 
     const { data, error } = await supabase
       .from("users")

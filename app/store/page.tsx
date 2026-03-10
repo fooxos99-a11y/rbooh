@@ -7,6 +7,7 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { ShoppingBag, CircleDollarSign, Palette } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { getSupabase } from "@/lib/supabase"
@@ -104,7 +105,7 @@ export default function StorePage() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-2xl text-[#1a2332]">جاري التحميل...</div>
+        <SiteLoader size="lg" />
       </div>
     )
   }
