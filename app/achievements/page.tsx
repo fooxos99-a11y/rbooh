@@ -3,6 +3,7 @@
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
+import { SiteLoader } from "@/components/ui/site-loader"
 import { Award, Trophy, Medal, Verified, Trash2, Plus } from 'lucide-react'
 import { useEffect, useState } from "react"
 

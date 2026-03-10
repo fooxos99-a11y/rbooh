@@ -19,7 +19,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserPlus, Trash2, ArrowRight, Settings, Users, User, Edit2 } from 'lucide-react'
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { SiteLoader } from "@/components/ui/site-loader"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 

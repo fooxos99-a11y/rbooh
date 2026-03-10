@@ -19,7 +19,6 @@ import {
 import { Plus, Trash2, ArrowRight, Users, BookOpen, Eye, UserX, Info } from "lucide-react"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { SiteLoader } from "@/components/ui/site-loader"
 import { TeacherAttendanceModal } from "@/components/teacher-attendance-modal"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
