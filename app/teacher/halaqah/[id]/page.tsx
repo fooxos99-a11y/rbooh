@@ -336,10 +336,13 @@ export default function HalaqahManagement() {
 	const [compStudentId, setCompStudentId] = useState<string | null>(null)
 		const [missedDays, setMissedDays] = useState<MissedDayRecord[]>([])
         const [isCompLoading, setIsCompLoading] = useState(false)
-	const evaluationRefs = useRef<Record<string, HTMLDivElement | null>>({})
+		const [showReadingSegments, setShowReadingSegments] = useState(false)
+		const studentsRef = useRef<StudentAttendance[]>([])
+		const readingSegmentsStorageKey = teacherData?.id
+			? `halaqah-show-reading-segments-${teacherData.id}`
+			: null
 
 	const showAlert = useAlertDialog()
-	const evaluationOrder: EvaluationType[] = ["hafiz", "tikrar", "samaa", "rabet"]
 
 	useEffect(() => {
 		const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -381,6 +384,24 @@ export default function HalaqahManagement() {
 			document.removeEventListener("visibilitychange", handleVisibilityChange)
 		}
 	}, [teacherData?.halaqah])
+
+	useEffect(() => {
+		if (!readingSegmentsStorageKey) return
+
+		const savedPreference = localStorage.getItem(readingSegmentsStorageKey)
+		if (savedPreference !== null) {
+			setShowReadingSegments(savedPreference === "true")
+		}
+	}, [readingSegmentsStorageKey])
+
+	useEffect(() => {
+		if (!readingSegmentsStorageKey) return
+		localStorage.setItem(readingSegmentsStorageKey, String(showReadingSegments))
+	}, [readingSegmentsStorageKey, showReadingSegments])
+
+	useEffect(() => {
+		studentsRef.current = students
+	}, [students])
 
 	const fetchTeacherData = async (accountNumber: string) => {
 		try {
@@ -452,19 +473,24 @@ export default function HalaqahManagement() {
 
 				const planMap = new Map<string, PlanProgressResponse>(planEntries)
 
+				const localStudentsMap = new Map(studentsRef.current.map((student) => [student.id, student] as const))
+
 				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => {
 					const planData = planMap.get(student.id)
 					const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+					const localStudent = localStudentsMap.get(student.id)
+					const hasUnsavedLocalChanges = !!localStudent && !localStudent.savedToday
 
 					return {
 						id: student.id,
 						name: student.name,
 						halaqah: student.circle_name || halaqah,
 						hasPlan: !!planData?.plan,
-						attendance: null,
-						evaluation: {},
-						readingDetails: planReadingDetails,
+						attendance: hasUnsavedLocalChanges ? localStudent.attendance : null,
+						evaluation: hasUnsavedLocalChanges ? localStudent.evaluation || {} : {},
+						readingDetails: hasUnsavedLocalChanges ? localStudent.readingDetails || planReadingDetails : planReadingDetails,
 						planReadingDetails,
+						notes: hasUnsavedLocalChanges ? localStudent.notes : undefined,
 						savedToday: false,
 					}
 				})
@@ -529,18 +555,6 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const focusNextEvaluation = (studentId: string, type: EvaluationType) => {
-		const currentIndex = evaluationOrder.indexOf(type)
-		const nextType = evaluationOrder[currentIndex + 1]
-		if (!nextType) return
-
-		requestAnimationFrame(() => {
-			const nextCard = evaluationRefs.current[`${studentId}-${nextType}`]
-			nextCard?.scrollIntoView({ behavior: "smooth", block: "center" })
-			nextCard?.focus()
-		})
-	}
-
 	const setEvaluation = (studentId: string, type: EvaluationType, level: EvaluationLevel) => {
 		const student = students.find((s) => s.id === studentId)
 		if (student?.savedToday || (type === "hafiz" && !student?.hasPlan)) return
@@ -555,7 +569,6 @@ export default function HalaqahManagement() {
 					: s,
 			),
 		)
-		focusNextEvaluation(studentId, type)
 	}
 
 	const setAllEvaluations = (studentId: string, level: EvaluationLevel) => {
@@ -872,10 +885,6 @@ export default function HalaqahManagement() {
 							? "border-red-200 bg-red-50/40"
 							: "border-[#D4AF37]/15"
 				}`}
-				ref={(node) => {
-					evaluationRefs.current[`${studentId}-${type}`] = node
-				}}
-				tabIndex={-1}
 			>
 				<div className="font-semibold text-[#1a2332] text-center">{label}</div>
 		<div className="grid grid-cols-2 gap-2">
@@ -948,7 +957,7 @@ export default function HalaqahManagement() {
 					لم يكمل
 				</Button>
 			</div>
-			{showsReadingFields && !isHafizLocked && (
+			{showReadingSegments && showsReadingFields && !isHafizLocked && (
 				<div className="pt-2">
 					<div className="rounded-xl border border-[#D4AF37]/20 bg-[#faf7f0] px-3 py-2 text-center">
 						<p className="text-xs leading-6 text-[#1a2332]">
@@ -972,11 +981,8 @@ export default function HalaqahManagement() {
 			<main className="flex-1 py-12 px-4">
 				<div className="container mx-auto max-w-7xl">
 					<div className="flex items-center gap-3 mb-8 flex-wrap">
-						<Button onClick={() => router.back()} variant="outline">
-							<ArrowRight className="w-5 h-5 ml-2" />
-						</Button>
 						<h1 className="text-2xl font-bold text-[#1a2332]">{halaqahName}</h1>
-						<div className="flex gap-2">
+						<div className="flex gap-2 items-center flex-wrap">
 							<Button
 								variant="outline"
 								onClick={markAllPresent}
@@ -1001,6 +1007,15 @@ export default function HalaqahManagement() {
 							>
 								مستأذن
 							</Button>
+							<label className="plan-history-checkbox rounded-full border border-[#D4AF37]/70 bg-white/90 px-4 h-9 text-sm font-semibold text-[#1a2332] shadow-sm transition-all hover:bg-[#faf7f0]">
+								<input
+									type="checkbox"
+									checked={showReadingSegments}
+									onChange={(e) => setShowReadingSegments(e.target.checked)}
+								/>
+								<span className="plan-history-checkbox__label">عرض مقاطع القراءة</span>
+								<span className="plan-history-checkbox__mark" aria-hidden="true" />
+							</label>
 						</div>
 					</div>
 					{students.length === 0 ? (

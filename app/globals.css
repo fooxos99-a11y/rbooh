@@ -185,7 +185,6 @@
   .plan-history-checkbox input:checked ~ .plan-history-checkbox__mark {
     background-color: var(--clr);
     border-radius: 0.55rem;
-    animation: plan-history-checkbox-pulse 500ms ease-in-out;
   }
 
   .plan-history-checkbox:hover .plan-history-checkbox__mark {
@@ -198,20 +197,6 @@
 
   .plan-history-checkbox input:focus-visible ~ .plan-history-checkbox__mark {
     box-shadow: 0 0 0 3px #e8ca7a66;
-  }
-}
-
-@keyframes plan-history-checkbox-pulse {
-  0% {
-    box-shadow: 0 0 0 #cead5790;
-    transform: rotate(20deg);
-  }
-  75% {
-    box-shadow: 0 0 0 10px #cead5760;
-  }
-  100% {
-    box-shadow: 0 0 0 13px #cead5730;
-    transform: rotate(0deg);
   }
 }
 

@@ -73,7 +73,6 @@ export default function LetterHiveQuestionsAdmin() {
             <LayoutGrid size={40} color={PRIMARY_COLOR} />
         </div>
         <h1 className="text-4xl font-black mb-2 tracking-tight">إدارة خلية الحروف</h1>
-        <p className="text-gray-500 text-lg">تحكم بأسئلة وتحديات الحروف العربية بكل سهولة</p>
       </header>
 
       <main className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -113,30 +112,49 @@ export default function LetterHiveQuestionsAdmin() {
           ) : (
             <>
               {/* Add New Question Form */}
-              <div className="bg-[#cc994b] p-6 rounded-3xl shadow-lg shadow-[#cc994b]/20 text-white">
-                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-                   إضافة سؤال جديد لحرف ({selectedLetter})
-                </h3>
-                <div className="flex flex-col md:flex-row gap-3">
-                  <input
-                    type="text"
-                    value={newQuestion}
-                    onChange={e => setNewQuestion(e.target.value)}
-                    placeholder="اكتب السؤال هنا..."
-                    className="flex-[2] p-3 rounded-xl text-white placeholder-white focus:ring-2 focus:ring-white outline-none bg-transparent"
-                  />
-                  <input
-                    type="text"
-                    value={newAnswer}
-                    onChange={e => setNewAnswer(e.target.value)}
-                    placeholder="الإجابة"
-                    className="flex-1 p-3 rounded-xl text-white placeholder-white focus:ring-2 focus:ring-white outline-none bg-transparent"
-                  />
+              <div className="rounded-3xl border border-[#cc994b]/20 bg-white p-6 shadow-xl shadow-[#cc994b]/8">
+                <div className="mb-5 flex items-center justify-between gap-4 border-b border-[#cc994b]/12 pb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-[#1f2937] flex items-center gap-2">
+                      <span className="w-2 h-8 rounded-full bg-[#cc994b]"></span>
+                      إضافة سؤال جديد
+                    </h3>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#cc994b]/10 text-[#cc994b]">
+                    <Plus size={20} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(220px,1fr)_auto] lg:items-end">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-bold text-[#374151]">السؤال</label>
+                    <input
+                      type="text"
+                      value={newQuestion}
+                      onChange={e => setNewQuestion(e.target.value)}
+                      placeholder="اكتب السؤال هنا..."
+                      className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf8] px-4 py-3 text-[#1f2937] placeholder:text-gray-400 outline-none transition-all focus:border-[#cc994b]/60 focus:bg-white focus:ring-4 focus:ring-[#cc994b]/10"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block text-sm font-bold text-[#374151]">الإجابة</label>
+                    <input
+                      type="text"
+                      value={newAnswer}
+                      onChange={e => setNewAnswer(e.target.value)}
+                      placeholder="اكتب الإجابة"
+                      className="w-full rounded-2xl border border-gray-200 bg-[#fcfbf8] px-4 py-3 text-[#1f2937] placeholder:text-gray-400 outline-none transition-all focus:border-[#cc994b]/60 focus:bg-white focus:ring-4 focus:ring-[#cc994b]/10"
+                    />
+                  </div>
+
                   <button 
                     onClick={addQuestion}
-                    className="bg-white text-[#cc994b] px-6 py-3 rounded-xl font-bold hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+                    className="inline-flex h-[50px] items-center justify-center gap-2 rounded-2xl bg-[#cc994b] px-6 font-bold text-white shadow-lg shadow-[#cc994b]/20 transition-all hover:-translate-y-0.5 hover:bg-[#c08c3b] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!selectedLetter || !newQuestion || !newAnswer}
                   >
-                    <Plus size={20} /> إضافة
+                    <Plus size={18} />
+                    إضافة
                   </button>
                 </div>
               </div>
