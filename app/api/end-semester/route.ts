@@ -47,6 +47,7 @@ async function getCompletedDaysForPlan(supabase: any, studentId: string, startDa
 function getMergedMemorizedRange(student: any, plan: any) {
   const normalizedPlan = {
     ...plan,
+    direction: plan?.direction || "asc",
     has_previous: plan?.has_previous || !!(plan?.prev_start_surah || student?.memorized_start_surah),
     prev_start_surah: plan?.prev_start_surah || student?.memorized_start_surah || null,
     prev_start_verse: plan?.prev_start_verse || student?.memorized_start_verse || null,
@@ -65,10 +66,27 @@ function getMergedMemorizedRange(student: any, plan: any) {
     }
   }
 
-  const inheritedStartSurah = student?.memorized_start_surah || normalizedPlan?.prev_start_surah || normalizedPlan?.start_surah_number || null
-  const inheritedStartVerse = student?.memorized_start_verse || normalizedPlan?.prev_start_verse || normalizedPlan?.start_verse || 1
-  const endSurah = student?.memorized_end_surah || normalizedPlan?.prev_end_surah || null
-  const endVerse = endSurah ? getNormalizedEndVerse(endSurah, student?.memorized_end_verse || normalizedPlan?.prev_end_verse) : null
+  const inheritedStartSurah =
+    student?.memorized_start_surah ||
+    normalizedPlan?.prev_start_surah ||
+    normalizedPlan?.start_surah_number ||
+    null
+  const inheritedStartVerse =
+    student?.memorized_start_verse ||
+    normalizedPlan?.prev_start_verse ||
+    normalizedPlan?.start_verse ||
+    1
+  const endSurah =
+    student?.memorized_end_surah ||
+    normalizedPlan?.prev_end_surah ||
+    normalizedPlan?.end_surah_number ||
+    null
+  const endVerse = endSurah
+    ? getNormalizedEndVerse(
+        endSurah,
+        student?.memorized_end_verse || normalizedPlan?.prev_end_verse || normalizedPlan?.end_verse,
+      )
+    : null
 
   return {
     memorized_start_surah: inheritedStartSurah,

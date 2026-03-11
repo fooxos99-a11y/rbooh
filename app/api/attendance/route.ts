@@ -196,7 +196,7 @@ export async function POST(request: NextRequest) {
     // Check if there's already an attendance record for this student today
     const { data: existingRecord, error: checkError } = await supabase
       .from("attendance_records")
-      .select("id")
+      .select("id, status")
       .eq("student_id", student_id)
       .eq("date", todayDate)
       .maybeSingle()
@@ -206,57 +206,106 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to check existing attendance" }, { status: 500 })
     }
 
-    if (existingRecord) {
-      console.log("[v0] Attendance already exists for student today:", existingRecord.id)
-      return NextResponse.json(
-        {
-          error: "تم حفظ هذا الطالب مسبقاً اليوم ولا يمكن إعادة حفظه مرة أخرى",
-          alreadySaved: true,
-          attendanceRecordId: existingRecord.id,
-        },
-        { status: 409 },
-      )
-    }
-
     let attendanceRecord
-    const isUpdate = false
+    const isUpdate = !!existingRecord
+    let previousPoints = 0
 
-    // Create new attendance record
-    const { data: newRecord, error: attendanceError } = await supabase
-      .from("attendance_records")
-      .insert({
-        student_id,
-        teacher_id,
-        halaqah,
-        status: normalizedStatus,
-        date: todayDate,
-        notes: notes ?? null,
-      })
-      .select()
-      .single()
+    if (existingRecord) {
+      console.log("[v0] Attendance already exists for student today, updating record:", existingRecord.id)
 
-    if (attendanceError) {
-      console.error("[v0] Error creating attendance record:", attendanceError)
-      const isLateConstraintFailure =
-        normalizedStatus === "late" &&
-        /status|check|constraint|invalid input value/i.test(
-          `${attendanceError.message ?? ""} ${attendanceError.details ?? ""} ${attendanceError.hint ?? ""}`,
+      const { data: oldEvaluation } = await supabase
+        .from("evaluations")
+        .select("hafiz_level, tikrar_level, samaa_level, rabet_level")
+        .eq("attendance_record_id", existingRecord.id)
+        .maybeSingle()
+
+      if (oldEvaluation) {
+        previousPoints = applyAttendancePointsAdjustment(
+          calculateTotalEvaluationPoints({
+            hafiz_level: oldEvaluation.hafiz_level,
+            tikrar_level: oldEvaluation.tikrar_level,
+            samaa_level: oldEvaluation.samaa_level,
+            rabet_level: oldEvaluation.rabet_level,
+          }),
+          existingRecord.status,
         )
 
-      return NextResponse.json(
-        {
-          error: isLateConstraintFailure
-            ? "قاعدة البيانات لا تسمح بعد بحالة متأخر في سجل الحضور. نفذ ملف scripts/042_allow_late_attendance_records.sql ثم أعد المحاولة."
-            : attendanceError.message || "Failed to create attendance record",
-          details: attendanceError.details ?? null,
-          hint: attendanceError.hint ?? null,
-          code: attendanceError.code ?? null,
-        },
-        { status: 500 },
-      )
-    }
+        await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id)
+      }
 
-    attendanceRecord = newRecord
+      const { data: updatedRecord, error: attendanceUpdateError } = await supabase
+        .from("attendance_records")
+        .update({
+          teacher_id,
+          halaqah,
+          status: normalizedStatus,
+          notes: notes ?? null,
+        })
+        .eq("id", existingRecord.id)
+        .select()
+        .single()
+
+      if (attendanceUpdateError) {
+        console.error("[v0] Error updating attendance record:", attendanceUpdateError)
+        return NextResponse.json({ error: "فشل في تحديث سجل الحضور الحالي" }, { status: 500 })
+      }
+
+      attendanceRecord = updatedRecord
+
+      if (previousPoints > 0) {
+        const { data: currentStudent, error: fetchStudentError } = await supabase
+          .from("students")
+          .select("points, store_points")
+          .eq("id", student_id)
+          .single()
+
+        if (!fetchStudentError && currentStudent) {
+          await supabase
+            .from("students")
+            .update({
+              points: Math.max(0, (currentStudent.points || 0) - previousPoints),
+              store_points: Math.max(0, (currentStudent.store_points || 0) - previousPoints),
+            })
+            .eq("id", student_id)
+        }
+      }
+    } else {
+      const { data: newRecord, error: attendanceError } = await supabase
+        .from("attendance_records")
+        .insert({
+          student_id,
+          teacher_id,
+          halaqah,
+          status: normalizedStatus,
+          date: todayDate,
+          notes: notes ?? null,
+        })
+        .select()
+        .single()
+
+      if (attendanceError) {
+        console.error("[v0] Error creating attendance record:", attendanceError)
+        const isLateConstraintFailure =
+          normalizedStatus === "late" &&
+          /status|check|constraint|invalid input value/i.test(
+            `${attendanceError.message ?? ""} ${attendanceError.details ?? ""} ${attendanceError.hint ?? ""}`,
+          )
+
+        return NextResponse.json(
+          {
+            error: isLateConstraintFailure
+              ? "قاعدة البيانات لا تسمح بعد بحالة متأخر في سجل الحضور. نفذ ملف scripts/042_allow_late_attendance_records.sql ثم أعد المحاولة."
+              : attendanceError.message || "Failed to create attendance record",
+            details: attendanceError.details ?? null,
+            hint: attendanceError.hint ?? null,
+            code: attendanceError.code ?? null,
+          },
+          { status: 500 },
+        )
+      }
+
+      attendanceRecord = newRecord
+    }
 
     if (!isEvaluatedAttendance(normalizedStatus)) {
       return NextResponse.json({

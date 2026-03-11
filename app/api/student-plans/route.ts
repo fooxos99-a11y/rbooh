@@ -50,6 +50,30 @@ function getExpectedNextStart(prevStartSurah?: number | null, prevEndSurah?: num
     : null
 }
 
+function compareAyahRefs(
+  leftSurahNumber: number,
+  leftVerseNumber: number,
+  rightSurahNumber: number,
+  rightVerseNumber: number,
+) {
+  if (leftSurahNumber !== rightSurahNumber) {
+    return leftSurahNumber - rightSurahNumber
+  }
+
+  return leftVerseNumber - rightVerseNumber
+}
+
+function isStartAllowedAfterPrevious(
+  startSurahNumber: number,
+  startVerseNumber: number,
+  boundarySurahNumber: number,
+  boundaryVerseNumber: number,
+  previousDirection: "asc" | "desc",
+) {
+  const comparison = compareAyahRefs(startSurahNumber, startVerseNumber, boundarySurahNumber, boundaryVerseNumber)
+  return previousDirection === "desc" ? comparison <= 0 : comparison >= 0
+}
+
 // GET - جلب خطط طالب معين أو جلب كل الخطط
 export async function GET(request: Request) {
   try {
@@ -194,14 +218,20 @@ export async function POST(request: Request) {
       }
 
       const normalizedStartVerse = Number(start_verse) || 1
+      const previousDirection = Number(effectivePrevStartSurah) > Number(effectivePrevEndSurah) ? "desc" : "asc"
       if (
-        start_surah_number !== expectedNextStart.surahNumber ||
-        normalizedStartVerse !== expectedNextStart.verseNumber
+        !isStartAllowedAfterPrevious(
+          Number(start_surah_number),
+          normalizedStartVerse,
+          expectedNextStart.surahNumber,
+          expectedNextStart.verseNumber,
+          previousDirection,
+        )
       ) {
         const expectedSurah = SURAHS.find((surah) => surah.number === expectedNextStart.surahNumber)
         return NextResponse.json(
           {
-            error: `يجب أن تبدأ الخطة الجديدة مباشرة بعد نهاية الحفظ السابق: ${expectedSurah?.name || "السورة"} آية ${expectedNextStart.verseNumber}`,
+            error: `يجب أن يكون بداية المحفوظ عند آخر آية تم حفظها: ${expectedSurah?.name || "السورة"} آية ${expectedNextStart.verseNumber}، أو إعادة حفظ الطالب من جديد`,
           },
           { status: 400 },
         )
@@ -219,8 +249,14 @@ export async function POST(request: Request) {
         ? Number(totalDaysOverride)
         : calculateTotalDays(totalPages, daily_pages)
 
-    // حذف الخطة القديمة إن وجدت
-    await supabase.from("student_plans").delete().eq("student_id", student_id)
+    const { data: existingPlans, error: existingPlansError } = await supabase
+      .from("student_plans")
+      .select("id")
+      .eq("student_id", student_id)
+
+    if (existingPlansError) {
+      throw existingPlansError
+    }
 
     const { data, error } = await supabase
       .from("student_plans")
@@ -249,6 +285,18 @@ export async function POST(request: Request) {
       .single()
 
     if (error) throw error
+
+    const oldPlanIds = (existingPlans || []).map((plan) => plan.id).filter(Boolean)
+    if (oldPlanIds.length > 0) {
+      const { error: cleanupError } = await supabase
+        .from("student_plans")
+        .delete()
+        .in("id", oldPlanIds)
+
+      if (cleanupError) {
+        console.error("[plans] cleanup old plans error:", cleanupError)
+      }
+    }
 
     return NextResponse.json({ success: true, plan: data }, { status: 201 })
   } catch (error) {

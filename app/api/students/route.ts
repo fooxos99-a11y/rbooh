@@ -148,12 +148,54 @@ export async function PATCH(request: Request) {
   try {
     const supabase = await createClient()
     const body = await request.json()
-    const { id, phone_number, id_number, points, add_points, rank, guardian_phone, halaqah } = body
+    const {
+      id,
+      phone_number,
+      id_number,
+      points,
+      add_points,
+      rank,
+      guardian_phone,
+      halaqah,
+      reset_memorized,
+      memorized_start_surah,
+      memorized_start_verse,
+      memorized_end_surah,
+      memorized_end_verse,
+    } = body
 
     const studentId = id || new URL(request.url).searchParams.get("id")
 
     if (!studentId) {
       return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })
+    }
+
+    if (reset_memorized === true) {
+      const { error: deletePlanError } = await supabase.from("student_plans").delete().eq("student_id", studentId)
+
+      if (deletePlanError) {
+        console.error("[students] Error deleting active plan during memorization reset:", deletePlanError.message)
+        return NextResponse.json({ error: "فشل في حذف الخطة الحالية للطالب" }, { status: 500 })
+      }
+
+      const { data, error } = await supabase
+        .from("students")
+        .update({
+          memorized_start_surah: null,
+          memorized_start_verse: null,
+          memorized_end_surah: null,
+          memorized_end_verse: null,
+        })
+        .eq("id", studentId)
+        .select()
+        .single()
+
+      if (error) {
+        console.error("[students] Error resetting memorized range:", error.message)
+        return NextResponse.json({ error: "فشل في إعادة ضبط محفوظ الطالب" }, { status: 500 })
+      }
+
+      return NextResponse.json({ success: true, student: data }, { status: 200 })
     }
 
     const updateData: any = {}
@@ -177,6 +219,10 @@ export async function PATCH(request: Request) {
     if (id_number !== undefined) updateData.id_number = id_number
     if (rank !== undefined) updateData.rank = rank
     if (guardian_phone !== undefined) updateData.guardian_phone = guardian_phone
+    if (memorized_start_surah !== undefined) updateData.memorized_start_surah = memorized_start_surah
+    if (memorized_start_verse !== undefined) updateData.memorized_start_verse = memorized_start_verse
+    if (memorized_end_surah !== undefined) updateData.memorized_end_surah = memorized_end_surah
+    if (memorized_end_verse !== undefined) updateData.memorized_end_verse = memorized_end_verse
     if (add_points !== undefined) {
       const { data: currentStudent, error: fetchError } = await supabase
         .from("students")

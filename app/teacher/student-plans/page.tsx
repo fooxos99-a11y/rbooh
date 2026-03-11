@@ -12,8 +12,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { BookMarked, ArrowRight, Plus, Trash2, Target, Users, ChevronDown, Check } from "lucide-react"
-import { SURAHS, calculateTotalDays, calculateTotalPages } from "@/lib/quran-data"
+import { BookMarked, Plus, Trash2, Target, Users, ChevronDown, Check } from "lucide-react"
+import { SURAHS, calculateTotalDays, calculateTotalPages, getPlanMemorizedRange } from "@/lib/quran-data"
 import { getSaudiDateString } from "@/lib/saudi-time"
 
 interface Student {
@@ -151,6 +151,78 @@ function getNextStartFromPrevious(
   }
 }
 
+function compareAyahRefs(
+  leftSurahNumber: number,
+  leftVerseNumber: number,
+  rightSurahNumber: number,
+  rightVerseNumber: number,
+) {
+  if (leftSurahNumber !== rightSurahNumber) {
+    return leftSurahNumber - rightSurahNumber
+  }
+
+  return leftVerseNumber - rightVerseNumber
+}
+
+function isStartAllowedAfterPrevious(
+  startSurahNumber: number,
+  startVerseNumber: number,
+  boundarySurahNumber: number,
+  boundaryVerseNumber: number,
+  previousDirection: "asc" | "desc",
+) {
+  const comparison = compareAyahRefs(startSurahNumber, startVerseNumber, boundarySurahNumber, boundaryVerseNumber)
+  return previousDirection === "desc" ? comparison <= 0 : comparison >= 0
+}
+
+function getLockedPreviousRange(student: Student, plan: StudentPlan | null, completedDays: number) {
+  if (plan && completedDays > 0) {
+    const memorizedRange = getPlanMemorizedRange(
+      {
+        ...plan,
+        has_previous: plan.has_previous || !!(plan.prev_start_surah || student.memorized_start_surah),
+        prev_start_surah: plan.prev_start_surah || student.memorized_start_surah || null,
+        prev_start_verse: plan.prev_start_verse || student.memorized_start_verse || null,
+        prev_end_surah: plan.prev_end_surah || student.memorized_end_surah || null,
+        prev_end_verse: plan.prev_end_verse || student.memorized_end_verse || null,
+      },
+      completedDays,
+    )
+
+    if (memorizedRange) {
+      return memorizedRange
+    }
+  }
+
+  const startSurahNumber = student.memorized_start_surah || plan?.prev_start_surah || null
+  const startVerseNumber = student.memorized_start_verse || plan?.prev_start_verse || 1
+  const endSurahNumber = student.memorized_end_surah || plan?.prev_end_surah || null
+  const endSurah = endSurahNumber ? SURAHS.find((surah) => surah.number === endSurahNumber) : null
+  const endVerseNumber = student.memorized_end_verse || plan?.prev_end_verse || endSurah?.verseCount || 1
+
+  if (!startSurahNumber || !endSurahNumber) {
+    if (!plan?.start_surah_number || !plan?.end_surah_number) {
+      return null
+    }
+
+    const planEndSurah = SURAHS.find((surah) => surah.number === plan.end_surah_number)
+
+    return {
+      startSurahNumber: plan.start_surah_number,
+      startVerseNumber: plan.start_verse || 1,
+      endSurahNumber: plan.end_surah_number,
+      endVerseNumber: plan.end_verse || planEndSurah?.verseCount || 1,
+    }
+  }
+
+  return {
+    startSurahNumber,
+    startVerseNumber,
+    endSurahNumber,
+    endVerseNumber,
+  }
+}
+
 export default function TeacherStudentPlansPage() {
   const router = useRouter()
   const confirmDialog = useConfirmDialog()
@@ -159,6 +231,9 @@ export default function TeacherStudentPlansPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [studentPlans, setStudentPlans] = useState<Record<string, StudentPlan | null>>({})
   const [studentProgress, setStudentProgress] = useState<Record<string, number>>({})
+  const [studentCompletedDays, setStudentCompletedDays] = useState<Record<string, number>>({})
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resettingStudentId, setResettingStudentId] = useState<string | null>(null)
 
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
@@ -177,6 +252,7 @@ export default function TeacherStudentPlansPage() {
   const [prevEndVerse, setPrevEndVerse] = useState<string>("")
   const [prevStartOpen, setPrevStartOpen] = useState(false)
   const [prevEndOpen, setPrevEndOpen] = useState(false)
+  const [isPreviousLocked, setIsPreviousLocked] = useState(false)
   const [muraajaaPages, setMuraajaaPages] = useState<string>("20")
   const [rabtPages, setRabtPages] = useState<string>("10")
 
@@ -224,6 +300,7 @@ export default function TeacherStudentPlansPage() {
   const fetchPlansForStudents = async (studentList: Student[]) => {
     const plans: Record<string, StudentPlan | null> = {}
     const progress: Record<string, number> = {}
+    const completedDays: Record<string, number> = {}
 
     await Promise.all(
       studentList.map(async (student) => {
@@ -232,18 +309,26 @@ export default function TeacherStudentPlansPage() {
           const data = await res.json()
           plans[student.id] = data.plan || null
           progress[student.id] = data.progressPercent || 0
+          completedDays[student.id] = data.completedDays || 0
         } catch {
           plans[student.id] = null
           progress[student.id] = 0
+          completedDays[student.id] = 0
         }
       }),
     )
 
     setStudentPlans(plans)
     setStudentProgress(progress)
+    setStudentCompletedDays(completedDays)
   }
 
   const openAddDialog = (student: Student) => {
+    const currentPlan = studentPlans[student.id]
+    const lockedPreviousRange = getLockedPreviousRange(student, currentPlan, studentCompletedDays[student.id] || 0)
+    const hasLockedPrevious = !!lockedPreviousRange
+    const shouldLockPrevious = !!currentPlan || hasLockedPrevious
+
     setSelectedStudent(student)
     setStartSurah("")
     setEndSurah("")
@@ -253,14 +338,12 @@ export default function TeacherStudentPlansPage() {
     setSaveMsg(null)
     setStartOpen(false)
     setEndOpen(false)
-
-    const hasStoredMemorized = !!(student.memorized_start_surah && student.memorized_end_surah)
-
-    setHasPrevious(hasStoredMemorized)
-    setPrevStartSurah(student.memorized_start_surah ? String(student.memorized_start_surah) : "")
-    setPrevEndSurah(student.memorized_end_surah ? String(student.memorized_end_surah) : "")
-    setPrevStartVerse(student.memorized_start_verse ? String(student.memorized_start_verse) : "")
-    setPrevEndVerse(student.memorized_end_verse ? String(student.memorized_end_verse) : "")
+    setHasPrevious(shouldLockPrevious)
+    setIsPreviousLocked(shouldLockPrevious)
+    setPrevStartSurah(lockedPreviousRange ? String(lockedPreviousRange.startSurahNumber) : "")
+    setPrevEndSurah(lockedPreviousRange ? String(lockedPreviousRange.endSurahNumber) : "")
+    setPrevStartVerse(lockedPreviousRange ? String(lockedPreviousRange.startVerseNumber) : "")
+    setPrevEndVerse(lockedPreviousRange ? String(lockedPreviousRange.endVerseNumber) : "")
     setPrevStartOpen(false)
     setPrevEndOpen(false)
     setMuraajaaPages("20")
@@ -290,11 +373,20 @@ export default function TeacherStudentPlansPage() {
       }
 
       const normalizedStartVerse = startVerse ? parseInt(startVerse) : 1
-      if (startNum !== nextStartFromPrevious.surahNumber || normalizedStartVerse !== nextStartFromPrevious.verseNumber) {
+      const previousDirection = parseInt(prevStartSurah, 10) > parseInt(prevEndSurah, 10) ? "desc" : "asc"
+      if (
+        !isStartAllowedAfterPrevious(
+          startNum,
+          normalizedStartVerse,
+          nextStartFromPrevious.surahNumber,
+          nextStartFromPrevious.verseNumber,
+          previousDirection,
+        )
+      ) {
         const expectedSurah = SURAHS.find((surah) => surah.number === nextStartFromPrevious.surahNumber)?.name || "السورة"
         setSaveMsg({
           type: "error",
-          text: `يجب أن تبدأ الخطة الجديدة مباشرة بعد نهاية الحفظ السابق: ${expectedSurah} آية ${nextStartFromPrevious.verseNumber}`,
+          text: `يجب أن يكون بداية المحفوظ عند آخر آية تم حفظها: ${expectedSurah} آية ${nextStartFromPrevious.verseNumber}، أو إعادة حفظ الطالب من جديد`,
         })
         return
       }
@@ -379,9 +471,53 @@ export default function TeacherStudentPlansPage() {
     }
   }
 
+  const handleResetMemorization = async (student: Student) => {
+    const confirmed = await confirmDialog({
+      title: "إعادة حفظ الطالب",
+      description: "سيتم حذف الخطة الحالية إن وجدت ومسح المحفوظ السابق لهذا الطالب للبدء من الصفر. هل تريد المتابعة؟",
+      confirmText: "إعادة الحفظ",
+      cancelText: "إلغاء",
+    })
+    if (!confirmed) return
+
+    try {
+      setResettingStudentId(student.id)
+      const res = await fetch("/api/students", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: student.id, reset_memorized: true }),
+      })
+
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || "فشل في إعادة حفظ الطالب")
+      }
+
+      setStudents((prev) => prev.map((item) => (
+        item.id === student.id
+          ? {
+              ...item,
+              memorized_start_surah: null,
+              memorized_start_verse: null,
+              memorized_end_surah: null,
+              memorized_end_verse: null,
+            }
+          : item
+      )))
+      setStudentPlans((prev) => ({ ...prev, [student.id]: null }))
+      setStudentProgress((prev) => ({ ...prev, [student.id]: 0 }))
+      setStudentCompletedDays((prev) => ({ ...prev, [student.id]: 0 }))
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setResettingStudentId(null)
+    }
+  }
+
   const startNum = startSurah ? parseInt(startSurah) : null
   const endNum = endSurah ? parseInt(endSurah) : null
   const direction = startNum && endNum && startNum > endNum ? "desc" : "asc"
+  const isEditingPlan = !!(selectedStudent && studentPlans[selectedStudent.id])
   const nextStartFromPrevious = hasPrevious && prevStartSurah && prevEndSurah && prevEndVerse
     ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
     : null
@@ -602,12 +738,6 @@ export default function TeacherStudentPlansPage() {
       <main className="flex-1 py-10 px-4">
         <div className="container mx-auto max-w-3xl space-y-6">
           <div className="border-b border-[#D4AF37]/40 pb-5 flex items-center gap-3">
-            <button
-              onClick={() => router.back()}
-              className="p-2 rounded-lg hover:bg-[#D4AF37]/10 transition-colors"
-            >
-              <ArrowRight className="w-5 h-5 text-[#D4AF37]" />
-            </button>
             <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
               <BookMarked className="w-5 h-5 text-[#D4AF37]" />
             </div>
@@ -615,10 +745,12 @@ export default function TeacherStudentPlansPage() {
               <h1 className="text-xl font-bold text-[#1a2332]">خطط الطلاب</h1>
               {halaqah && <p className="text-sm text-neutral-400 mt-0.5">حلقة {halaqah}</p>}
             </div>
-            <div className="mr-auto flex items-center gap-2 text-sm text-neutral-400">
-              <Users className="w-4 h-4" />
-              <span>{students.length} طالب</span>
-            </div>
+            <button
+              onClick={() => setResetDialogOpen(true)}
+              className="mr-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
+            >
+              إعادة حفظ طالب
+            </button>
           </div>
 
           {students.length === 0 ? (
@@ -632,6 +764,7 @@ export default function TeacherStudentPlansPage() {
                 {students.map((student) => {
                   const plan = studentPlans[student.id]
                   const progress = studentProgress[student.id] || 0
+                  const hasStoredMemorized = !!(student.memorized_start_surah && student.memorized_end_surah)
 
                   return (
                     <div key={student.id} className="px-6 py-4 flex items-center gap-4">
@@ -704,21 +837,33 @@ export default function TeacherStudentPlansPage() {
           <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
             <DialogTitle className="flex w-full items-center justify-start gap-2 pl-1 text-left text-lg font-bold text-[#1a2332]">
               <Target className="w-5 h-5 text-[#D4AF37]" />
-              إضافة خطة حفظ{selectedStudent ? ` — ${selectedStudent.name}` : ""}
+              {isEditingPlan ? "تعديل خطة حفظ" : "إضافة خطة حفظ"}{selectedStudent ? ` — ${selectedStudent.name}` : ""}
             </DialogTitle>
           </DialogHeader>
 
           <div className="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
             <div className="space-y-2 pt-2 pb-2 border-y border-[#D4AF37]/20">
-              <label className="plan-history-checkbox text-sm font-semibold text-[#1a2332]">
+              <label
+                className="plan-history-checkbox text-sm font-semibold text-[#1a2332]"
+                onClick={(e) => {
+                  if (!isPreviousLocked) return
+
+                  e.preventDefault()
+                }}
+              >
                 <input
                   type="checkbox"
                   checked={hasPrevious}
+                  disabled={isPreviousLocked}
                   onChange={(e) => setHasPrevious(e.target.checked)}
                 />
                 <span className="plan-history-checkbox__label">هل يوجد حفظ سابق؟</span>
                 <span className="plan-history-checkbox__mark" aria-hidden="true" />
               </label>
+
+              {isPreviousLocked && hasPrevious && (
+                <p className="text-[11px] font-medium text-[#8a6f1f]">الحفظ السابق مقفل لأنه محفوظ فعلياً، ويجب حذف الخطة إذا أردت إعادة حفظ الطالب.</p>
+              )}
 
               {hasPrevious && (
                 <div className="bg-[#D4AF37]/5 p-3 rounded-xl border border-[#D4AF37]/20 space-y-3 mt-2">
@@ -726,9 +871,15 @@ export default function TeacherStudentPlansPage() {
                     <div className="space-y-1.5 flex flex-col w-full">
                       <label className="text-xs font-semibold text-[#1a2332]">بداية الحفظ السابق</label>
                       <div className="flex items-center gap-2 w-full">
-                        <Popover open={prevStartOpen} onOpenChange={setPrevStartOpen}>
+                        <Popover open={isPreviousLocked ? false : prevStartOpen} onOpenChange={(open) => {
+                          if (!isPreviousLocked) setPrevStartOpen(open)
+                        }}>
                           <PopoverTrigger asChild>
-                            <button className="flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right hover:border-[#D4AF37] transition-colors">
+                            <button
+                              type="button"
+                              disabled={isPreviousLocked}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                            >
                               <span className={prevStartSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevStartSurah
                                   ? SURAHS.find((surah) => surah.number === parseInt(prevStartSurah))?.name
@@ -762,7 +913,7 @@ export default function TeacherStudentPlansPage() {
                           </PopoverContent>
                         </Popover>
 
-                        <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={!prevStartSurah || prevStartVerseOptions.length === 0}>
+                        <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={isPreviousLocked || !prevStartSurah || prevStartVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
@@ -780,9 +931,15 @@ export default function TeacherStudentPlansPage() {
                     <div className="space-y-1.5 flex flex-col w-full">
                       <label className="text-xs font-semibold text-[#1a2332]">نهاية الحفظ السابق</label>
                       <div className="flex items-center gap-2 w-full">
-                        <Popover open={prevEndOpen} onOpenChange={setPrevEndOpen}>
+                        <Popover open={isPreviousLocked ? false : prevEndOpen} onOpenChange={(open) => {
+                          if (!isPreviousLocked) setPrevEndOpen(open)
+                        }}>
                           <PopoverTrigger asChild>
-                            <button className="flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right hover:border-[#D4AF37] transition-colors">
+                            <button
+                              type="button"
+                              disabled={isPreviousLocked}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                            >
                               <span className={prevEndSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevEndSurah
                                   ? SURAHS.find((surah) => surah.number === parseInt(prevEndSurah))?.name
@@ -816,7 +973,7 @@ export default function TeacherStudentPlansPage() {
                           </PopoverContent>
                         </Popover>
 
-                        <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={!prevEndSurah || prevEndVerseOptions.length === 0}>
+                        <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={isPreviousLocked || !prevEndSurah || prevEndVerseOptions.length === 0}>
                           <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
@@ -1063,6 +1220,46 @@ export default function TeacherStudentPlansPage() {
               className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
             >
               إلغاء
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <DialogContent showCloseButton={false} className="max-w-md bg-white rounded-2xl p-0 overflow-hidden" dir="rtl">
+          <DialogHeader className="px-6 py-5 border-b border-red-200 bg-gradient-to-r from-red-50 to-transparent">
+            <DialogTitle className="text-lg font-bold text-[#1a2332]">إعادة حفظ طالب</DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[70vh] overflow-y-auto px-6 py-5 space-y-3">
+            {students.length === 0 ? (
+              <p className="text-sm text-neutral-400 text-center py-10">لا يوجد طلاب</p>
+            ) : (
+              students.map((student) => {
+                const hasStoredMemorized = !!(student.memorized_start_surah && student.memorized_end_surah)
+
+                return (
+                  <div key={student.id} className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[#1a2332] truncate">{student.name}</p>
+                      <p className="text-[11px] text-neutral-400">{hasStoredMemorized ? "لديه محفوظ سابق" : "لا يوجد محفوظ سابق"}</p>
+                    </div>
+                    <button
+                      onClick={() => handleResetMemorization(student)}
+                      disabled={!hasStoredMemorized || resettingStudentId === student.id}
+                      className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-semibold text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {resettingStudentId === student.id ? "جاري التنفيذ..." : "حذف المحفوظ والبدء بخطة جديدة"}
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t border-neutral-200 flex justify-end">
+            <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-neutral-300">
+              إغلاق
             </Button>
           </div>
         </DialogContent>
