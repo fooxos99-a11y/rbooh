@@ -985,7 +985,7 @@ export default function HalaqahManagement() {
 			</div>
 			{showReadingSegments && showsReadingFields && !isHafizLocked && (
 				<div className="pt-2">
-					<div className="rounded-xl border border-[#D4AF37]/20 bg-[#faf7f0] px-3 py-2 text-center">
+					<div className="rounded-xl border border-[#D4AF37]/20 bg-[#faf7f0] px-3 py-2 text-right" dir="rtl">
 						<p className="text-xs leading-6 text-[#1a2332]">
 							{readingSummary || emptyReadingMessage}
 						</p>
@@ -1007,8 +1007,8 @@ export default function HalaqahManagement() {
 			<main className="flex-1 py-12 px-4">
 				<div className="container mx-auto max-w-7xl">
 					<div className="mb-8 overflow-x-auto pb-2">
-						<div className="flex min-w-max flex-nowrap flex-row-reverse items-center justify-end gap-2 sm:gap-2.5">
-							<label className="plan-history-checkbox h-11 shrink-0 rounded-full border border-[#D4AF37]/70 bg-white/90 px-4 text-sm font-semibold text-[#1a2332] shadow-sm transition-all hover:bg-[#faf7f0] sm:h-10 sm:px-4 sm:text-sm">
+						<div className="flex w-full flex-col items-end gap-2 sm:gap-2.5 md:min-w-max md:flex-row-reverse md:flex-nowrap md:items-center md:justify-end">
+							<label className="plan-history-checkbox h-11 w-fit shrink-0 self-end rounded-full border border-[#D4AF37]/70 bg-white/90 px-4 text-sm font-semibold text-[#1a2332] shadow-sm transition-all hover:bg-[#faf7f0] sm:h-10 sm:px-4 sm:text-sm">
 								<input
 									type="checkbox"
 									checked={showReadingSegments}
@@ -1017,7 +1017,7 @@ export default function HalaqahManagement() {
 								<span className="plan-history-checkbox__label whitespace-nowrap">معاينة الخطط</span>
 								<span className="plan-history-checkbox__mark" aria-hidden="true" />
 							</label>
-							<div className="flex flex-nowrap flex-row-reverse items-center gap-2 sm:gap-2.5">
+							<div className="flex w-full justify-end flex-nowrap flex-row-reverse items-center gap-2 sm:w-auto sm:gap-2.5 md:min-w-max">
 							<Button
 								variant="outline"
 								onClick={markAllLate}
