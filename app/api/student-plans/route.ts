@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
+import { canAccessStudent, getRequestActor, isTeacherRole } from "@/lib/request-auth"
 import {
   SURAHS,
+  calculatePreviousMemorizedPages,
   calculateQuranMemorizationProgress,
   getContiguousCompletedJuzRange,
   getJuzBounds,
@@ -14,13 +16,10 @@ import {
   resolvePlanTotalPages,
 } from "@/lib/quran-data"
 import { getSaudiDateString } from "@/lib/saudi-time"
-import { isEvaluatedAttendance } from "@/lib/student-attendance"
-
-const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
+import { isPassingMemorizationLevel } from "@/lib/student-attendance"
+import { buildPlanSessionProgress } from "@/lib/plan-session-progress"
 
 function hasCompletedMemorization(record: any) {
-  if (!isEvaluatedAttendance(record.status)) return false
-
   const evaluations = Array.isArray(record.evaluations)
     ? record.evaluations
     : record.evaluations
@@ -30,7 +29,7 @@ function hasCompletedMemorization(record: any) {
   if (evaluations.length === 0) return false
 
   const latestEvaluation = evaluations[evaluations.length - 1]
-  return ADVANCING_MEMORIZATION_LEVELS.includes(latestEvaluation?.hafiz_level ?? "")
+  return isPassingMemorizationLevel(latestEvaluation?.hafiz_level ?? null)
 }
 
 function getExpectedNextStart(prevStartSurah?: number | null, prevEndSurah?: number | null, prevEndVerse?: number | null) {
@@ -87,9 +86,10 @@ function isStartAllowedAfterPrevious(
 }
 
 // GET - جلب خطط طالب معين أو جلب كل الخطط
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
     const planId = searchParams.get("plan_id")
@@ -105,9 +105,21 @@ export async function GET(request: Request) {
     }
 
     if (studentId) {
+      const canViewStudent = await canAccessStudent({
+        supabase,
+        actor,
+        studentId,
+        allowStudentSelf: true,
+        allowTeacher: true,
+      })
+
+      if (!canViewStudent) {
+        return NextResponse.json({ error: "غير مصرح لك بعرض خطة هذا الطالب" }, { status: 403 })
+      }
+
       const { data: studentData } = await supabase
         .from("students")
-        .select("completed_juzs, current_juzs")
+        .select("completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
         .eq("id", studentId)
         .maybeSingle()
 
@@ -131,6 +143,13 @@ export async function GET(request: Request) {
         return NextResponse.json({
           plan: null,
           completedDays: 0,
+          progressedDays: 0,
+          awaitingHearingSessionNumbers: [],
+          failedSessionNumbers: [],
+          completedSessionNumbers: [],
+          completedRecordsBySessionNumber: {},
+          nextSessionNumber: 1,
+          reportSessionNumbersByDate: {},
           progressPercent: 0,
           quranMemorizedPages: quranMemorization.memorizedPages,
           quranProgressPercent: quranMemorization.progressPercent,
@@ -141,18 +160,53 @@ export async function GET(request: Request) {
       }
 
       const rawPlan = plans[0] // الخطة الأحدث هي الفعالة
-      const plan = {
+      const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
+      const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
+        ? null
+        : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+      const studentHasStoredMemorization = Boolean(
+        (studentData?.memorized_start_surah && studentData?.memorized_end_surah) ||
+        completedJuzRange ||
+        normalizedCompletedJuzs.length > 0,
+      )
+      const effectivePlan = {
         ...rawPlan,
         completed_juzs: studentData?.completed_juzs || [],
         current_juzs: studentData?.current_juzs || [],
+        has_previous: studentHasStoredMemorization
+          ? true
+          : Boolean(rawPlan.has_previous),
+        prev_start_surah: studentData?.memorized_start_surah || completedJuzRange?.startSurahNumber || rawPlan.prev_start_surah || null,
+        prev_start_verse: studentData?.memorized_start_verse || completedJuzRange?.startVerseNumber || rawPlan.prev_start_verse || null,
+        prev_end_surah: studentData?.memorized_end_surah || completedJuzRange?.endSurahNumber || rawPlan.prev_end_surah || null,
+        prev_end_verse: studentData?.memorized_end_verse || completedJuzRange?.endVerseNumber || rawPlan.prev_end_verse || null,
+      }
+      const plan = {
+        ...effectivePlan,
         total_pages: resolvePlanTotalPages({
-          ...rawPlan,
+          ...effectivePlan,
           completed_juzs: studentData?.completed_juzs || [],
         }),
         total_days: resolvePlanTotalDays({
-          ...rawPlan,
+          ...effectivePlan,
           completed_juzs: studentData?.completed_juzs || [],
         }),
+      }
+
+      let reportsQuery = supabase
+        .from("student_daily_reports")
+        .select("report_date, plan_session_number")
+        .eq("student_id", studentId)
+        .order("report_date", { ascending: true })
+
+      if (plan.start_date) {
+        reportsQuery = reportsQuery.gte("report_date", plan.start_date)
+      }
+
+      const { data: studentDailyReports, error: reportsError } = await reportsQuery
+
+      if (reportsError) {
+        console.error("[plans] student daily reports query error:", reportsError)
       }
 
       // جلب سجلات الحضور مع تقييماتها (join مع evaluations)
@@ -173,6 +227,9 @@ export async function GET(request: Request) {
         return NextResponse.json({
           plan,
           completedDays: 0,
+          progressedDays: 0,
+          awaitingHearingSessionNumbers: [],
+          failedSessionNumbers: [],
           progressPercent: 0,
           attendanceRecords: [],
           completedRecords: [],
@@ -182,7 +239,19 @@ export async function GET(request: Request) {
       // اليوم يُحتسب مكتملًا فقط إذا كان الطالب حاضرًا وتم تقييم الحفظ نفسه بشكل إيجابي.
       const completedRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
 
-      const completedDays = completedRecords.length
+      const planSessionProgress = buildPlanSessionProgress({
+        reports: studentDailyReports || [],
+        attendanceRecords: attendanceRecords || [],
+        totalDays: plan.total_days,
+      })
+      const completedDays = planSessionProgress.completedDays
+      const completedRecordsBySessionNumber = completedRecords.reduce<Record<string, (typeof completedRecords)[number]>>((acc, record) => {
+        const sessionNumber = planSessionProgress.reportSessionNumbersByDate[record.date]
+        if (sessionNumber) {
+          acc[String(sessionNumber)] = record
+        }
+        return acc
+      }, {})
       const progressPercent =
         plan.total_days > 0
           ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
@@ -192,6 +261,13 @@ export async function GET(request: Request) {
       return NextResponse.json({
         plan,
         completedDays,
+        progressedDays: planSessionProgress.progressedDays,
+        awaitingHearingSessionNumbers: planSessionProgress.awaitingHearingSessionNumbers,
+        failedSessionNumbers: planSessionProgress.failedSessionNumbers,
+        completedSessionNumbers: planSessionProgress.completedSessionNumbers,
+        completedRecordsBySessionNumber,
+        nextSessionNumber: planSessionProgress.nextSessionNumber,
+        reportSessionNumbersByDate: planSessionProgress.reportSessionNumbersByDate,
         progressPercent,
         quranMemorizedPages: quranMemorization.memorizedPages,
         quranProgressPercent: quranMemorization.progressPercent,
@@ -209,9 +285,10 @@ export async function GET(request: Request) {
 }
 
 // POST - إنشاء خطة جديدة للطالب
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const body = await request.json()
     const {
       student_id,
@@ -232,7 +309,24 @@ export async function POST(request: Request) {
       prev_end_verse,
       muraajaa_pages,
       rabt_pages,
+      review_distribution_mode,
     } = body
+
+    const canManageStudent = await canAccessStudent({
+      supabase,
+      actor,
+      studentId: student_id,
+      allowStudentSelf: false,
+      allowTeacher: true,
+    })
+
+    if (!actor || !canManageStudent) {
+      return NextResponse.json({ error: "غير مصرح لك بإدارة خطة هذا الطالب" }, { status: 403 })
+    }
+
+    if (actor.role === "student") {
+      return NextResponse.json({ error: "الطالب لا يمكنه إنشاء خطة بنفسه" }, { status: 403 })
+    }
 
     const { data: studentMemorizedData } = await supabase
       .from("students")
@@ -368,6 +462,7 @@ export async function POST(request: Request) {
       prev_end_verse: effectivePrevEndVerse,
       completed_juzs: normalizedCompletedJuzs,
     })
+    const totalPagesForStorage = Math.max(1, Math.ceil(totalPages))
     const totalDays =
       totalDaysOverride && Number(totalDaysOverride) > 0
         ? Number(totalDaysOverride)
@@ -386,6 +481,21 @@ export async function POST(request: Request) {
             prev_end_verse: effectivePrevEndVerse,
             completed_juzs: normalizedCompletedJuzs,
           })
+
+    const normalizedReviewDistributionMode = review_distribution_mode === "weekly" ? "weekly" : "fixed"
+    const fixedReviewPages = Number(muraajaa_pages) || 0
+    const weeklyReviewPages = normalizedReviewDistributionMode === "weekly"
+      ? calculatePreviousMemorizedPages({
+          has_previous: effectiveHasPrevious,
+          prev_start_surah: effectivePrevStartSurah,
+          prev_start_verse: effectivePrevStartVerse,
+          prev_end_surah: effectivePrevEndSurah,
+          prev_end_verse: effectivePrevEndVerse,
+        }) / 7
+      : 0
+    const muraajaaPagesForStorage = normalizedReviewDistributionMode === "weekly"
+      ? (weeklyReviewPages > 0 ? weeklyReviewPages : null)
+      : (fixedReviewPages > 0 ? fixedReviewPages : null)
 
     const { data: existingPlans, error: existingPlansError } = await supabase
       .from("student_plans")
@@ -407,7 +517,7 @@ export async function POST(request: Request) {
         end_surah_name,
         end_verse: end_verse || null,
         daily_pages,
-        total_pages: totalPages,
+        total_pages: totalPagesForStorage,
         total_days: totalDays,
         start_date: start_date || getSaudiDateString(),
         direction: normalizedDirection,
@@ -416,8 +526,9 @@ export async function POST(request: Request) {
         prev_start_verse: effectivePrevStartVerse,
         prev_end_surah: effectivePrevEndSurah,
         prev_end_verse: effectivePrevEndVerse,
-        muraajaa_pages: muraajaa_pages || null,
+        muraajaa_pages: muraajaaPagesForStorage,
         rabt_pages: rabt_pages || null,
+        review_distribution_mode: normalizedReviewDistributionMode,
       }])
       .select()
       .single()
@@ -452,14 +563,50 @@ export async function POST(request: Request) {
 }
 
 // DELETE - حذف خطة
-export async function DELETE(request: Request) {
+export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const { searchParams } = new URL(request.url)
     const planId = searchParams.get("plan_id")
     const studentId = searchParams.get("student_id")
 
+    if (studentId) {
+      const canManageStudent = await canAccessStudent({
+        supabase,
+        actor,
+        studentId,
+        allowStudentSelf: false,
+        allowTeacher: true,
+      })
+
+      if (!actor || !canManageStudent || actor.role === "student") {
+        return NextResponse.json({ error: "غير مصرح لك بحذف خطة هذا الطالب" }, { status: 403 })
+      }
+    }
+
     if (planId) {
+      if (!actor) {
+        return NextResponse.json({ error: "غير مصرح لك بحذف هذه الخطة" }, { status: 403 })
+      }
+
+      const { data: planOwner } = await supabase.from("student_plans").select("student_id").eq("id", planId).maybeSingle()
+      if (!planOwner?.student_id) {
+        return NextResponse.json({ error: "الخطة غير موجودة" }, { status: 404 })
+      }
+
+      const canManagePlanOwner = await canAccessStudent({
+        supabase,
+        actor,
+        studentId: planOwner.student_id,
+        allowStudentSelf: false,
+        allowTeacher: true,
+      })
+
+      if (!canManagePlanOwner || actor.role === "student") {
+        return NextResponse.json({ error: "غير مصرح لك بحذف هذه الخطة" }, { status: 403 })
+      }
+
       const { error } = await supabase.from("student_plans").delete().eq("id", planId)
       if (error) throw error
     } else if (studentId) {

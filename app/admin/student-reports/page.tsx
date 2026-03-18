@@ -10,7 +10,7 @@ import { ArrowRight, Download, Calendar, BookOpen } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { translateAttendanceStatus } from "@/lib/student-attendance"
+import { getEvaluationLevelLabel, translateAttendanceStatus } from "@/lib/student-attendance"
 
 interface Circle {
   name: string
@@ -63,19 +63,7 @@ export default function StudentReportsPage() {
   }
 
   const getLevelDisplay = (level: string | null): string => {
-    if (!level || level === "not_completed" || level === "null") {
-      return "لم يكمل"
-    }
-    switch (level) {
-      case "excellent":
-        return "ممتاز"
-      case "very_good":
-        return "جيد جداً"
-      case "good":
-        return "جيد"
-      default:
-        return level
-    }
+    return getEvaluationLevelLabel(level) || "0"
   }
 
   const fetchStudentReports = async (date: string, circle: string) => {

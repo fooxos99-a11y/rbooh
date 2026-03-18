@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Palette } from "lucide-react"
 import { SiteLoader } from "@/components/ui/site-loader"
+import { ThemeRankPreview } from "@/components/theme-rank-preview"
 
 const THEMES = {
   beige_default: {
@@ -185,30 +186,7 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
   }
 
   const renderThemePreview = (key: string) => {
-    const theme = THEMES[key as keyof typeof THEMES]
-
-    return (
-      <div
-        className="relative w-full h-32 rounded-xl overflow-hidden border-2"
-        style={{
-          backgroundColor: `${theme.primary}10`,
-          borderColor: `${theme.primary}50`,
-          backgroundImage: `radial-gradient(circle at 20% 80%, ${theme.primary}08 0%, transparent 50%),
-                           radial-gradient(circle at 80% 20%, ${theme.secondary}06 0%, transparent 50%)`,
-        }}
-      >
-        <div
-          className="absolute top-0 left-0 w-full h-2"
-          style={{
-            backgroundImage: `linear-gradient(to right, ${theme.primary}, ${theme.secondary}, ${theme.tertiary})`,
-          }}
-        />
-
-        <div className="absolute inset-0 flex items-center justify-center">
-          <Palette className="w-12 h-12" style={{ color: theme.primary }} />
-        </div>
-      </div>
-    )
+    return <ThemeRankPreview themeKey={key} />
   }
 
   if (isLoading) {

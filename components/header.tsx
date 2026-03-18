@@ -11,7 +11,6 @@ import {
   User,
   LogOut,
   Users,
-  LayoutDashboard,
   Menu,
   ClipboardCheck,
   Trophy,
@@ -46,12 +45,9 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { GlobalAddStudentDialog } from "@/components/global-add-student-dialog";
-import { GlobalAdminModals } from "@/components/global-admin-modals";
 import { createClient } from "@/lib/supabase/client";
 
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
-
-import { TeacherAttendanceModal } from "@/components/teacher-attendance-modal";
 
 import {
   DropdownMenu,
@@ -81,6 +77,8 @@ function NavItem({
 
   indent,
 
+  strong,
+
   disabled,
 }: {
   icon: React.ElementType;
@@ -92,6 +90,8 @@ function NavItem({
   gold?: boolean;
 
   indent?: boolean;
+
+  strong?: boolean;
 
   disabled?: boolean;
 }) {
@@ -115,7 +115,7 @@ function NavItem({
           ${disabled ? "group-hover:scale-100 group-hover:text-[#00312e]/50" : ""}`}
       />
 
-      <span className="flex-1 text-right leading-tight">{label}</span>
+      <span className={`flex-1 text-right leading-tight ${strong ? "font-extrabold" : ""}`}>{label}</span>
     </button>
   );
 }
@@ -201,14 +201,6 @@ export function Header() {
 
   const [circlesLoading, setCirclesLoading] = useState(true);
 
-  const [teacherInfo, setTeacherInfo] = useState<{
-    id: string;
-
-    name: string;
-
-    accountNumber: number;
-  } | null>(null);
-
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [isStudentsOpen, setIsStudentsOpen] = useState(false);
@@ -222,8 +214,6 @@ export function Header() {
   const [isAdminGeneralOpen, setIsAdminGeneralOpen] = useState(false);
 
   const [isAdminGamesOpen, setIsAdminGamesOpen] = useState(false);
-
-  const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false);
 
   const [validAdminRoles, setValidAdminRoles] = useState<string[]>([
     "admin",
@@ -361,11 +351,6 @@ export function Header() {
       } catch {}
     };
     fetchUnread();
-
-    if (loggedIn && (role === "teacher" || role === "deputy_teacher")) {
-      const accNum = localStorage.getItem("accountNumber");
-      if (accNum) fetchTeacherInfo(accNum);
-    }
 
     if (loggedIn && role === "student") {
       const accNum = localStorage.getItem("accountNumber");
@@ -562,26 +547,6 @@ export function Header() {
     }
   };
 
-  const fetchTeacherInfo = async (accNum: string) => {
-    try {
-      const res = await fetch(`/api/teachers?account_number=${accNum}`);
-
-      const data = await res.json();
-
-      if (data.teachers?.[0]) {
-        setTeacherInfo({
-          id: data.teachers[0].id,
-
-          name: data.teachers[0].name,
-
-          accountNumber: data.teachers[0].account_number,
-        });
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
   const handleLogout = async () => {
     const confirmed = await confirmDialog({
       title: "تأكيد تسجيل الخروج",
@@ -615,14 +580,7 @@ export function Header() {
     scrollToTop();
 
     if (href.startsWith('?')) {
-      const dashboardOnlyActions: string[] = [];
-        const action = href.split('=')[1];
-        
-        if (dashboardOnlyActions.includes(action) && window.location.pathname !== '/admin/dashboard') {
-            router.push('/admin/dashboard' + href);
-        } else {
-            router.push(window.location.pathname + href);
-        }
+        router.push(window.location.pathname + href);
     } else {
         router.push(href);
     }
@@ -663,16 +621,6 @@ export function Header() {
 
   return (
     <>
-      {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher") && teacherInfo && (
-        <TeacherAttendanceModal
-          isOpen={isAttendanceModalOpen}
-          onClose={() => setIsAttendanceModalOpen(false)}
-          teacherId={teacherInfo.id}
-          teacherName={teacherInfo.name}
-          accountNumber={teacherInfo.accountNumber}
-        />
-      )}
-
       {isLoggingOut && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
           <div className="bg-white rounded-3xl px-10 py-8 flex flex-col items-center shadow-2xl min-w-[260px]">
@@ -1113,14 +1061,6 @@ export function Header() {
             <>
               <SectionHeader title="الإدارة" />
               <div className="px-2 mb-0">
-                <NavItem
-                  icon={ClipboardCheck}
-                  label="التحضير"
-                  onClick={() => {
-                    setIsAttendanceModalOpen(true);
-                    setIsMobileMenuOpen(false);
-                  }}
-                />
                 {userRole === "teacher" && (
                   <NavItem
                     icon={BookMarked}
@@ -1132,6 +1072,11 @@ export function Header() {
                   icon={Users}
                   label="إدارة الحلقة"
                   onClick={() => handleNav("/teacher/halaqah/1")}
+                />
+                <NavItem
+                  icon={BarChart3}
+                  label="تقارير الأسابيع"
+                  onClick={() => handleNav("/teacher/weekly-reports")}
                 />
               </div>
             </>
@@ -1158,6 +1103,12 @@ export function Header() {
               onClick={() => handleNav("/contact")}
             />
 
+            <NavItem
+              icon={BookOpen}
+              label="جميع الحلقات"
+              onClick={() => handleNav("/halaqat/all")}
+            />
+
             <CollapseSection
               icon={Star}
               label="أفضل الطلاب"
@@ -1169,6 +1120,7 @@ export function Header() {
                 label="جميع الطلاب"
                 onClick={() => handleNav("/students/all")}
                 indent
+                strong
               />
 
               {circlesLoading ? (
@@ -1217,6 +1169,11 @@ export function Header() {
                   onClick={() => { handleNav("/profile?tab=records"); setIsMobileMenuOpen(false); }}
                 />
                 <NavItem
+                  icon={ClipboardCheck}
+                  label="التنفيذ اليومي"
+                  onClick={() => { handleNav("/profile?tab=execution"); setIsMobileMenuOpen(false); }}
+                />
+                <NavItem
                   icon={BookMarked}
                   label="الخطة"
                   onClick={() => { handleNav("/profile?tab=plan"); setIsMobileMenuOpen(false); }}
@@ -1248,6 +1205,14 @@ export function Header() {
           {isLoggedIn && isAdmin && (
             <>
               <SectionHeader title="لوحة التحكم" />
+
+              <div className="px-2 mb-0.5">
+                <NavItem
+                  icon={ClipboardCheck}
+                  label="التحضير"
+                  onClick={() => handleNav("/admin/staff-attendance")}
+                />
+              </div>
 
               {/* فئة إدارة الطلاب */}
 
@@ -1407,6 +1372,30 @@ export function Header() {
                     {
                       icon: FileText,
 
+                      label: "السجل اليومي للطلاب",
+
+                      path: "/admin/student-daily-attendance",
+                    },
+
+                    {
+                      icon: FileText,
+
+                      label: "تقرير الحلقات المختصر",
+
+                      path: "/admin/reports/circle-short-report",
+                    },
+
+                    {
+                      icon: Bell,
+
+                      label: "الغيابات",
+
+                      path: "/admin/absences",
+                    },
+
+                    {
+                      icon: FileText,
+
                       label: "تقارير المعلمين",
 
                       path: "/admin/teacher-attendance",
@@ -1418,14 +1407,6 @@ export function Header() {
                       label: "تقارير الرسائل",
 
                       path: "/admin/reports",
-                    },
-
-                    {
-                      icon: FileText,
-
-                      label: "السجل اليومي للطلاب",
-
-                      path: "/admin/student-daily-attendance",
                     },
                   ].map(({ icon: Ic, label, path }) => (
                     <NavItem
@@ -1450,16 +1431,6 @@ export function Header() {
                 >
                   {[
                     {
-                      icon: Bell,
-
-                      label: "الإشعارات",
-
-                      permKey: "الإشعارات",
-
-                      path: "/admin/notifications",
-                    },
-
-                    {
                       icon: Map,
 
                       label: "إدارة المسار",
@@ -1471,7 +1442,6 @@ export function Header() {
 
                     {
                       icon: ShoppingBag,
-
                       label: "إدارة المتجر",
 
                       permKey: "إدارة المتجر",
@@ -1480,13 +1450,23 @@ export function Header() {
                     },
 
                     {
-                      icon: Send,
+                      icon: Bell,
 
-                      label: "إرسال لأولياء الأمور",
+                      label: "الإشعارات",
 
-                      permKey: "الإرسال إلى أولياء الأمور",
+                      permKey: "الإشعارات",
 
-                      path: "/admin/whatsapp-send",
+                      path: "/admin/notifications",
+                    },
+
+                    {
+                      icon: BarChart3,
+
+                      label: "الإحصائيات",
+
+                      permKey: "الإحصائيات",
+
+                      path: "/admin/statistics",
                     },
 
                     {
@@ -1510,13 +1490,13 @@ export function Header() {
                     },
 
                     {
-                      icon: BarChart3,
+                      icon: Send,
 
-                      label: "الإحصائيات",
+                      label: "الإرسال إلى أولياء الأمور",
 
-                      permKey: "الإحصائيات",
+                      permKey: "الإرسال إلى أولياء الأمور",
 
-                      path: "/admin/statistics",
+                      path: "/admin/whatsapp-send",
                     },
 
                     {
@@ -1530,23 +1510,21 @@ export function Header() {
                     },
                   ].filter(({ permKey }) => hasPermission(permKey)).map(({ icon: Ic, label, path }) => (
                     <NavItem
-                      key={label}
+                      key={`${label}-${path}`}
                       icon={Ic}
                       label={label}
                       onClick={() => handleNav(path)}
-                      disabled={label === "المالية"}
+                      disabled={false}
                       indent
                     />
                   ))}
                 </CollapseSection>
               </div>}
 
-              {/* فئة الألعاب */}
-
               {hasPermission("إدارة الألعاب") && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={Gamepad2}
-                  label="الألعاب"
+                  label="إدارة الألعاب"
                   isOpen={isAdminGamesOpen}
                   onToggle={() => setIsAdminGamesOpen(!isAdminGamesOpen)}
                 >
@@ -1620,7 +1598,6 @@ export function Header() {
           )}
         </div>
       </div>
-      <GlobalAdminModals />
     </>
   );
 }

@@ -44,6 +44,7 @@ import {
   ArrowRightLeft,
   BookMarked,
   Eye,
+  ClipboardCheck,
 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { createClient } from "@/lib/supabase/client"
@@ -139,8 +140,19 @@ function AdminDashboard() {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>(emptyRows())
   const [isBulkSubmitting, setIsBulkSubmitting] = useState(false)
 
-  const availableStudentsToRemove = selectedCircleToRemove ? studentsInCircles[selectedCircleToRemove.trim()] || [] : []
-  const availableStudentsToMove = moveSourceCircle ? studentsInCircles[moveSourceCircle.trim()] || [] : []
+  const normalizeCircleKey = (value?: string | null) =>
+    (value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+
+  const getStudentsForCircle = (circleName?: string | null) => {
+    const normalizedCircle = normalizeCircleKey(circleName)
+    if (!normalizedCircle) return []
+    return studentsInCircles[normalizedCircle] || []
+  }
+
+  const availableStudentsToRemove = getStudentsForCircle(selectedCircleToRemove)
+  const availableStudentsToMove = getStudentsForCircle(moveSourceCircle)
 
   const [isDragging, setIsDragging] = useState(false)
   const [isAchievementDragging, setIsAchievementDragging] = useState(false)
@@ -184,15 +196,16 @@ function AdminDashboard() {
   }
 
   const translateLevel = (level: string) => {
-    if (!level || level === "not_completed" || level === "null") {
-      return "لم يكمل"
+    if (!level || level === "null") {
+      return "0"
     }
     const levelMap: Record<string, string> = {
-      excellent: "ممتاز",
-      very_good: "جيد جداً",
-      good: "جيد",
-      acceptable: "مقبول",
-      weak: "ضعيف",
+      excellent: "10",
+      very_good: "8",
+      good: "6",
+      acceptable: "4",
+      weak: "2",
+      not_completed: "0",
     }
     return levelMap[level] || level
   }
@@ -200,6 +213,17 @@ function AdminDashboard() {
   const confirmDialog = useConfirmDialog()
   const alertDialog = useAlertDialog()
   const { toast } = useToast()
+
+  const getNormalizedAccountNumber = (rawValue: string | null) => {
+    if (!rawValue) return null
+
+    const normalized = rawValue
+      .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+      .trim()
+
+    const parsed = Number(normalized)
+    return Number.isFinite(parsed) ? parsed : null
+  }
 
   const searchParams = useSearchParams()
 
@@ -226,7 +250,9 @@ function AdminDashboard() {
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
-    const accountNumber = localStorage.getItem("accountNumber")
+    const accountNumber = getNormalizedAccountNumber(
+      localStorage.getItem("accountNumber") || localStorage.getItem("account_number")
+    )
     if (!loggedIn || !accountNumber) {
       router.push("/login")
       return
@@ -239,7 +265,7 @@ function AdminDashboard() {
         const { data: userData } = await supabase
           .from("users")
           .select("role")
-          .eq("account_number", Number(accountNumber))
+          .eq("account_number", accountNumber)
           .single()
 
         const freshRole = userData?.role || localStorage.getItem("userRole") || ""
@@ -253,7 +279,7 @@ function AdminDashboard() {
         // تحديث localStorage بالـ role الجديد فوراً
         localStorage.setItem("userRole", freshRole)
 
-        const fullAccess = ["admin", "مدير"].includes(freshRole) || Number(accountNumber) === 2
+        const fullAccess = ["admin", "مدير"].includes(freshRole) || accountNumber === 2
         setIsFullAccess(fullAccess)
 
         await Promise.all([fetchCircles(), fetchStudents(), fetchTeachers(), fetchAdmins()])
@@ -341,7 +367,7 @@ function AdminDashboard() {
 
         const grouped: Record<string, any[]> = {}
         data.students.forEach((student: any) => {
-          const circleKey = (student.halaqah || student.circle_name || "غير محدد").trim()
+          const circleKey = normalizeCircleKey(student.halaqah || student.circle_name || "غير محدد")
           if (!grouped[circleKey]) {
             grouped[circleKey] = []
           }
@@ -832,7 +858,7 @@ function AdminDashboard() {
 
   const handleSelectStudentForEdit = (studentId: string) => {
     setSelectedStudentForEdit(studentId)
-    const student = studentsInCircles[(selectedCircleForEdit || "").trim()]?.find((s) => s.id === studentId)
+    const student = getStudentsForCircle(selectedCircleForEdit).find((s) => s.id === studentId)
     if (student) {
       setEditingStudent(student)
       setEditGuardianPhone(student.guardian_phone || "")
@@ -881,7 +907,7 @@ function AdminDashboard() {
 
   const handleSelectStudentForPoints = (studentId: string) => {
     setSelectedStudentForPoints(studentId)
-    const student = studentsInCircles[(selectedCircleForPoints || "").trim()]?.find((s) => s.id === studentId)
+    const student = getStudentsForCircle(selectedCircleForPoints).find((s) => s.id === studentId)
     if (student) {
       setEditingStudentPoints(student)
       setNewPoints(student.points?.toString() || "0")
@@ -967,7 +993,7 @@ function AdminDashboard() {
 
   const handleSelectStudentForRecords = (studentId: string) => {
     setSelectedStudentForRecords(studentId)
-    const student = studentsInCircles[(selectedCircleForRecords || "").trim()]?.find((s) => s.id === studentId)
+    const student = getStudentsForCircle(selectedCircleForRecords).find((s) => s.id === studentId)
     if (student) {
       setSelectedStudentName(student.name)
       fetchStudentRecords(studentId)
@@ -1088,9 +1114,9 @@ function AdminDashboard() {
                 )}
 
                 {[
-                  { icon: Settings, label: "إدارة المعلمين", action: () => router.push("?action=teachers") },
-                  { icon: BookOpen, label: "إدارة الحلقات", action: () => router.push("?action=circles") },
-                  { icon: ShieldCheck, label: "الهيكل الإداري", action: () => router.push("?action=admins") },
+                  { icon: Settings, label: "إدارة المعلمين", action: () => router.push("/admin/dashboard?action=teachers") },
+                  { icon: BookOpen, label: "إدارة الحلقات", action: () => router.push("/admin/dashboard?action=circles") },
+                  { icon: ShieldCheck, label: "الهيكل الإداري", action: () => router.push("/admin/dashboard?action=admins") },
                   { icon: Zap, label: "الصلاحيات", action: () => router.push("/admin/permissions") },
                   { icon: UserPlus, label: "طلبات التسجيل", action: () => router.push("/admin/enrollment-requests") },
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, action }) => (
@@ -1133,6 +1159,8 @@ function AdminDashboard() {
                     <div className="divide-y divide-[#D4AF37]/25 rounded-xl border border-[#D4AF37]/40 overflow-hidden mt-4">
                       {[
                         { icon: UserCheck, label: "تقارير المعلمين", action: () => { setIsReportsDialogOpen(false); router.push("/admin/teacher-attendance") } },
+                        { icon: ClipboardCheck, label: "التحضير", action: () => { setIsReportsDialogOpen(false); router.push("/admin/staff-attendance") } },
+                        { icon: FileText, label: "تقرير الحلقات المختصر", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports/circle-short-report") } },
                         { icon: MessageSquare, label: "تقارير الرسائل", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports") } },
                         { icon: BookOpen, label: "السجل اليومي للطلاب", action: () => { setIsReportsDialogOpen(false); router.push("/admin/student-daily-attendance") } },
                       ].map(({ icon: Ic, label, action }) => (
@@ -1278,7 +1306,7 @@ function AdminDashboard() {
                         <SelectValue placeholder={selectedCircleForPoints ? "اختر الطالب" : "اختر الحلقة أولاً"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {(studentsInCircles[(selectedCircleForPoints || "").trim()] || []).map((student: any) => (
+                        {getStudentsForCircle(selectedCircleForPoints).map((student: any) => (
                           <SelectItem key={student.id} value={student.id}>
                             {student.name} - النقاط الحالية: {student.points || 0}
                           </SelectItem>
@@ -1700,7 +1728,7 @@ function AdminDashboard() {
                       <SelectValue placeholder={selectedCircleForEdit ? "اختر الطالب" : "اختر الحلقة أولاً"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(studentsInCircles[(selectedCircleForEdit || "").trim()] || []).map((student: any) => (
+                      {getStudentsForCircle(selectedCircleForEdit).map((student: any) => (
                         <SelectItem key={student.id} value={student.id}>
                           {student.name}
                         </SelectItem>
@@ -1806,7 +1834,7 @@ function AdminDashboard() {
                       <SelectValue placeholder={selectedCircleForRecords ? "اختر الطالب" : "اختر الحلقة أولاً"} />
                     </SelectTrigger>
                     <SelectContent>
-                      {(studentsInCircles[(selectedCircleForRecords || "").trim()] || []).map((student: any) => (
+                      {getStudentsForCircle(selectedCircleForRecords).map((student: any) => (
                         <SelectItem key={student.id} value={student.id}>
                           {student.name}
                         </SelectItem>
@@ -1863,10 +1891,10 @@ function AdminDashboard() {
                                     {translateStatus(record.status)}
                                   </span>
                                 </TableCell>
-                                <TableCell>{(record.status === "absent" || record.status === "excused") ? "لم يكمل" : (translateLevel(lastEval?.hafiz_level) || "-")}</TableCell>
-                                <TableCell>{(record.status === "absent" || record.status === "excused") ? "لم يكمل" : (translateLevel(lastEval?.tikrar_level) || "-")}</TableCell>
-                                <TableCell>{(record.status === "absent" || record.status === "excused") ? "لم يكمل" : (translateLevel(lastEval?.samaa_level) || "-")}</TableCell>
-                                <TableCell>{(record.status === "absent" || record.status === "excused") ? "لم يكمل" : (translateLevel(lastEval?.rabet_level) || "-")}</TableCell>
+                                <TableCell>{translateLevel(lastEval?.hafiz_level) || "-"}</TableCell>
+                                <TableCell>{translateLevel(lastEval?.tikrar_level) || "-"}</TableCell>
+                                <TableCell>{translateLevel(lastEval?.samaa_level) || "-"}</TableCell>
+                                <TableCell>{translateLevel(lastEval?.rabet_level) || "-"}</TableCell>
                               </TableRow>
                             );
                           })}

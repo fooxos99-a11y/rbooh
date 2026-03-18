@@ -129,7 +129,7 @@ function AchievementsPage() {
                 let imageUrl = "";
                 if (form.icon_type === "image" && form.image_file) {
                   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-                  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+                  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
                   const { createClient } = await import("@supabase/supabase-js");
                   const supabase = createClient(supabaseUrl, supabaseKey);
                   const fileExt = form.image_file.name.split('.').pop();

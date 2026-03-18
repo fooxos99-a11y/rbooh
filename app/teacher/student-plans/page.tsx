@@ -16,6 +16,7 @@ import { BookMarked, Plus, Trash2, Target, Users, ChevronDown, Check } from "luc
 import { SURAHS, calculateTotalDays, calculateTotalPages, getContiguousCompletedJuzRange, getJuzBounds, getJuzNumbersForPageRange, getNextAyahReference, hasScatteredCompletedJuzs, getPageFloatForAyah, getPlanMemorizedRange, getSurahJuzNumbers, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { formatJuzList } from "@/lib/enrollment-test-utils"
+import { getClientAuthHeaders } from "@/lib/client-auth"
 
 interface Student {
   id: string
@@ -52,9 +53,13 @@ interface StudentPlan {
   prev_end_verse?: number | null
   muraajaa_pages?: number | null
   rabt_pages?: number | null
+  review_distribution_mode?: "fixed" | "weekly" | null
 }
 
+const WEEKLY_REVIEW_OPTION_VALUE = "weekly"
+
 const MURAAJAA_OPTIONS = [
+  { value: WEEKLY_REVIEW_OPTION_VALUE, label: "التقسيم على أسبوع" },
   { value: "20", label: "جزء واحد" },
   { value: "40", label: "جزئين" },
   { value: "60", label: "3 أجزاء" },
@@ -284,7 +289,11 @@ function getAdjustedPreviewRange({
     }
   }
 
-  const totalPages = compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) <= 0
+  const isRangeOrderValid = direction === "desc"
+    ? compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) >= 0
+    : compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) <= 0
+
+  const totalPages = isRangeOrderValid
     ? resolvePlanTotalPages({
         start_surah_number: adjustedStartSurahNumber,
         start_verse: adjustedStartVerseNumber,
@@ -383,6 +392,49 @@ function getLockedPreviousRange(student: Student, plan: StudentPlan | null, comp
   }
 }
 
+function isJuzFullyCoveredByRange(
+  juzNumber: number,
+  range: ReturnType<typeof getLockedPreviousRange>,
+) {
+  if (!range) {
+    return false
+  }
+
+  const juzBounds = getJuzBounds(juzNumber)
+  if (!juzBounds) {
+    return false
+  }
+
+  const rangeStartsFirst = compareAyahRefs(
+    range.startSurahNumber,
+    range.startVerseNumber,
+    range.endSurahNumber,
+    range.endVerseNumber,
+  ) <= 0
+
+  const normalizedRangeStart = rangeStartsFirst
+    ? { surahNumber: range.startSurahNumber, verseNumber: range.startVerseNumber }
+    : { surahNumber: range.endSurahNumber, verseNumber: range.endVerseNumber }
+  const normalizedRangeEnd = rangeStartsFirst
+    ? { surahNumber: range.endSurahNumber, verseNumber: range.endVerseNumber }
+    : { surahNumber: range.startSurahNumber, verseNumber: range.startVerseNumber }
+
+  return (
+    compareAyahRefs(
+      normalizedRangeStart.surahNumber,
+      normalizedRangeStart.verseNumber,
+      juzBounds.startSurahNumber,
+      juzBounds.startVerseNumber,
+    ) <= 0
+    && compareAyahRefs(
+      normalizedRangeEnd.surahNumber,
+      normalizedRangeEnd.verseNumber,
+      juzBounds.endSurahNumber,
+      juzBounds.endVerseNumber,
+    ) >= 0
+  )
+}
+
 export default function TeacherStudentPlansPage() {
   const router = useRouter()
   const confirmDialog = useConfirmDialog()
@@ -413,7 +465,7 @@ export default function TeacherStudentPlansPage() {
   const [prevStartOpen, setPrevStartOpen] = useState(false)
   const [prevEndOpen, setPrevEndOpen] = useState(false)
   const [isPreviousLocked, setIsPreviousLocked] = useState(false)
-  const [muraajaaPages, setMuraajaaPages] = useState<string>("20")
+  const [muraajaaPages, setMuraajaaPages] = useState<string>(WEEKLY_REVIEW_OPTION_VALUE)
   const [rabtPages, setRabtPages] = useState<string>("10")
 
   const [isSaving, setIsSaving] = useState(false)
@@ -465,7 +517,7 @@ export default function TeacherStudentPlansPage() {
     await Promise.all(
       studentList.map(async (student) => {
         try {
-          const res = await fetch(`/api/student-plans?student_id=${student.id}`)
+          const res = await fetch(`/api/student-plans?student_id=${student.id}`, { headers: getClientAuthHeaders() })
           const data = await res.json()
           plans[student.id] = data.plan || null
           progress[student.id] = data.progressPercent || 0
@@ -513,7 +565,11 @@ export default function TeacherStudentPlansPage() {
     setPrevEndVerse(lockedPreviousRange ? String(lockedPreviousRange.endVerseNumber) : "")
     setPrevStartOpen(false)
     setPrevEndOpen(false)
-    setMuraajaaPages("20")
+    setMuraajaaPages(currentPlan?.review_distribution_mode === "weekly"
+      ? WEEKLY_REVIEW_OPTION_VALUE
+      : currentPlan?.muraajaa_pages
+        ? String(currentPlan.muraajaa_pages)
+        : WEEKLY_REVIEW_OPTION_VALUE)
     setRabtPages("10")
 
     setAddDialogOpen(true)
@@ -580,12 +636,13 @@ export default function TeacherStudentPlansPage() {
     })
     const total = adjustedPreview.totalPages
     const days = adjustedPreview.totalDays
+    const reviewDistributionMode = muraajaaPages === WEEKLY_REVIEW_OPTION_VALUE ? "weekly" : "fixed"
 
     setIsSaving(true)
     try {
       const res = await fetch("/api/student-plans", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
         body: JSON.stringify({
           student_id: selectedStudent.id,
           start_surah_number: startNum,
@@ -602,8 +659,9 @@ export default function TeacherStudentPlansPage() {
           prev_start_verse: hasPrevious && prevStartVerse ? parseInt(prevStartVerse) : null,
           prev_end_surah: hasPrevious && prevEndSurah ? parseInt(prevEndSurah) : null,
           prev_end_verse: hasPrevious && prevEndVerse ? parseInt(prevEndVerse) : null,
-          muraajaa_pages: parseFloat(muraajaaPages),
+          muraajaa_pages: reviewDistributionMode === "weekly" ? null : parseFloat(muraajaaPages),
           rabt_pages: parseFloat(rabtPages),
+          review_distribution_mode: reviewDistributionMode,
           start_date: getSaudiDateString(),
         }),
       })
@@ -637,7 +695,7 @@ export default function TeacherStudentPlansPage() {
     if (!confirmed) return
 
     try {
-      await fetch(`/api/student-plans?student_id=${studentId}`, { method: "DELETE" })
+      await fetch(`/api/student-plans?student_id=${studentId}`, { method: "DELETE", headers: getClientAuthHeaders() })
       setStudentPlans((prev) => ({ ...prev, [studentId]: null }))
       setStudentProgress((prev) => ({ ...prev, [studentId]: 0 }))
     } catch (error) {
@@ -695,14 +753,23 @@ export default function TeacherStudentPlansPage() {
   const nextStartFromPrevious = hasPrevious && prevStartSurah && prevEndSurah && prevEndVerse
     ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
     : null
-  const masteryJuzLabel = formatJuzList(selectedStudent?.current_juzs)
+  const selectedStudentPlan = selectedStudent ? studentPlans[selectedStudent.id] ?? null : null
+  const selectedStudentCompletedDays = selectedStudent ? studentCompletedDays[selectedStudent.id] || 0 : 0
   const hasStoredPreviousMemorization = Boolean(
     (selectedStudent?.completed_juzs?.length || 0) > 0 ||
     (selectedStudent?.memorized_start_surah && selectedStudent?.memorized_end_surah),
   )
   const shouldHidePreviousToggle = hasStoredPreviousMemorization
-  const isMasteryOnlyStudent = Boolean((selectedStudent?.current_juzs?.length || 0) > 0) && !hasStoredPreviousMemorization
   const completedJuzSet = new Set(selectedStudent?.completed_juzs || [])
+  const lockedPreviousRange = selectedStudent
+    ? getLockedPreviousRange(selectedStudent, selectedStudentPlan, selectedStudentCompletedDays)
+    : null
+  const pendingMasteryJuzs = (selectedStudent?.current_juzs || []).filter((juzNumber) => (
+    !completedJuzSet.has(juzNumber)
+    && !isJuzFullyCoveredByRange(juzNumber, lockedPreviousRange)
+  ))
+  const masteryJuzLabel = formatJuzList(pendingMasteryJuzs)
+  const isMasteryOnlyStudent = pendingMasteryJuzs.length > 0 && !hasStoredPreviousMemorization
   const completedJuzBounds = (selectedStudent?.completed_juzs || [])
     .map((juzNumber) => getJuzBounds(juzNumber))
     .filter((bounds): bounds is NonNullable<ReturnType<typeof getJuzBounds>> => Boolean(bounds))
@@ -880,6 +947,7 @@ export default function TeacherStudentPlansPage() {
         completedJuzs: selectedStudent?.completed_juzs,
       }).totalDays
     : 0
+  const previewDisplayTotal = previewTotal > 0 ? Math.ceil(previewTotal) : 0
 
   useEffect(() => {
     if (startOpen && startSurah) {
@@ -1375,8 +1443,8 @@ export default function TeacherStudentPlansPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3 mb-2 pb-2">
-              <div className="space-y-1.5 flex flex-col w-full">
+            <div className="grid grid-cols-1 gap-3 mb-2 pb-2">
+              <div className="space-y-1.5 flex min-w-0 flex-col w-full">
                 <label className="text-sm font-semibold text-[#1a2332]">المقدار اليومي</label>
                 <Select value={dailyPages} onValueChange={setDailyPages}>
                   <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
@@ -1392,8 +1460,8 @@ export default function TeacherStudentPlansPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-[#1a2332]">مقدار المراجعة اليومي</label>
+              <div className="space-y-1.5 min-w-0">
+                <label className="text-sm font-semibold text-[#1a2332]">طريقة المراجعة</label>
                 <Select value={muraajaaPages} onValueChange={setMuraajaaPages} dir="rtl">
                   <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
                     <SelectValue />
@@ -1408,7 +1476,7 @@ export default function TeacherStudentPlansPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-sm font-semibold text-[#1a2332]">مقدار الربط اليومي</label>
                 <Select value={rabtPages} onValueChange={setRabtPages} dir="rtl">
                   <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
@@ -1436,7 +1504,6 @@ export default function TeacherStudentPlansPage() {
                 direction,
                 prevStartSurah,
                 prevStartVerse,
-                prevStartVerse,
                 prevEndSurah,
                 prevEndVerse,
                 completedJuzs: selectedStudent?.completed_juzs,
@@ -1463,7 +1530,7 @@ export default function TeacherStudentPlansPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="text-center">
-                      <p className="text-2xl font-black text-[#1a2332]">{previewTotal}</p>
+                      <p className="text-2xl font-black text-[#1a2332]">{previewDisplayTotal}</p>
                       <p className="text-[11px] text-neutral-400">وجهاً إجمالاً</p>
                     </div>
                     <div className="text-center">

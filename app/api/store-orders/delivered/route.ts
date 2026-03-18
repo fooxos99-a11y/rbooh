@@ -6,7 +6,7 @@ export async function PATCH(request: Request) {
   const { order_id, mark_all } = body;
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
   );
   if (mark_all) {
     // تحديث جميع الطلبات غير المسلمة

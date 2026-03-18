@@ -12,7 +12,7 @@ import { useAdminAuth } from "@/hooks/use-admin-auth"
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
 )
 
 export default function PathwaysResultsPage() {

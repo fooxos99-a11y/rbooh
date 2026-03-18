@@ -22,6 +22,7 @@ import {
   SelectValue,
   SelectGroup,
 } from "@/components/ui/select";
+import { getClientAuthHeaders } from "@/lib/client-auth";
 import {
   Popover,
   PopoverContent,
@@ -107,9 +108,13 @@ interface StudentPlan {
   prev_end_verse?: number | null;
   muraajaa_pages?: number | null;
   rabt_pages?: number | null;
+  review_distribution_mode?: "fixed" | "weekly" | null;
 }
 
+const WEEKLY_REVIEW_OPTION_VALUE = "weekly";
+
 const MURAAJAA_OPTIONS = [
+  { value: WEEKLY_REVIEW_OPTION_VALUE, label: "التقسيم على أسبوع" },
   { value: "20", label: "جزء واحد" },
   { value: "40", label: "جزئين" },
   { value: "60", label: "3 أجزاء" },
@@ -342,7 +347,11 @@ function getAdjustedPreviewRange({
     }
   }
 
-  const totalPages = compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) <= 0
+  const isRangeOrderValid = direction === "desc"
+    ? compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) >= 0
+    : compareAyahRefs(adjustedStartSurahNumber, adjustedStartVerseNumber, endSurahNumber, endVerseNumber) <= 0;
+
+  const totalPages = isRangeOrderValid
     ? resolvePlanTotalPages({
         start_surah_number: adjustedStartSurahNumber,
         start_verse: adjustedStartVerseNumber,
@@ -441,6 +450,49 @@ function getLockedPreviousRange(student: Student, plan: StudentPlan | null, comp
   };
 }
 
+function isJuzFullyCoveredByRange(
+  juzNumber: number,
+  range: ReturnType<typeof getLockedPreviousRange>,
+) {
+  if (!range) {
+    return false;
+  }
+
+  const juzBounds = getJuzBounds(juzNumber);
+  if (!juzBounds) {
+    return false;
+  }
+
+  const rangeStartsFirst = compareAyahRefs(
+    range.startSurahNumber,
+    range.startVerseNumber,
+    range.endSurahNumber,
+    range.endVerseNumber,
+  ) <= 0;
+
+  const normalizedRangeStart = rangeStartsFirst
+    ? { surahNumber: range.startSurahNumber, verseNumber: range.startVerseNumber }
+    : { surahNumber: range.endSurahNumber, verseNumber: range.endVerseNumber };
+  const normalizedRangeEnd = rangeStartsFirst
+    ? { surahNumber: range.endSurahNumber, verseNumber: range.endVerseNumber }
+    : { surahNumber: range.startSurahNumber, verseNumber: range.startVerseNumber };
+
+  return (
+    compareAyahRefs(
+      normalizedRangeStart.surahNumber,
+      normalizedRangeStart.verseNumber,
+      juzBounds.startSurahNumber,
+      juzBounds.startVerseNumber,
+    ) <= 0
+    && compareAyahRefs(
+      normalizedRangeEnd.surahNumber,
+      normalizedRangeEnd.verseNumber,
+      juzBounds.endSurahNumber,
+      juzBounds.endVerseNumber,
+    ) >= 0
+  );
+}
+
 export default function StudentPlansPage() {
   const router = useRouter();
   const confirmDialog = useConfirmDialog()
@@ -481,7 +533,7 @@ export default function StudentPlansPage() {
   const [hasPrevious, setHasPrevious] = useState(false);
   const [prevStartSurah, setPrevStartSurah] = useState<string>("");
   const [prevEndSurah, setPrevEndSurah] = useState<string>("");
-  const [muraajaaPages, setMuraajaaPages] = useState<string>("20");
+  const [muraajaaPages, setMuraajaaPages] = useState<string>(WEEKLY_REVIEW_OPTION_VALUE);
   const [rabtPages, setRabtPages] = useState<string>("10");
   const [prevStartOpen, setPrevStartOpen] = useState(false);
   const [prevEndOpen, setPrevEndOpen] = useState(false);
@@ -605,7 +657,7 @@ export default function StudentPlansPage() {
     await Promise.all(
       studs.map(async (s) => {
         try {
-          const res = await fetch(`/api/student-plans?student_id=${s.id}`);
+          const res = await fetch(`/api/student-plans?student_id=${s.id}`, { headers: getClientAuthHeaders() });
           const data = await res.json();
           plans[s.id] = data.plan || null;
           progress[s.id] = data.progressPercent || 0;
@@ -650,7 +702,11 @@ export default function StudentPlansPage() {
     setIsPreviousLocked(shouldLockPrevious);
     setPrevStartSurah(lockedPreviousRange ? String(lockedPreviousRange.startSurahNumber) : "");
     setPrevEndSurah(lockedPreviousRange ? String(lockedPreviousRange.endSurahNumber) : "");
-    setMuraajaaPages("20");
+    setMuraajaaPages(currentPlan?.review_distribution_mode === "weekly"
+      ? WEEKLY_REVIEW_OPTION_VALUE
+      : currentPlan?.muraajaa_pages
+        ? String(currentPlan.muraajaa_pages)
+        : WEEKLY_REVIEW_OPTION_VALUE);
     setRabtPages("10");
     setPrevStartOpen(false);
     setPrevEndOpen(false);
@@ -721,12 +777,13 @@ export default function StudentPlansPage() {
     const total = adjustedPreview.totalPages;
     const days = adjustedPreview.totalDays;
     const effectiveDays = days;
+    const reviewDistributionMode = muraajaaPages === WEEKLY_REVIEW_OPTION_VALUE ? "weekly" : "fixed";
 
     setIsSaving(true);
     try {
       const res = await fetch("/api/student-plans", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
         body: JSON.stringify({
           student_id: selectedStudent.id,
           start_surah_number: startNum,
@@ -747,8 +804,9 @@ export default function StudentPlansPage() {
             hasPrevious && prevEndSurah ? parseInt(prevEndSurah) : null,
           prev_end_verse:
             hasPrevious && prevEndVerse ? parseInt(prevEndVerse) : null,
-          muraajaa_pages: parseFloat(muraajaaPages),
+          muraajaa_pages: reviewDistributionMode === "weekly" ? null : parseFloat(muraajaaPages),
           rabt_pages: parseFloat(rabtPages),
+          review_distribution_mode: reviewDistributionMode,
           start_date: getSaudiDateString(),
         }),
       });
@@ -787,6 +845,7 @@ export default function StudentPlansPage() {
     try {
       await fetch(`/api/student-plans?student_id=${studentId}`, {
         method: "DELETE",
+        headers: getClientAuthHeaders(),
       });
       setStudentPlans((prev) => ({ ...prev, [studentId]: null }));
       setStudentProgress((prev) => ({ ...prev, [studentId]: 0 }));
@@ -872,14 +931,23 @@ export default function StudentPlansPage() {
   const nextStartFromPrevious = hasPrevious && prevStartSurah && prevEndSurah && prevEndVerse
     ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
     : null;
-  const masteryJuzLabel = formatJuzList(selectedStudent?.current_juzs);
+  const selectedStudentPlan = selectedStudent ? studentPlans[selectedStudent.id] ?? null : null;
+  const selectedStudentCompletedDays = selectedStudent ? studentCompletedDays[selectedStudent.id] || 0 : 0;
   const hasStoredPreviousMemorization = Boolean(
     (selectedStudent?.completed_juzs?.length || 0) > 0 ||
     (selectedStudent?.memorized_start_surah && selectedStudent?.memorized_end_surah),
   );
   const shouldHidePreviousToggle = hasStoredPreviousMemorization;
-  const isMasteryOnlyStudent = Boolean((selectedStudent?.current_juzs?.length || 0) > 0) && !hasStoredPreviousMemorization;
   const completedJuzSet = new Set(selectedStudent?.completed_juzs || []);
+  const lockedPreviousRange = selectedStudent
+    ? getLockedPreviousRange(selectedStudent, selectedStudentPlan, selectedStudentCompletedDays)
+    : null;
+  const pendingMasteryJuzs = (selectedStudent?.current_juzs || []).filter((juzNumber) => (
+    !completedJuzSet.has(juzNumber)
+    && !isJuzFullyCoveredByRange(juzNumber, lockedPreviousRange)
+  ));
+  const masteryJuzLabel = formatJuzList(pendingMasteryJuzs);
+  const isMasteryOnlyStudent = pendingMasteryJuzs.length > 0 && !hasStoredPreviousMemorization;
   const completedJuzBounds = (selectedStudent?.completed_juzs || [])
     .map((juzNumber) => getJuzBounds(juzNumber))
     .filter((bounds): bounds is NonNullable<ReturnType<typeof getJuzBounds>> => Boolean(bounds));
@@ -1062,6 +1130,7 @@ export default function StudentPlansPage() {
           completedJuzs: selectedStudent?.completed_juzs,
         }).totalDays
       : 0;
+  const previewDisplayTotal = previewTotal > 0 ? Math.ceil(previewTotal) : 0;
 
   useEffect(() => {
     if (startOpen && startSurah) {
@@ -1195,183 +1264,155 @@ export default function StudentPlansPage() {
             <div>
               <h1 className="text-2xl font-bold text-[#1a2332]">خطط الطلاب</h1>
             </div>
-            {selectedCircle && (
-              <button
-                onClick={openResetDialog}
-                className="mr-auto rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
-              >
-                إعادة حفظ طالب
-              </button>
-            )}
           </div>
 
-          {/* اختيار الحلقة */}
-          {!selectedCircle ? (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <BookOpen className="w-4 h-4 text-[#D4AF37]" />
-                </div>
-                <h2 className="text-base font-bold text-[#1a2332]">
-                  اختر الحلقة
-                </h2>
-              </div>
-              <div className="divide-y divide-[#D4AF37]/20">
-                {isCirclesLoading ? (
-                  <div className="flex items-center justify-center py-16">
-                    <SiteLoader size="md" />
-                  </div>
-                ) : circles.length === 0 ? (
-                  <div className="flex items-center justify-center py-16 text-neutral-400">
-                    لا توجد حلقات
-                  </div>
-                ) : (
-                  circles.map((circle) => (
-                    <button
-                      key={circle.id}
-                      onClick={() => setSelectedCircle(circle.name)}
-                      className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/25 flex items-center justify-center">
-                          <BookOpen className="w-4 h-4 text-[#D4AF37]" />
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold text-[#1a2332] text-base">
-                            {circle.name}
-                          </p>
-                          <p className="text-xs text-neutral-400 mt-0.5">
-                            {circle.studentCount} طالب
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:text-[#D4AF37]" />
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          ) : (
-            /* قائمة الطلاب */
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedCircle(null);
-                    setStudents([]);
-                  }}
-                  className="p-1.5 rounded-lg hover:bg-[#D4AF37]/10 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4 text-[#D4AF37]" />
-                </button>
+          <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
                   <Users className="w-4 h-4 text-[#D4AF37]" />
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-[#1a2332]">
-                    {selectedCircle}
+                    {selectedCircle || "طلاب الحلقة"}
                   </h2>
                   <p className="text-xs text-neutral-400">
-                    {students.length} طالب
+                    {selectedCircle ? `${students.length} طالب` : "اختر الحلقة لعرض الخطط"}
                   </p>
                 </div>
               </div>
 
-              {isCircleDataLoading ? (
-                <div className="flex justify-center py-16">
-                  <SiteLoader size="lg" />
-                </div>
-              ) : students.length === 0 ? (
-                <div className="flex items-center justify-center py-16 text-neutral-400">
-                  لا يوجد طلاب في هذه الحلقة
-                </div>
-              ) : (
-                <div className="divide-y divide-[#D4AF37]/15">
-                  {students.map((student) => {
-                    const plan = studentPlans[student.id];
-                    const progress = studentProgress[student.id] || 0;
-                    const hasStoredMemorized = Boolean(
-                      (student.completed_juzs?.length || 0) > 0 ||
-                      (student.memorized_start_surah && student.memorized_end_surah),
-                    );
-                    return (
-                      <div
-                        key={student.id}
-                        className="px-6 py-4 flex items-center gap-4"
+              <div className="flex w-full items-center gap-2 md:w-auto">
+                {isCirclesLoading ? (
+                  <div className="flex justify-center py-2 md:w-[280px]">
+                    <SiteLoader size="sm" />
+                  </div>
+                ) : circles.length === 0 ? (
+                  <div className="text-sm text-neutral-400">لا توجد حلقات</div>
+                ) : (
+                  <>
+                    {selectedCircle && (
+                      <button
+                        onClick={openResetDialog}
+                        className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100"
                       >
-                        {/* معلومات الطالب */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold text-[#1a2332] text-sm">
-                              {student.name}
-                            </p>
-                            {plan && (
-                              <Badge className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0">
-                                لديه خطة
-                              </Badge>
-                            )}
-                          </div>
-                          {plan ? (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[10px] font-semibold bg-[#D4AF37]/10 text-[#C9A961] border border-[#D4AF37]/30 rounded-md px-1.5 py-0.5 shrink-0">
-                                  {dailyLabel(plan.daily_pages)}
-                                </span>
-                                <p className="text-xs text-neutral-500 truncate">
-                                  {plan.start_surah_name} ←{" "}
-                                  {plan.end_surah_name}
-                                </p>
-                              </div>
-                              {/* شريط التقدم */}
-                              <div className="flex items-center gap-2">
-                                <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full transition-all duration-500"
-                                    style={{
-                                      width: `${progress}%`,
-                                      background:
-                                        "linear-gradient(to right, #D4AF37, #C9A961)",
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-[10px] font-bold text-[#D4AF37] w-8 text-left">
-                                  {progress}%
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-neutral-400">
-                              لا توجد خطة
-                            </p>
-                          )}
-                        </div>
-
-                        {/* أزرار */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          {plan && (
-                            <button
-                              onClick={() => handleDeletePlan(student.id)}
-                              className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-300 hover:text-red-500 transition-colors"
-                              title="حذف الخطة"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openAddDialog(student)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] border border-[#D4AF37]/30 transition-colors"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            {plan ? "تعديل الخطة" : "إضافة خطة"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                        إعادة حفظ طالب
+                      </button>
+                    )}
+                    <Select
+                      value={selectedCircle || undefined}
+                      onValueChange={(value) => setSelectedCircle(value)}
+                      dir="rtl"
+                    >
+                      <SelectTrigger className="w-full bg-white text-sm md:w-[280px]">
+                        <SelectValue placeholder="اختر الحلقة" />
+                      </SelectTrigger>
+                      <SelectContent dir="rtl">
+                        {circles.map((circle) => (
+                          <SelectItem key={circle.id} value={circle.name}>
+                            {circle.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </div>
             </div>
-          )}
+
+            {!selectedCircle ? (
+              <div className="flex items-center justify-center py-16 text-neutral-400">
+                اختر الحلقة من الأعلى لعرض طلابها وخططهم
+              </div>
+            ) : isCircleDataLoading ? (
+              <div className="flex justify-center py-16">
+                <SiteLoader size="lg" />
+              </div>
+            ) : students.length === 0 ? (
+              <div className="flex items-center justify-center py-16 text-neutral-400">
+                لا يوجد طلاب في هذه الحلقة
+              </div>
+            ) : (
+              <div className="divide-y divide-[#D4AF37]/15">
+                {students.map((student) => {
+                  const plan = studentPlans[student.id];
+                  const progress = studentProgress[student.id] || 0;
+                  const hasStoredMemorized = Boolean(
+                    (student.completed_juzs?.length || 0) > 0 ||
+                    (student.memorized_start_surah && student.memorized_end_surah),
+                  );
+                  return (
+                    <div
+                      key={student.id}
+                      className="px-6 py-4 flex items-center gap-4"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-semibold text-[#1a2332] text-sm">
+                            {student.name}
+                          </p>
+                          {plan && (
+                            <Badge className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0">
+                              لديه خطة
+                            </Badge>
+                          )}
+                        </div>
+                        {plan ? (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] font-semibold bg-[#D4AF37]/10 text-[#C9A961] border border-[#D4AF37]/30 rounded-md px-1.5 py-0.5 shrink-0">
+                                {dailyLabel(plan.daily_pages)}
+                              </span>
+                              <p className="text-xs text-neutral-500 truncate">
+                                {plan.start_surah_name} ← {plan.end_surah_name}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{
+                                    width: `${progress}%`,
+                                    background: "linear-gradient(to right, #D4AF37, #C9A961)",
+                                  }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-bold text-[#D4AF37] w-8 text-left">
+                                {progress}%
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-neutral-400">
+                            لا توجد خطة
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {plan && (
+                          <button
+                            onClick={() => handleDeletePlan(student.id)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-neutral-300 hover:text-red-500 transition-colors"
+                            title="حذف الخطة"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openAddDialog(student)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] border border-[#D4AF37]/30 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {plan ? "تعديل الخطة" : "إضافة خطة"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 
@@ -1697,8 +1738,8 @@ export default function StudentPlansPage() {
 
             </div>
             
-            <div className="grid grid-cols-3 gap-3 mb-2 pb-2">
-              <div className="space-y-1.5 flex flex-col w-full">
+            <div className="grid grid-cols-1 gap-3 mb-2 pb-2">
+              <div className="space-y-1.5 flex min-w-0 flex-col w-full">
                 <label className="text-sm font-semibold text-[#1a2332]">
                   المقدار اليومي
                 </label>
@@ -1723,9 +1764,9 @@ export default function StudentPlansPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-sm font-semibold text-[#1a2332]">
-                  مقدار المراجعة اليومي
+                  طريقة المراجعة
                 </label>
                 <Select
                   value={muraajaaPages}
@@ -1752,7 +1793,7 @@ export default function StudentPlansPage() {
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 min-w-0">
                 <label className="text-sm font-semibold text-[#1a2332]">
                   مقدار الربط اليومي
                 </label>
@@ -1796,7 +1837,6 @@ export default function StudentPlansPage() {
                   direction,
                   prevStartSurah,
                   prevStartVerse,
-                  prevStartVerse,
                   prevEndSurah,
                   prevEndVerse,
                   completedJuzs: selectedStudent?.completed_juzs,
@@ -1832,7 +1872,7 @@ export default function StudentPlansPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="text-center">
                         <p className="text-2xl font-black text-[#1a2332]">
-                          {previewTotal}
+                          {previewDisplayTotal}
                         </p>
                         <p className="text-[11px] text-neutral-400">
                           وجهاً إجمالاً

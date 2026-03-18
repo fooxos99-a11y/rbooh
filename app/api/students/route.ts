@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { ensureStudentPathwayLevels } from "@/lib/pathway-levels"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function getSupabaseErrorMessage(error: unknown) {
   if (!error) return "حدث خطأ غير معروف";
@@ -25,6 +27,7 @@ function getSupabaseErrorMessage(error: unknown) {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
+    const adminSupabase = createAdminClient()
     const body = await request.json()
     const {
       name,
@@ -112,6 +115,24 @@ export async function POST(request: Request) {
     }
 
     console.log("[v0] Student added to database:", data)
+
+    const { error: pathwayLevelsError } = await ensureStudentPathwayLevels(
+      adminSupabase,
+      data.id,
+      data.halaqah,
+    )
+
+    if (pathwayLevelsError) {
+      console.error("[v0] Error creating default pathway levels:", pathwayLevelsError)
+      return NextResponse.json(
+        {
+          error: "تم إنشاء الطالب لكن تعذر إنشاء مستويات المسار الافتراضية",
+          details: getSupabaseErrorMessage(pathwayLevelsError),
+          source: "pathway-levels.ensure",
+        },
+        { status: 500 }
+      )
+    }
 
     const studentWithCircleName = {
       ...data,

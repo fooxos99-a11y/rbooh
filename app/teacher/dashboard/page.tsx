@@ -20,7 +20,6 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserPlus, UserMinus } from "lucide-react"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { TeacherAttendanceCheck } from "@/components/teacher-attendance-check"
 
 export default function TeacherDashboard() {
   const [isLoading, setIsLoading] = useState(true)

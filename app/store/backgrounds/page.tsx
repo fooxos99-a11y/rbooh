@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { ArrowRight, Star, Check, BookOpen } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { ThemeRankPreview } from "@/components/theme-rank-preview"
+import { isPremiumTheme } from "@/lib/rank-theme"
 
 const BACKGROUNDS = [
   {
@@ -337,73 +339,7 @@ export default function BackgroundsPage() {
     const theme = themeMap[themeValue]
     if (!theme) return null
 
-    const isPremium = ["dawn", "galaxy", "sunset_gold", "ocean_deep"].includes(themeValue)
-
-    if (isPremium) {
-      return (
-        <div
-          className="relative w-full h-32 rounded-xl overflow-hidden border-[3px]"
-          style={{
-            backgroundColor: "rgba(245, 245, 240, 0.95)",
-            borderColor: theme.primary,
-            backgroundImage: `
-              linear-gradient(90deg, ${theme.primary}08 1px, transparent 1px),
-              linear-gradient(${theme.primary}08 1px, transparent 1px),
-              radial-gradient(circle at 10% 20%, ${theme.primary}05 0%, transparent 50%)
-            `,
-            backgroundSize: "20px 20px, 20px 20px, 100% 100%",
-          }}
-        >
-          {[...Array(20)].map((_, i) => (
-            // إصلاح مشكلة hydration mismatch: توليد القيم عشوائية فقط على العميل
-            <RandomStar key={i} />
-          ))}
-          <svg className="absolute inset-0 w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <pattern id={`lines-${themeValue}`} x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-                <line x1="0" y1="0" x2="20" y2="20" stroke="white" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill={`url(#lines-${themeValue})`} />
-          </svg>
-          <div className="absolute top-2 right-2 w-8 h-8 rounded-full border-2 border-white opacity-30" />
-          <div className="absolute bottom-2 left-2 w-6 h-6 rounded-full border-2 border-white opacity-40" />
-          <div className="absolute top-1/2 left-1/4 w-4 h-4 rounded-full bg-white opacity-20" />
-          <div className="absolute inset-2 border border-white/30 rounded-lg" />
-          <div
-            className="absolute top-0 left-0 w-full h-2"
-            style={{
-              backgroundImage: `linear-gradient(to right, ${theme.primary}, ${theme.secondary}, ${theme.primary})`,
-            }}
-          />
-          <style jsx>{`
-            @keyframes twinkle {
-              0%, 100% { opacity: 0.3; transform: scale(1); }
-              50% { opacity: 0.8; transform: scale(1.2); }
-            }
-          `}</style>
-        </div>
-      )
-    }
-
-    return (
-      <div
-        className="relative w-full h-32 rounded-xl overflow-hidden border-2"
-        style={{
-          backgroundColor: `${theme.primary}10`,
-          borderColor: `${theme.primary}50`,
-          backgroundImage: `radial-gradient(circle at 20% 80%, ${theme.primary}08 0%, transparent 50%),
-                           radial-gradient(circle at 80% 20%, ${theme.secondary}06 0%, transparent 50%)`,
-        }}
-      >
-        <div
-          className="absolute top-0 left-0 w-full h-2"
-          style={{
-            backgroundImage: `linear-gradient(to right, ${theme.primary}, ${theme.secondary}, ${theme.tertiary})`,
-          }}
-        />
-      </div>
-    )
+    return <ThemeRankPreview primary={theme.primary} secondary={theme.secondary} tertiary={theme.tertiary} premium={isPremiumTheme(themeValue)} />
   }
 
   if (isLoading) {
@@ -445,7 +381,9 @@ export default function BackgroundsPage() {
           </button>
           <h1 className="text-4xl font-bold text-[#1a2332] mb-4">الخلفيات</h1>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {BACKGROUNDS.map((background, index) => {
+            {[...BACKGROUNDS]
+              .sort((a, b) => a.price - b.price || a.name.localeCompare(b.name, "ar"))
+              .map((background) => {
               const isOwned = purchases.includes(background.id) || background.isFree
               const canAfford = background.isFree || studentPoints >= background.price
               const isActive = activeTheme === background.themeValue

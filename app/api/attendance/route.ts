@@ -1,11 +1,13 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { canAccessStudent, canManageHalaqah, getRequestActor, isTeacherRole } from "@/lib/request-auth"
 import {
   applyAttendancePointsAdjustment,
   calculateEvaluationLevelPoints,
   calculateTotalEvaluationPoints,
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
+  isPassingMemorizationLevel,
 } from "@/lib/student-attendance"
 
 function getKsaDateString() {
@@ -29,23 +31,23 @@ function hasCompleteEvaluation(levels: {
   samaa_level?: string | null
   rabet_level?: string | null
 }) {
-  return !!(
-    levels.hafiz_level &&
-    levels.tikrar_level &&
-    levels.samaa_level &&
-    levels.rabet_level
-  )
+  return !!levels.hafiz_level
 }
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const searchParams = request.nextUrl.searchParams
     const studentId = searchParams.get("student_id")
     const halaqah = searchParams.get("halaqah")
 
     // Check if attendance was already saved today for a halaqah
     if (halaqah) {
-      const supabase = await createClient()
+      if (!canManageHalaqah(actor, halaqah)) {
+        return NextResponse.json({ error: "غير مصرح لك بعرض بيانات هذه الحلقة" }, { status: 403 })
+      }
+
       const todayDate = getKsaDateString()
 
       const { data, error } = await supabase
@@ -66,7 +68,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Student ID is required" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const canViewStudent = await canAccessStudent({
+      supabase,
+      actor,
+      studentId,
+      allowStudentSelf: true,
+      allowTeacher: true,
+    })
+
+    if (!canViewStudent) {
+      return NextResponse.json({ error: "غير مصرح لك بعرض سجل هذا الطالب" }, { status: 403 })
+    }
 
     // Fetch attendance records for the student
     const { data: attendanceData, error: attendanceError } = await supabase
@@ -99,6 +111,8 @@ export async function GET(request: NextRequest) {
           id: record.id,
           date: record.date,
           status: record.status,
+          is_compensation: !!record.is_compensation,
+          compensation_status: record.is_compensation && isPassingMemorizationLevel(lastEval?.hafiz_level ?? null) ? "passed" : null,
           hafiz_level: isAbsent ? "not_completed" : (lastEval?.hafiz_level || null),
           tikrar_level: isAbsent ? "not_completed" : (lastEval?.tikrar_level || null),
           samaa_level: isAbsent ? "not_completed" : (lastEval?.samaa_level || null),
@@ -128,12 +142,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const body = await request.json()
     const {
       student_id,
       teacher_id,
       halaqah,
       status,
+      report_date,
       hafiz_level,
       tikrar_level,
       samaa_level,
@@ -177,28 +194,43 @@ export async function POST(request: NextRequest) {
       !hasCompleteEvaluation({ hafiz_level, tikrar_level, samaa_level, rabet_level })
     ) {
       return NextResponse.json(
-        { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر أو المتأخر قبل الحفظ" },
+        { error: "يجب إكمال تقييم الحفظ للطالب الحاضر أو المتأخر قبل الحفظ" },
         { status: 400 },
       )
     }
 
-    const supabase = await createClient()
+    const isAuthorizedForHalaqah = canManageHalaqah(actor, halaqah)
+    const isAuthorizedForStudent = await canAccessStudent({
+      supabase,
+      actor,
+      studentId: student_id,
+      allowStudentSelf: false,
+      allowTeacher: true,
+    })
+
+    if (!actor || !isAuthorizedForHalaqah || !isAuthorizedForStudent) {
+      return NextResponse.json({ error: "غير مصرح لك بتسجيل حضور هذا الطالب" }, { status: 403 })
+    }
+
+    if (isTeacherRole(actor.role) && actor.id !== teacher_id) {
+      return NextResponse.json({ error: "لا يمكنك التسجيل باسم معلم آخر" }, { status: 403 })
+    }
 
     // Get today's date in YYYY-MM-DD format (Asia/Riyadh timezone)
-    const todayDate = getKsaDateString()
-    console.log("[DEBUG] تاريخ اليوم في السيرفر (Asia/Riyadh):", todayDate)
+    const targetDate = typeof report_date === "string" && report_date.trim() ? report_date.trim() : getKsaDateString()
+    console.log("[DEBUG] تاريخ الحفظ في السيرفر (Asia/Riyadh):", targetDate)
     if (debug_today) {
       console.log("[DEBUG] debug_today من المتصفح:", debug_today)
     }
 
-    console.log("[v0] Adding evaluation for student:", student_id, "on date:", todayDate)
+    console.log("[v0] Adding evaluation for student:", student_id, "on date:", targetDate)
 
     // Check if there's already an attendance record for this student today
     const { data: existingRecord, error: checkError } = await supabase
       .from("attendance_records")
       .select("id, status")
       .eq("student_id", student_id)
-      .eq("date", todayDate)
+      .eq("date", targetDate)
       .maybeSingle()
 
     if (checkError) {
@@ -221,12 +253,7 @@ export async function POST(request: NextRequest) {
 
       if (oldEvaluation) {
         previousPoints = applyAttendancePointsAdjustment(
-          calculateTotalEvaluationPoints({
-            hafiz_level: oldEvaluation.hafiz_level,
-            tikrar_level: oldEvaluation.tikrar_level,
-            samaa_level: oldEvaluation.samaa_level,
-            rabet_level: oldEvaluation.rabet_level,
-          }),
+          calculateEvaluationLevelPoints(oldEvaluation.hafiz_level as any),
           existingRecord.status,
         )
 
@@ -277,7 +304,7 @@ export async function POST(request: NextRequest) {
           teacher_id,
           halaqah,
           status: normalizedStatus,
-          date: todayDate,
+          date: targetDate,
           notes: notes ?? null,
         })
         .select()
@@ -285,11 +312,21 @@ export async function POST(request: NextRequest) {
 
       if (attendanceError) {
         console.error("[v0] Error creating attendance record:", attendanceError)
+        const isDuplicateAttendanceRecord = /duplicate key|23505|unique/i.test(
+          `${attendanceError.message ?? ""} ${attendanceError.details ?? ""} ${attendanceError.hint ?? ""} ${attendanceError.code ?? ""}`,
+        )
         const isLateConstraintFailure =
           normalizedStatus === "late" &&
           /status|check|constraint|invalid input value/i.test(
             `${attendanceError.message ?? ""} ${attendanceError.details ?? ""} ${attendanceError.hint ?? ""}`,
           )
+
+        if (isDuplicateAttendanceRecord) {
+          return NextResponse.json(
+            { error: "تم حفظ حضور هذا الطالب مسبقًا لهذا اليوم" },
+            { status: 409 },
+          )
+        }
 
         return NextResponse.json(
           {
@@ -318,23 +355,12 @@ export async function POST(request: NextRequest) {
 
     if (hasCompleteEvaluation({ hafiz_level, tikrar_level, samaa_level, rabet_level })) {
       const hafizPoints = calculateEvaluationLevelPoints(hafiz_level)
-      const tikrarPoints = calculateEvaluationLevelPoints(tikrar_level)
-      const samaaPoints = calculateEvaluationLevelPoints(samaa_level)
-      const rabetPoints = calculateEvaluationLevelPoints(rabet_level)
 
-      const rawPoints = calculateTotalEvaluationPoints({
-        hafiz_level,
-        tikrar_level,
-        samaa_level,
-        rabet_level,
-      })
+      const rawPoints = hafizPoints
       const totalPoints = applyAttendancePointsAdjustment(rawPoints, normalizedStatus)
 
       console.log("[v0] Points breakdown:", {
         hafiz: hafizPoints,
-        tikrar: tikrarPoints,
-        samaa: samaaPoints,
-        rabet: rabetPoints,
         raw: rawPoints,
         penalty: normalizedStatus === "late" ? 8 : 0,
         total: totalPoints,
@@ -421,7 +447,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر أو المتأخر قبل الحفظ" },
+      { error: "يجب إكمال تقييم الحفظ للطالب الحاضر أو المتأخر قبل الحفظ" },
       { status: 400 },
     )
   } catch (error) {

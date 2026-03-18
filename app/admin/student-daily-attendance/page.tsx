@@ -11,27 +11,22 @@ import { Input } from "@/components/ui/input"
 import { Calendar } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { isNonEvaluatedAttendance, translateAttendanceStatus } from "@/lib/student-attendance"
+import { getEvaluationLevelLabel, translateAttendanceStatus } from "@/lib/student-attendance"
 
 function translateLevel(level: string | null | undefined) {
-  if (!level) return null;
-  switch (level) {
-    case "excellent": return "ممتاز";
-    case "very_good": return "جيد جدًا";
-    case "good": return "جيد";
-    case "not_completed": return "لم يكمل";
-    default: return null;
-  }
+  return getEvaluationLevelLabel(level);
 }
 
 function LevelBadge({ level }: { level: string | null | undefined }) {
   const label = translateLevel(level);
   if (!label) return <span className="text-gray-300">—</span>;
   const colors: Record<string, string> = {
-    "ممتاز": "text-emerald-600",
-    "جيد جدًا": "text-blue-600",
-    "جيد": "text-amber-600",
-    "لم يكمل": "text-red-500",
+    "10": "text-emerald-600",
+    "8": "text-blue-600",
+    "6": "text-amber-600",
+    "4": "text-cyan-600",
+    "2": "text-fuchsia-600",
+    "0": "text-red-500",
   };
   return (
     <span className={`text-base font-semibold ${colors[label] ?? "text-gray-500"}`}>
@@ -255,24 +250,24 @@ export default function StudentDailyAttendancePage() {
                         <TableCell className="font-medium text-neutral-600 text-base">{record.halaqah || "—"}</TableCell>
                         <TableCell className="font-semibold text-[#1a2332] text-base">{record.student_name}</TableCell>
                         <TableCell className="text-center">
-                          {isNonEvaluatedAttendance(record.status)
-                            ? <span className="text-gray-300">—</span>
-                            : <EvaluationCell level={record.hafiz_level} detail={formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)} />}
+                          {record.hafiz_level
+                            ? <EvaluationCell level={record.hafiz_level} detail={formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)} />
+                            : <span className="text-gray-300">—</span>}
                         </TableCell>
                         <TableCell className="text-center px-1">
-                          {isNonEvaluatedAttendance(record.status)
-                            ? <span className="text-gray-300">—</span>
-                            : <LevelBadge level={record.tikrar_level} />}
+                          {record.tikrar_level
+                            ? <LevelBadge level={record.tikrar_level} />
+                            : <span className="text-gray-300">—</span>}
                         </TableCell>
                         <TableCell className="text-center px-1">
-                          {isNonEvaluatedAttendance(record.status)
-                            ? <span className="text-gray-300">—</span>
-                            : <EvaluationCell level={record.samaa_level} detail={formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)} />}
+                          {record.samaa_level
+                            ? <EvaluationCell level={record.samaa_level} detail={formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)} />
+                            : <span className="text-gray-300">—</span>}
                         </TableCell>
                         <TableCell className="text-center px-1">
-                          {isNonEvaluatedAttendance(record.status)
-                            ? <span className="text-gray-300">—</span>
-                            : <EvaluationCell level={record.rabet_level} detail={formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)} />}
+                          {record.rabet_level
+                            ? <EvaluationCell level={record.rabet_level} detail={formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)} />
+                            : <span className="text-gray-300">—</span>}
                         </TableCell>
                         <TableCell className="text-center">
                           <StatusBadge status={record.status} />

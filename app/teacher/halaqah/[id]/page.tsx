@@ -8,21 +8,26 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ArrowRight, RotateCcw, MessageSquare } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { getActivePlanDayNumber, getPlanSessionContent, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
-import { type AttendanceStatus, isEvaluatedAttendance, isNonEvaluatedAttendance } from "@/lib/student-attendance"
+import { getClientAuthHeaders } from "@/lib/client-auth"
+import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
+import { type AttendanceStatus, type EvaluationLevelValue, type NumericEvaluationLevel, isEvaluatedAttendance, isNonEvaluatedAttendance } from "@/lib/student-attendance"
 
-type EvaluationLevel = "excellent" | "very_good" | "good" | "not_completed" | null
+type EvaluationLevel = EvaluationLevelValue
 type EvaluationType = "hafiz" | "tikrar" | "samaa" | "rabet"
 type ContentfulEvaluationType = "hafiz" | "samaa" | "rabet"
+
+const UNSET_REPORT_EVALUATION = "__unset_report_evaluation__"
 
 interface EvaluationContent {
 	fromSurah?: string
 	fromVerse?: string
 	toSurah?: string
 	toVerse?: string
+	text?: string
 }
 
 type ReadingDetails = Partial<Record<ContentfulEvaluationType, EvaluationContent>>
@@ -34,21 +39,105 @@ interface EvaluationOption {
 	rabet?: EvaluationLevel
 }
 
+const REPORT_EVALUATION_OPTIONS = Array.from({ length: 11 }, (_, value) => ({
+	level: String(value) as NumericEvaluationLevel,
+	label: String(value),
+}))
+
+const normalizeEvaluationLevel = (level: string | null | undefined): NumericEvaluationLevel => {
+	switch (level) {
+		case "excellent":
+			return "10"
+		case "very_good":
+			return "8"
+		case "good":
+			return "6"
+		case "not_completed":
+		case null:
+		case undefined:
+			return "0"
+		default:
+			return /^(10|[0-9])$/.test(level) ? (level as NumericEvaluationLevel) : "0"
+	}
+}
+
+interface StudentDailyReport {
+	id: string
+	student_id: string
+	report_date: string
+	plan_session_number?: number | null
+	memorization_done: boolean
+	tikrar_done: boolean
+	review_done: boolean
+	linking_done: boolean
+	notes?: string | null
+	created_at?: string
+	updated_at?: string
+}
+
 interface StudentAttendance {
 	id: string
 	name: string
 	halaqah: string
 	hasPlan: boolean
+	plan?: StudentPlan | null
+	completedDays?: number
+	progressedDays?: number
+	nextSessionNumber?: number
+	failedSessionNumbers?: number[]
+	reportSessionNumbersByDate?: Record<string, number>
 	attendance: AttendanceStatus | null
 	evaluation?: EvaluationOption
+	reportEvaluations?: Record<string, EvaluationLevel>
+	savedReportDates?: string[]
 	readingDetails?: ReadingDetails
 	planReadingDetails?: ReadingDetails
+	selfReports?: StudentDailyReport[]
 	notes?: string
 	savedToday?: boolean
 }
 
+interface StudentPlan {
+	id: string
+	student_id: string
+	start_surah_number: number
+	start_surah_name: string
+	start_verse?: number | null
+	end_surah_number: number
+	end_surah_name: string
+	end_verse?: number | null
+	daily_pages: number
+	total_pages: number
+	total_days: number
+	start_date: string
+	created_at?: string
+	direction?: "asc" | "desc" | null
+	has_previous?: boolean
+	prev_start_surah?: number | null
+	prev_start_verse?: number | null
+	prev_end_surah?: number | null
+	prev_end_verse?: number | null
+	muraajaa_pages?: number | null
+	rabt_pages?: number | null
+	review_distribution_mode?: "fixed" | "weekly" | null
+}
+
+interface PlanProgressResponse {
+	plan: StudentPlan | null
+	completedDays?: number
+	progressedDays?: number
+	nextSessionNumber?: number
+	failedSessionNumbers?: number[]
+	reportSessionNumbersByDate?: Record<string, number>
+	completedSessionNumbers?: number[]
+	completedRecordsBySessionNumber?: Record<string, unknown>
+	progressPercent?: number
+	completedRecords?: unknown[]
+}
+
 interface SavedAttendanceRecord {
 	student_id: string
+	date?: string
 	status: AttendanceStatus
 	hafiz_level?: EvaluationLevel
 	tikrar_level?: EvaluationLevel
@@ -70,50 +159,21 @@ interface SavedAttendanceRecord {
 
 interface MissedDayRecord {
 	date: string
-	sessionIndex: number
 	content: string
-	hafiz_from_surah?: string
-	hafiz_from_verse?: string
-	hafiz_to_surah?: string
-	hafiz_to_verse?: string
+	hafiz_from_surah?: string | null
+	hafiz_from_verse?: string | null
+	hafiz_to_surah?: string | null
+	hafiz_to_verse?: string | null
 }
 
-interface StudentPlan {
-	student_id: string
-	start_surah_number: number
-	start_verse?: number | null
-	end_surah_number: number
-	end_verse?: number | null
-	daily_pages: number
-	total_pages: number
-	total_days: number
-	direction?: "asc" | "desc"
-	has_previous?: boolean
-	prev_start_surah?: number | null
-	prev_start_verse?: number | null
-	prev_end_surah?: number | null
-	prev_end_verse?: number | null
-	completed_juzs?: number[] | null
-	muraajaa_pages?: number | null
-	rabt_pages?: number | null
-	start_date?: string | null
-	created_at?: string | null
-}
-
-interface PlanProgressResponse {
-	plan: StudentPlan | null
-	completedDays?: number
-}
-
-// دالة للحصول على التاريخ الحالي بتوقيت السعودية (بصيغة YYYY-MM-DD)
-const getKsaDateString = () => {
+function getKsaDateString(baseDate = new Date()) {
 	const formatter = new Intl.DateTimeFormat("en-CA", {
 		timeZone: "Asia/Riyadh",
 		year: "numeric",
 		month: "2-digit",
 		day: "2-digit",
 	})
-	const parts = formatter.formatToParts(new Date())
+	const parts = formatter.formatToParts(baseDate)
 	const year = parts.find((part) => part.type === "year")?.value
 	const month = parts.find((part) => part.type === "month")?.value
 	const day = parts.find((part) => part.type === "day")?.value
@@ -121,15 +181,58 @@ const getKsaDateString = () => {
 	return `${year}-${month}-${day}`
 }
 
-const getPlanReadingDetails = (plan: StudentPlan | null, completedDays: number): ReadingDetails => {
+const formatReadingDetails = (content?: EvaluationContent | null) => {
+	if (!content) return ""
+
+	const fromSurah = content.fromSurah?.trim()
+	const toSurah = content.toSurah?.trim()
+	const fromVerse = content.fromVerse?.trim()
+	const toVerse = content.toVerse?.trim()
+
+	if (!fromSurah && !toSurah) return ""
+	if (!toSurah || (fromSurah === toSurah && (!toVerse || fromVerse === toVerse))) {
+		return fromVerse ? `${fromSurah} ${fromVerse}` : (fromSurah || "")
+	}
+
+	const fromLabel = fromVerse ? `${fromSurah} ${fromVerse}` : fromSurah
+	const toLabel = toVerse ? `${toSurah} ${toVerse}` : toSurah
+	return [fromLabel, toLabel].filter(Boolean).join(" - ")
+}
+
+const getPlanReadingDetails = (
+	plan: StudentPlan | null,
+	completedDays: number,
+	nextSessionNumber?: number,
+	failedSessionNumbers?: number[],
+	progressedDays?: number,
+): ReadingDetails => {
 	if (!plan) return {}
 
 	const totalDays = resolvePlanTotalDays(plan)
-	const activeDayNum = getActivePlanDayNumber(totalDays, completedDays, plan.start_date, plan.created_at)
+	const sortedFailedSessionNumbers = (failedSessionNumbers || []).filter((value) => value > 0).sort((left, right) => left - right)
+	const retryStartSessionNumber = sortedFailedSessionNumbers[0]
+	let retryEndSessionNumber = retryStartSessionNumber
 
-	const hafiz = getPlanSessionContent(plan, activeDayNum)
-	const supportContent = getPlanSupportSessionContent(plan, completedDays)
-	const samaa = supportContent.muraajaa
+	if (retryStartSessionNumber) {
+		while (sortedFailedSessionNumbers.includes((retryEndSessionNumber || retryStartSessionNumber) + 1)) {
+			retryEndSessionNumber = (retryEndSessionNumber || retryStartSessionNumber) + 1
+		}
+	}
+	const activeSessionNumber = Math.max(
+		1,
+		Math.min(
+			totalDays,
+			retryStartSessionNumber || nextSessionNumber || getActivePlanDayNumber(totalDays, completedDays, plan.start_date, plan.created_at),
+		),
+	)
+	const hafiz = retryStartSessionNumber
+		? getPlanSessionContentRange(plan, retryStartSessionNumber, retryEndSessionNumber || retryStartSessionNumber)
+		: getPlanSessionContent(plan, activeSessionNumber)
+	const supportContent = getPlanSupportSessionContent(plan, progressedDays ?? completedDays) as {
+		review?: EvaluationContent | null
+		rabt?: EvaluationContent | null
+	}
+	const samaa = supportContent.review
 	const rabet = supportContent.rabt
 
 	return {
@@ -139,69 +242,47 @@ const getPlanReadingDetails = (plan: StudentPlan | null, completedDays: number):
 	}
 }
 
-const formatReadingDetails = (details?: EvaluationContent | null) => {
-	if (details?.text?.trim()) {
-		return details.text
+const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendanceRecord) => {
+	if (!record) return student
+
+	const savedReadingDetails: ReadingDetails = {
+		...(record.hafiz_from_surah || record.hafiz_to_surah
+			? {
+				hafiz: {
+					fromSurah: record.hafiz_from_surah || undefined,
+					fromVerse: record.hafiz_from_verse || undefined,
+					toSurah: record.hafiz_to_surah || undefined,
+					toVerse: record.hafiz_to_verse || undefined,
+				},
+			}
+			: {}),
+		...(record.samaa_from_surah || record.samaa_to_surah
+			? {
+				samaa: {
+					fromSurah: record.samaa_from_surah || undefined,
+					fromVerse: record.samaa_from_verse || undefined,
+					toSurah: record.samaa_to_surah || undefined,
+					toVerse: record.samaa_to_verse || undefined,
+				},
+			}
+			: {}),
+		...(record.rabet_from_surah || record.rabet_to_surah
+			? {
+				rabet: {
+					fromSurah: record.rabet_from_surah || undefined,
+					fromVerse: record.rabet_from_verse || undefined,
+					toSurah: record.rabet_to_surah || undefined,
+					toVerse: record.rabet_to_verse || undefined,
+				},
+			}
+			: {}),
 	}
-
-	if (!details?.fromSurah || !details?.fromVerse || !details?.toSurah || !details?.toVerse) {
-		return null
-	}
-
-	return `من سورة ${details.fromSurah} آية ${details.fromVerse} إلى سورة ${details.toSurah} آية ${details.toVerse}`
-}
-
-const buildSavedReadingDetails = (record: SavedAttendanceRecord): ReadingDetails => {
-	const readingDetails: ReadingDetails = {}
-
-	if (record.hafiz_from_surah && record.hafiz_from_verse && record.hafiz_to_surah && record.hafiz_to_verse) {
-		readingDetails.hafiz = {
-			fromSurah: record.hafiz_from_surah,
-			fromVerse: record.hafiz_from_verse,
-			toSurah: record.hafiz_to_surah,
-			toVerse: record.hafiz_to_verse,
-		}
-	}
-
-	if (record.samaa_from_surah && record.samaa_from_verse && record.samaa_to_surah && record.samaa_to_verse) {
-		readingDetails.samaa = {
-			fromSurah: record.samaa_from_surah,
-			fromVerse: record.samaa_from_verse,
-			toSurah: record.samaa_to_surah,
-			toVerse: record.samaa_to_verse,
-		}
-	}
-
-	if (record.rabet_from_surah && record.rabet_from_verse && record.rabet_to_surah && record.rabet_to_verse) {
-		readingDetails.rabet = {
-			fromSurah: record.rabet_from_surah,
-			fromVerse: record.rabet_from_verse,
-			toSurah: record.rabet_to_surah,
-			toVerse: record.rabet_to_verse,
-		}
-	}
-
-	return readingDetails
-}
-
-const hasCompleteSavedRecord = (record: SavedAttendanceRecord, student: StudentAttendance) => {
-	if (!isEvaluatedAttendance(record.status)) return true
-	if (!student.hasPlan) return false
-
-	return !!(
-		record.hafiz_level &&
-		record.tikrar_level &&
-		record.samaa_level &&
-		record.rabet_level
-	)
-}
-
-const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendanceRecord): StudentAttendance => {
-	if (!record) return { ...student, savedToday: false }
-
-	const savedReadingDetails = buildSavedReadingDetails(record)
 	const hasSavedReadingDetails = Object.keys(savedReadingDetails).length > 0
-	const isLockedForToday = hasCompleteSavedRecord(record, student)
+	const hasPendingSelfReports = (student.selfReports || []).some(
+		(report) => !(student.savedReportDates || []).includes(report.report_date),
+	)
+	const isLockedForToday =
+		isNonEvaluatedAttendance(record.status) || (isEvaluatedAttendance(record.status) && !!record.hafiz_level)
 
 	return {
 		...student,
@@ -213,7 +294,7 @@ const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendan
 			rabet: record.rabet_level || undefined,
 		},
 		readingDetails: hasSavedReadingDetails ? savedReadingDetails : student.planReadingDetails,
-		savedToday: isLockedForToday,
+		savedToday: hasPendingSelfReports ? false : isLockedForToday,
 	}
 }
 
@@ -221,18 +302,156 @@ const hasCompletePresentEvaluation = (student: StudentAttendance) => {
 	if (!isEvaluatedAttendance(student.attendance)) return false
 	if (!student.hasPlan) return false
 
-	return !!(
-		student.evaluation?.hafiz &&
-		student.evaluation?.tikrar &&
-		student.evaluation?.samaa &&
-		student.evaluation?.rabet
-	)
+	return !!student.evaluation?.hafiz
 }
 
 const isStudentReadyToSave = (student: StudentAttendance) => {
+	if ((student.selfReports || []).length > 0) {
+		return getSelectedUnsavedSelfReports(student).length > 0
+	}
 	if (student.savedToday || student.attendance === null) return false
-	if (!isEvaluatedAttendance(student.attendance)) return true
+	if (!isEvaluatedAttendance(student.attendance)) return false
 	return hasCompletePresentEvaluation(student)
+}
+
+const formatExecutionDay = (date: string) =>
+	new Date(`${date}T00:00:00+03:00`).toLocaleDateString("ar-SA", {
+		weekday: "long",
+	})
+
+const isSaturdayReviewOnlyDate = (date: string) => new Date(`${date}T12:00:00+03:00`).getUTCDay() === 6
+
+const getSaudiDayDifference = (targetDate: string, baseDate: string) => {
+	const target = new Date(`${targetDate}T00:00:00+03:00`)
+	const base = new Date(`${baseDate}T00:00:00+03:00`)
+	return Math.round((base.getTime() - target.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const normalizePlanSessionNumber = (value?: number | null) => {
+	const parsed = Number(value)
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return null
+	}
+
+	return Math.floor(parsed)
+}
+
+const getDisplayReportSessionNumbersByDate = (student: StudentAttendance) => {
+	const explicitSessionNumbersByDate = Object.fromEntries(
+		(student.selfReports || []).map((report) => [report.report_date, normalizePlanSessionNumber(report.plan_session_number)]),
+	)
+	const allDates = Array.from(
+		new Set([
+			...Object.keys(student.reportSessionNumbersByDate || {}),
+			...(student.selfReports || []).map((report) => report.report_date),
+		]),
+	).sort((left, right) => left.localeCompare(right))
+	const normalizedSessionNumbersByDate: Record<string, number> = {}
+	const usedSessionNumbers = new Set<number>()
+	let lastAssignedSessionNumber = 0
+
+	allDates.forEach((date) => {
+		const preferredSessionNumber = explicitSessionNumbersByDate[date] || normalizePlanSessionNumber(student.reportSessionNumbersByDate?.[date])
+
+		if (
+			preferredSessionNumber &&
+			preferredSessionNumber > lastAssignedSessionNumber &&
+			!usedSessionNumbers.has(preferredSessionNumber)
+		) {
+			normalizedSessionNumbersByDate[date] = preferredSessionNumber
+			usedSessionNumbers.add(preferredSessionNumber)
+			lastAssignedSessionNumber = preferredSessionNumber
+			return
+		}
+
+		let fallbackSessionNumber = Math.max(1, lastAssignedSessionNumber + 1)
+		while (usedSessionNumbers.has(fallbackSessionNumber)) {
+			fallbackSessionNumber += 1
+		}
+
+		normalizedSessionNumbersByDate[date] = fallbackSessionNumber
+		usedSessionNumbers.add(fallbackSessionNumber)
+		lastAssignedSessionNumber = fallbackSessionNumber
+	})
+
+	return normalizedSessionNumbersByDate
+}
+
+const getReportMemorizationContent = (student: StudentAttendance, reportDate: string): EvaluationContent | null => {
+    if (isSaturdayReviewOnlyDate(reportDate)) {
+		return null
+	}
+
+	const matchingReport = student.selfReports?.find((report) => report.report_date === reportDate)
+	if (matchingReport && !matchingReport.memorization_done) {
+		return null
+	}
+
+	if (!student.plan) {
+		return student.readingDetails?.hafiz || null
+	}
+
+	const totalDays = resolvePlanTotalDays(student.plan)
+	const mappedSessionNumber = getDisplayReportSessionNumbersByDate(student)[reportDate]
+	const fallbackActiveDayNum = getActivePlanDayNumber(
+		totalDays,
+		student.completedDays ?? 0,
+		student.plan.start_date,
+		student.plan.created_at,
+	)
+	const daysAgo = Math.max(0, getSaudiDayDifference(reportDate, getKsaDateString()))
+	const sessionNum = Math.max(
+		1,
+		Math.min(totalDays, mappedSessionNumber || Math.max(1, fallbackActiveDayNum - daysAgo)),
+	)
+	const sessionContent = getPlanSessionContent(student.plan, sessionNum)
+
+	return sessionContent
+}
+
+const getReportMemorizationSegment = (student: StudentAttendance, reportDate: string) => {
+	const matchingReport = student.selfReports?.find((report) => report.report_date === reportDate)
+	if (matchingReport && !matchingReport.memorization_done) {
+		return "لا يوجد حفظ في هذا اليوم"
+	}
+
+	const content = getReportMemorizationContent(student, reportDate)
+	return content?.text || formatReadingDetails(content) || "لا يوجد مقطع حفظ"
+}
+
+const deriveAutoLevel = (value: boolean) => (value ? "6" : "0") as EvaluationLevel
+
+const buildAutoSupportEvaluationForReport = (report: StudentDailyReport) => ({
+	tikrar: deriveAutoLevel(report.tikrar_done),
+	samaa: deriveAutoLevel(report.review_done),
+	rabet: deriveAutoLevel(report.linking_done),
+})
+
+const getUnsavedSelfReports = (student: StudentAttendance) => {
+	const savedDates = new Set(student.savedReportDates || [])
+	return (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
+}
+
+const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
+	const selectedLevel = student.reportEvaluations?.[reportDate]
+	return selectedLevel !== null && selectedLevel !== undefined
+}
+
+const getSelectedUnsavedSelfReports = (student: StudentAttendance) => {
+	return getUnsavedSelfReports(student).filter((report) => hasSelectedReportEvaluation(student, report.report_date))
+}
+
+const buildAutoSupportEvaluation = (reports?: StudentDailyReport[]) => {
+	const safeReports = Array.isArray(reports) ? reports : []
+	const hasTikrarExecution = safeReports.some((report) => report.tikrar_done)
+	const hasReviewExecution = safeReports.some((report) => report.review_done)
+	const hasLinkingExecution = safeReports.some((report) => report.linking_done)
+
+	return {
+		tikrar: deriveAutoLevel(hasTikrarExecution),
+		samaa: deriveAutoLevel(hasReviewExecution),
+		rabet: deriveAutoLevel(hasLinkingExecution),
+	}
 }
 
 export default function HalaqahManagement() {
@@ -375,10 +594,11 @@ export default function HalaqahManagement() {
 			const data = await response.json()
 
 			if (data.students) {
+				const studentIds = data.students.map((student: any) => student.id).filter(Boolean)
 				const planEntries = await Promise.all(
 					data.students.map(async (student: any) => {
 						try {
-							const planResponse = await fetch(`/api/student-plans?student_id=${student.id}`, { cache: "no-store" })
+							const planResponse = await fetch(`/api/student-plans?student_id=${student.id}`, { cache: "no-store", headers: getClientAuthHeaders() })
 							if (!planResponse.ok) return [student.id, { plan: null, completedDays: 0 }] as const
 							const planData: PlanProgressResponse = await planResponse.json()
 							return [student.id, planData] as const
@@ -389,29 +609,109 @@ export default function HalaqahManagement() {
 				)
 
 				const planMap = new Map<string, PlanProgressResponse>(planEntries)
+				let reportsByStudent: Record<string, StudentDailyReport[]> = {}
+
+				if (studentIds.length > 0) {
+					try {
+						const reportsResponse = await fetch(
+							`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&days=3&exclude_today=true&skip_memorization_off_days=true`,
+							{ cache: "no-store" },
+						)
+						const reportsData = await reportsResponse.json()
+						if (reportsResponse.ok && reportsData.reportsByStudent) {
+							reportsByStudent = reportsData.reportsByStudent
+						}
+					} catch (reportsError) {
+						console.error("Error fetching student daily reports:", reportsError)
+					}
+				}
+
+				const uniqueReportDates = Array.from(
+					new Set(
+						Object.values(reportsByStudent)
+							.flat()
+							.map((report) => report.report_date)
+							.filter(Boolean),
+					),
+				)
+				const savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
+				const savedReportDatesMap: Record<string, string[]> = {}
+
+				if (uniqueReportDates.length > 0) {
+					await Promise.all(
+						uniqueReportDates.map(async (reportDate) => {
+							try {
+								const attendanceResponse = await fetch(
+									`/api/attendance-by-date?date=${reportDate}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
+									{ cache: "no-store" },
+								)
+								const attendanceData = await attendanceResponse.json()
+								const records: SavedAttendanceRecord[] = Array.isArray(attendanceData.records) ? attendanceData.records : []
+
+								records.forEach((record) => {
+									if (!savedReportEvaluationMap[record.student_id]) {
+										savedReportEvaluationMap[record.student_id] = {}
+									}
+									savedReportEvaluationMap[record.student_id][reportDate] = record.hafiz_level || null
+									if (record.hafiz_level !== null && record.hafiz_level !== undefined) {
+										if (!savedReportDatesMap[record.student_id]) {
+											savedReportDatesMap[record.student_id] = []
+										}
+										if (!savedReportDatesMap[record.student_id].includes(reportDate)) {
+											savedReportDatesMap[record.student_id].push(reportDate)
+										}
+									}
+								})
+							} catch (attendanceError) {
+								console.error("Error fetching saved attendance by date:", attendanceError)
+							}
+						}),
+					)
+				}
 
 				const localStudentsMap = new Map(studentsRef.current.map((student) => [student.id, student] as const))
 
 				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => {
-					const planData = planMap.get(student.id)
-					const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
+							const planData = planMap.get(student.id)
+							const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.nextSessionNumber, planData?.failedSessionNumbers, planData?.progressedDays)
 					const localStudent = localStudentsMap.get(student.id)
 					const hasUnsavedLocalChanges = !!localStudent && !localStudent.savedToday
+					const selfReports = reportsByStudent[student.id] || []
+					const savedReportDates = savedReportDatesMap[student.id] || []
+					const allReportDatesSaved = selfReports.length > 0 && selfReports.every((report) => savedReportDates.includes(report.report_date))
+					const baseReportEvaluations = hasUnsavedLocalChanges
+						? { ...(savedReportEvaluationMap[student.id] || {}), ...(localStudent.reportEvaluations || {}) }
+						: savedReportEvaluationMap[student.id] || {}
+					const reportEvaluations = { ...baseReportEvaluations }
 
 					return {
 						id: student.id,
 						name: student.name,
 						halaqah: student.circle_name || halaqah,
 						hasPlan: !!planData?.plan,
+						plan: planData?.plan ?? null,
+						completedDays: planData?.completedDays ?? 0,
+						progressedDays: planData?.progressedDays ?? planData?.completedDays ?? 0,
+								nextSessionNumber: planData?.nextSessionNumber,
+						failedSessionNumbers: planData?.failedSessionNumbers ?? [],
+								reportSessionNumbersByDate: planData?.reportSessionNumbersByDate ?? {},
 						attendance: hasUnsavedLocalChanges ? localStudent.attendance : null,
 						evaluation: hasUnsavedLocalChanges ? localStudent.evaluation || {} : {},
+						reportEvaluations,
+						savedReportDates,
 						readingDetails: hasUnsavedLocalChanges ? localStudent.readingDetails || planReadingDetails : planReadingDetails,
 						planReadingDetails,
+						selfReports,
 						notes: hasUnsavedLocalChanges ? localStudent.notes : undefined,
-						savedToday: false,
+						savedToday: allReportDatesSaved,
 					}
 				})
-				await loadSavedStudentsForToday(halaqah, mappedStudents)
+				const nextStudents = (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
+				const eligibleStudents = nextStudents.filter(
+					(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
+				)
+				setStudents(eligibleStudents)
+				setHasSavedToday(eligibleStudents.some((student) => student.savedToday))
 			}
 			setIsLoading(false)
 		} catch (error) {
@@ -464,7 +764,7 @@ export default function HalaqahManagement() {
 									? {}
 									: s.hasPlan
 										? s.evaluation
-										: { ...s.evaluation, hafiz: "not_completed" },
+										: { ...s.evaluation, hafiz: "0" },
 							readingDetails: s.planReadingDetails || s.readingDetails,
 						}
 					: s,
@@ -488,24 +788,23 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const setAllEvaluations = (studentId: string, level: EvaluationLevel) => {
-		const student = students.find((s) => s.id === studentId)
-		if (student?.savedToday) return
-
+	const setReportEvaluation = (studentId: string, reportDate: string, level?: EvaluationLevel) => {
 		setStudents(
-			students.map((s) =>
-				s.id === studentId
+			students.map((student) =>
+				student.id === studentId
 					? {
-							...s,
-							evaluation: {
-								...s.evaluation,
-								...(s.hasPlan ? { hafiz: level } : {}),
-								tikrar: level,
-								samaa: level,
-								rabet: level,
-							},
+							...student,
+							reportEvaluations: (() => {
+								const nextReportEvaluations = { ...(student.reportEvaluations || {}) }
+								if (level === null || level === undefined) {
+									delete nextReportEvaluations[reportDate]
+								} else {
+									nextReportEvaluations[reportDate] = level
+								}
+								return nextReportEvaluations
+							})(),
 						}
-					: s,
+					: student,
 			),
 		)
 	}
@@ -513,35 +812,49 @@ export default function HalaqahManagement() {
 	const handleReset = () => {
 		setStudents(
 			students.map((s) =>
-				s.savedToday ? s : { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} },
+				s.savedToday
+					? s
+					: {
+							...s,
+							evaluation: {},
+							reportEvaluations: Object.fromEntries(
+								Object.entries(s.reportEvaluations || {}).filter(([date]) => (s.savedReportDates || []).includes(date)),
+							),
+							readingDetails: s.planReadingDetails || {},
+						},
 			),
 		)
 	}
 
 	const handleSave = async () => {
-		const refreshedStudents = (await loadSavedStudentsForToday(teacherData.halaqah, students)) ?? students
+		const refreshedStudents = ((await loadSavedStudentsForToday(teacherData.halaqah, students)) ?? students).filter(
+			(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
+		)
 
 		const studentsToSave = refreshedStudents.filter(isStudentReadyToSave)
 		const hasIncompletePresentStudents = refreshedStudents.some(
-			(student) => !student.savedToday && isEvaluatedAttendance(student.attendance) && !hasCompletePresentEvaluation(student),
+			(student) =>
+				(student.selfReports || []).length > 0
+					? false
+					: !student.savedToday && isEvaluatedAttendance(student.attendance) && !hasCompletePresentEvaluation(student),
 		)
 
 		if (studentsToSave.length === 0) {
 			await showAlert(
 				hasIncompletePresentStudents
-					? "يجب إكمال جميع فروع التقييم للطالب الحاضر أو المتأخر قبل الحفظ."
-					: "لا يوجد طلاب جدد جاهزون للحفظ اليوم",
+					? "يجب تقييم الحفظ للطالب الحاضر أو المتأخر قبل الحفظ."
+					: "لا توجد مقاطع محددة بتقييم للحفظ",
 				"تحذير",
 			)
 			return
 		}
 
-		const allPresentsEvaluated = studentsToSave
-			.filter((s) => isEvaluatedAttendance(s.attendance))
-			.every(hasCompletePresentEvaluation)
+		const allPresentsEvaluated = studentsToSave.every((student) =>
+			(student.selfReports || []).length > 0 ? getSelectedUnsavedSelfReports(student).length > 0 : !isEvaluatedAttendance(student.attendance) || hasCompletePresentEvaluation(student),
+		)
 
 		if (!allPresentsEvaluated) {
-			await showAlert("لم يتم تقييم جميع الطلاب الحاضرين أو المتأخرين في كل الفروع! تأكد من إكمال التقييم قبل الحفظ", "تحذير")
+			await showAlert("لم يتم تقييم الحفظ لجميع الطلاب الحاضرين أو المتأخرين. أكمل تقييم الحفظ قبل الحفظ النهائي", "تحذير")
 			return
 		}
 
@@ -549,17 +862,56 @@ export default function HalaqahManagement() {
 		setSaveStatus("saving")
 
 		try {
-			const saveResults = await Promise.all(
+			const nestedSaveResults = await Promise.all(
 				studentsToSave.map(async (student) => {
+					if ((student.selfReports || []).length > 0) {
+						const unsavedReports = getSelectedUnsavedSelfReports(student)
+						return Promise.all(
+							unsavedReports.map(async (report) => {
+								const reportContent = getReportMemorizationContent(student, report.report_date)
+								const autoSupportEvaluation = buildAutoSupportEvaluationForReport(report)
+								const response = await fetch("/api/attendance", {
+									method: "POST",
+									headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
+									body: JSON.stringify({
+										student_id: student.id,
+										teacher_id: teacherData.id,
+										halaqah: teacherData.halaqah,
+										status: student.attendance,
+										report_date: report.report_date,
+										hafiz_level: student.reportEvaluations?.[report.report_date],
+										tikrar_level: autoSupportEvaluation.tikrar,
+										samaa_level: autoSupportEvaluation.samaa,
+										rabet_level: autoSupportEvaluation.rabet,
+										hafiz_from_surah: reportContent?.fromSurah?.trim() || null,
+										hafiz_from_verse: reportContent?.fromVerse?.trim() || null,
+										hafiz_to_surah: reportContent?.toSurah?.trim() || null,
+										hafiz_to_verse: reportContent?.toVerse?.trim() || null,
+										notes: student.notes || null,
+									}),
+								})
+								const data = await response.json().catch(() => ({}))
+								return {
+									ok: response.ok,
+									status: response.status,
+									studentId: student.id,
+									reportDate: report.report_date,
+									data,
+								}
+							}),
+						)
+					}
+
+					const autoSupportEvaluation = buildAutoSupportEvaluation(student.selfReports)
 					const requestBody: any = {
 						student_id: student.id,
 						teacher_id: teacherData.id,
 						halaqah: teacherData.halaqah,
 						status: student.attendance,
-						hafiz_level: "not_completed",
-						tikrar_level: "not_completed",
-						samaa_level: "not_completed",
-						rabet_level: "not_completed",
+						hafiz_level: "0",
+						tikrar_level: "0",
+						samaa_level: "0",
+						rabet_level: "0",
 						hafiz_from_surah: null,
 						hafiz_from_verse: null,
 						hafiz_to_surah: null,
@@ -576,10 +928,10 @@ export default function HalaqahManagement() {
 					}
 
 					if (isEvaluatedAttendance(student.attendance) && student.evaluation) {
-						requestBody.hafiz_level = student.evaluation.hafiz || "not_completed"
-						requestBody.tikrar_level = student.evaluation.tikrar || "not_completed"
-						requestBody.samaa_level = student.evaluation.samaa || "not_completed"
-						requestBody.rabet_level = student.evaluation.rabet || "not_completed"
+						requestBody.hafiz_level = student.evaluation.hafiz || "0"
+						requestBody.tikrar_level = autoSupportEvaluation.tikrar
+						requestBody.samaa_level = autoSupportEvaluation.samaa
+						requestBody.rabet_level = autoSupportEvaluation.rabet
 						requestBody.hafiz_from_surah = student.readingDetails?.hafiz?.fromSurah?.trim() || null
 						requestBody.hafiz_from_verse = student.readingDetails?.hafiz?.fromVerse?.trim() || null
 						requestBody.hafiz_to_surah = student.readingDetails?.hafiz?.toSurah?.trim() || null
@@ -609,13 +961,14 @@ export default function HalaqahManagement() {
 					}
 				}),
 			)
+			const saveResults = nestedSaveResults.flat()
 
 			const blockingError = saveResults.find((result) => !result.ok && result.status !== 409)
 			if (blockingError) {
 				throw new Error(blockingError.data?.error || "حدث خطأ أثناء حفظ البيانات")
 			}
 
-			await loadSavedStudentsForToday(teacherData.halaqah)
+			await fetchStudents(teacherData.halaqah)
 
 			const successfulSavesCount = saveResults.filter((result) => result.ok).length
 			const duplicateSavesCount = saveResults.filter((result) => result.status === 409).length
@@ -629,7 +982,7 @@ export default function HalaqahManagement() {
 				}
 			} else if (duplicateSavesCount > 0) {
 				setSaveStatus("idle")
-				await showAlert("هذا الطالب محفوظ مسبقًا اليوم ولا يمكن حفظه مرة أخرى.", "تنبيه")
+				await showAlert("بعض الأيام محفوظة مسبقًا ولا يمكن حفظها مرة أخرى.", "تنبيه")
 			}
 
 			setTimeout(() => {
@@ -656,18 +1009,6 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const markAllLate = () => {
-		setStudents(
-			students.map((s) =>
-				s.savedToday
-					? s
-					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "late", evaluation: s.evaluation || {}, readingDetails: s.planReadingDetails || {} },
-			),
-		)
-	}
-
 	const markAllAbsent = () => {
 		setStudents(
 			students.map((s) =>
@@ -680,23 +1021,12 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const markAllExcused = () => {
-		setStudents(
-			students.map((s) =>
-				s.savedToday
-					? s
-					: !s.hasPlan
-						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
-						: { ...s, attendance: "excused", evaluation: {}, readingDetails: s.planReadingDetails || {} },
-			),
-		)
-	}
-
 	const loadMissedDays = async (studentId: string) => {
 		setIsCompLoading(true)
 		try {
 			const res = await fetch(`/api/compensation/missed?student_id=${studentId}&t=${Date.now()}`, {
 				cache: "no-store",
+				headers: getClientAuthHeaders(),
 			})
 			const data = await res.json()
 			setMissedDays(data.missedDays || [])
@@ -712,6 +1042,7 @@ export default function HalaqahManagement() {
 		try {
 			const planResponse = await fetch(`/api/student-plans?student_id=${studentId}&t=${Date.now()}`, {
 				cache: "no-store",
+				headers: getClientAuthHeaders(),
 			})
 			if (!planResponse.ok) return
 
@@ -751,7 +1082,7 @@ export default function HalaqahManagement() {
 		try {
 			const res = await fetch(`/api/compensation`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
 				body: JSON.stringify({
 					student_id: compStudentId,
 					teacher_id: teacherData.id,
@@ -768,7 +1099,7 @@ export default function HalaqahManagement() {
 			if (data.success) {
 				await loadMissedDays(compStudentId)
 				await refreshStudentPlanState(compStudentId)
-				await showAlert(`تم تعويض المقطع بنجاح وتم إضافة ${data.pointsAdded} نقطة للطالب.`, "نجاح")
+				await showAlert("تم التعويض بنجاح.", "نجاح")
 			} else {
 				await showAlert(data.error || "خطأ في التعويض", "خطأ")
 			}
@@ -777,9 +1108,9 @@ export default function HalaqahManagement() {
 		}
 	}
 
-		const openNotesDialog = (studentId: string) => {
+	const openNotesDialog = (studentId: string) => {
 		const student = students.find((s) => s.id === studentId)
-			if (student?.savedToday) return
+		if (student?.savedToday) return
 		setNotesStudentId(studentId)
 		setNotesText(student?.notes || "")
 		setIsNotesDialogOpen(true)
@@ -787,12 +1118,14 @@ export default function HalaqahManagement() {
 
 	const saveNotes = () => {
 		if (notesStudentId !== null) {
-			setStudents(students.map((s) => s.id === notesStudentId ? { ...s, notes: notesText } : s))
+			setStudents(students.map((s) => (s.id === notesStudentId ? { ...s, notes: notesText } : s)))
 		}
 		setIsNotesDialogOpen(false)
 	}
 
 	const halaqahName = teacherData?.halaqah || "الحلقة"
+	const savedStudentsCount = students.filter((student) => student.savedToday).length
+	const hasPendingStudents = students.some(isStudentReadyToSave)
 
 	const EvaluationOption = ({
 		studentId,
@@ -805,7 +1138,8 @@ export default function HalaqahManagement() {
 	}) => {
 		const student = students.find((s) => s.id === studentId)
 		const currentLevel = student?.evaluation?.[type] || null
-		const currentDetails = type === "hafiz" || type === "samaa" || type === "rabet" ? student?.readingDetails?.[type] : null
+		const currentDetails =
+			type === "hafiz" || type === "samaa" || type === "rabet" ? student?.readingDetails?.[type] : null
 		const showsReadingFields = type === "hafiz" || type === "samaa" || type === "rabet"
 		const readingSummary = formatReadingDetails(currentDetails)
 		const emptyReadingMessage =
@@ -817,368 +1151,201 @@ export default function HalaqahManagement() {
 		const isSavedLocked = !!student?.savedToday
 		const isHafizLocked = type === "hafiz" && !student?.hasPlan
 		const isDisabled = isSavedLocked || isHafizLocked
+		const currentLevelValue = normalizeEvaluationLevel(currentLevel)
+		const currentLevelLabel = REPORT_EVALUATION_OPTIONS.find((option) => option.level === currentLevelValue)?.label || "0"
+		const scoreSelector = (
+			<div className="w-full sm:max-w-[148px] shrink-0">
+				<Select
+					value={currentLevelValue}
+					onValueChange={(value) => setEvaluation(studentId, type, value as EvaluationLevel)}
+					disabled={isDisabled}
+				>
+					<SelectTrigger className="h-12 rounded-2xl border-[#D4AF37]/55 bg-white px-4 text-base font-black text-[#1a2332] shadow-none focus:ring-[#D4AF37]/20" dir="rtl">
+						<SelectValue>{currentLevelLabel}</SelectValue>
+					</SelectTrigger>
+					<SelectContent dir="rtl">
+						{REPORT_EVALUATION_OPTIONS.map((option) => (
+							<SelectItem key={`${studentId}-${type}-${option.level}`} value={option.level} className="text-right text-sm">
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
+		)
 
 		return (
 			<div
-				className={`space-y-2 rounded-xl border p-3 ${
+				className={`space-y-2 rounded-lg border px-3 py-2 ${
 					isSavedLocked
-						? "border-[#D4AF37]/35 bg-[#f8f3df]/80 opacity-75"
+						? "border-[#D4AF37]/35 bg-[#fbf8ee]/85 opacity-80"
 						: isHafizLocked
-							? "border-red-200 bg-red-50/40"
+							? "border-[#D4AF37]/25 bg-[#fbf8ee]/60 opacity-75"
 							: "border-[#D4AF37]/15"
 				}`}
 			>
-				<div className="font-semibold text-[#1a2332] text-center">{label}</div>
-		<div className="grid grid-cols-2 gap-2">
-				<Button
-					variant="outline"
-					onClick={() => setEvaluation(studentId, type, "excellent")}
-					disabled={isDisabled}
-					className={`text-xs transition-all ${
-						currentLevel === "excellent"
-							? "font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-					}`}
-					style={currentLevel === "excellent" ? {
-						backgroundColor: "rgba(212, 175, 55, 0.2)",
-						borderColor: "#D4AF37",
-						color: "#262626",
-					} : undefined}
-				>
-					ممتاز
-				</Button>
-				<Button
-					variant="outline"
-					onClick={() => setEvaluation(studentId, type, "very_good")}
-					disabled={isDisabled}
-					className={`text-xs transition-all ${
-						currentLevel === "very_good"
-							? "font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-					}`}
-					style={currentLevel === "very_good" ? {
-						backgroundColor: "rgba(212, 175, 55, 0.2)",
-						borderColor: "#D4AF37",
-						color: "#262626",
-					} : undefined}
-				>
-					جيد جداً
-				</Button>
-				<Button
-					variant="outline"
-					onClick={() => setEvaluation(studentId, type, "good")}
-					disabled={isDisabled}
-					className={`text-xs transition-all ${
-						currentLevel === "good"
-							? "font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-					}`}
-					style={currentLevel === "good" ? {
-						backgroundColor: "rgba(212, 175, 55, 0.2)",
-						borderColor: "#D4AF37",
-						color: "#262626",
-					} : undefined}
-				>
-					جيد
-				</Button>
-				<Button
-					variant="outline"
-					onClick={() => setEvaluation(studentId, type, "not_completed")}
-					disabled={isDisabled}
-					className={`text-xs transition-all ${
-						currentLevel === "not_completed"
-							? "font-bold"
-							: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-					}`}
-					style={currentLevel === "not_completed" ? {
-						backgroundColor: "rgba(212, 175, 55, 0.2)",
-						borderColor: "#D4AF37",
-						color: "#262626",
-					} : undefined}
-				>
-					لم يكمل
-				</Button>
-			</div>
-			{showReadingSegments && showsReadingFields && !isHafizLocked && (
-				<div className="pt-2">
-					<div className="rounded-xl border border-[#D4AF37]/20 bg-[#faf7f0] px-3 py-2 text-right" dir="rtl">
-						<p className="text-xs leading-6 text-[#1a2332]">
-							{readingSummary || emptyReadingMessage}
-						</p>
+				{showReadingSegments && showsReadingFields && !isHafizLocked ? (
+					<div className="flex flex-col gap-2 lg:flex-row-reverse lg:items-start lg:justify-between">
+						<div className="flex-1 text-right">
+							<div className="text-sm font-semibold text-[#1a2332]">{label}</div>
+							<div className={`mt-1 text-sm ${readingSummary ? "font-semibold text-emerald-700" : "text-[#8b6b3f]"}`}>
+								{readingSummary || emptyReadingMessage}
+							</div>
+						</div>
+						{scoreSelector}
 					</div>
-				</div>
-			)}
+				) : (
+					<>
+						<div className="text-right text-sm font-semibold text-[#1a2332]">{label}</div>
+						{scoreSelector}
+					</>
+				)}
 			</div>
 		)
 	}
 
-	const savedStudentsCount = students.filter((student) => student.savedToday).length
-	const pendingStudentsCount = students.filter(isStudentReadyToSave).length
-	const hasPendingStudents = pendingStudentsCount > 0
-
 	return (
 		<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
 			<Header />
-
-			<main className="flex-1 py-12 px-4">
-				<div className="container mx-auto max-w-7xl">
-					<div className="mb-8 overflow-x-auto pb-2">
-						<div className="flex w-full flex-col items-start gap-2 sm:gap-2.5 md:min-w-max md:flex-row-reverse md:flex-nowrap md:items-center md:justify-end">
-							<div className="flex w-fit self-start md:w-auto">
-								<label className="plan-history-checkbox h-11 w-fit shrink-0 rounded-full border border-[#D4AF37]/70 bg-white/90 px-4 text-sm font-semibold text-[#1a2332] shadow-sm transition-all hover:bg-[#faf7f0] sm:h-10 sm:px-4 sm:text-sm">
-									<input
-										type="checkbox"
-										checked={showReadingSegments}
-										onChange={(e) => setShowReadingSegments(e.target.checked)}
-									/>
-									<span className="plan-history-checkbox__label whitespace-nowrap">معاينة الخطط</span>
-									<span className="plan-history-checkbox__mark" aria-hidden="true" />
-								</label>
+			<main className="flex-1 py-4 px-4">
+				<div className="container mx-auto max-w-7xl space-y-6">
+					<section className="rounded-[32px] border border-[#D4AF37]/20 bg-white/85 p-6 shadow-sm backdrop-blur-sm">
+						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+							<div className="text-right">
+								<p className="text-sm font-extrabold tracking-[0.18em] text-[#b38a1e]">إدارة الحلقة</p>
+								<h1 className="mt-2 text-3xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
-							<div className="flex w-fit max-w-full self-start flex-nowrap flex-row-reverse items-center justify-start gap-2 sm:w-auto sm:gap-2.5 md:min-w-max md:justify-end">
-							<Button
-								variant="outline"
-								onClick={markAllLate}
-								disabled={isSaving}
-									className="h-11 shrink-0 rounded-xl border-[#D4AF37]/80 bg-white px-4 text-sm font-semibold text-neutral-700 transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 active:bg-[#D4AF37]/15 focus-visible:border-[#D4AF37] focus-visible:bg-[#D4AF37]/10 focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 sm:h-10 sm:px-3 sm:text-sm"
-							>
-								متأخر
-							</Button>
-							<Button
-								variant="outline"
-								onClick={markAllExcused}
-								disabled={isSaving}
-									className="h-11 shrink-0 rounded-xl border-[#D4AF37]/80 bg-white px-4 text-sm font-semibold text-neutral-700 transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 active:bg-[#D4AF37]/15 focus-visible:border-[#D4AF37] focus-visible:bg-[#D4AF37]/10 focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 sm:h-10 sm:px-3 sm:text-sm"
-							>
-								مستأذن
-							</Button>
-							<Button
-								variant="outline"
-								onClick={markAllAbsent}
-								disabled={isSaving}
-									className="h-11 shrink-0 rounded-xl border-[#D4AF37]/80 bg-white px-4 text-sm font-semibold text-neutral-700 transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 active:bg-[#D4AF37]/15 focus-visible:border-[#D4AF37] focus-visible:bg-[#D4AF37]/10 focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 sm:h-10 sm:px-3 sm:text-sm"
-							>
-								غائب
-							</Button>
-							<Button
-								variant="outline"
-								onClick={markAllPresent}
-								disabled={isSaving}
-								className="h-11 shrink-0 rounded-xl border-[#D4AF37]/80 bg-white px-4 text-sm font-semibold text-neutral-700 transition-all hover:border-[#D4AF37] hover:bg-[#D4AF37]/10 active:bg-[#D4AF37]/15 focus-visible:border-[#D4AF37] focus-visible:bg-[#D4AF37]/10 focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 sm:h-10 sm:px-3 sm:text-sm"
-							>
-								حاضر
-							</Button>
+							<div className="flex flex-wrap items-center justify-end gap-2">
+								<Button
+									variant="outline"
+									onClick={() => setShowReadingSegments((current) => !current)}
+									className="h-11 rounded-xl border-[#D4AF37]/70 bg-white text-sm font-bold text-neutral-700 hover:bg-[#D4AF37]/10"
+								>
+									{showReadingSegments ? "إخفاء المقاطع" : "إظهار المقاطع"}
+								</Button>
 							</div>
 						</div>
-					</div>
+					</section>
+
 					{students.length === 0 ? (
-						<div className="flex flex-col items-center justify-center min-h-[300px] space-y-4">
-							<p className="text-2xl font-bold text-[#1a2332]">لا يوجد طلاب في هذه الحلقة</p>
-							<p className="text-lg text-[#1a2332]/70">يمكنك إضافة طلاب من لوحة التحكم</p>
+						<div className="rounded-[28px] border border-[#D4AF37]/20 bg-white/90 px-6 py-12 text-center shadow-sm">
+							<p className="text-lg font-bold text-[#1a2332]">لا يوجد طلاب لديهم تنفيذ فعلي في آخر 3 أيام بعد اعتماد حضورهم اليوم</p>
 						</div>
 					) : (
 						<>
-							{/* Student List */}
-							<div className="space-y-4">
-								{students.map((student) => (
-										(() => {
-											const isNoPlanLocked = !student.hasPlan && !student.savedToday
+							<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+								{students.map((student) => {
+									const isNoPlanLocked = !student.savedToday && !student.hasPlan
+									const shouldShowReportEvaluations = (student.selfReports || []).length > 0
+									const shouldExpandCard =
+										student.savedToday ||
+										student.attendance !== null ||
+										shouldShowReportEvaluations ||
+										Boolean(student.notes) ||
+										isNoPlanLocked
 
-											return (
-									<Card
-										key={student.id}
-										className={`border-2 shadow-lg transition-all ${
-											student.savedToday
-												? "border-[#D4AF37]/35 bg-[#fbf8ee]/85 opacity-80 pointer-events-none select-none"
-												: isNoPlanLocked
-													? "border-[#D4AF37]/25 bg-[#fbf8ee]/60 opacity-75 pointer-events-none select-none"
-												: "border-[#D4AF37]/20"
-										}`}
-									>
-										<CardContent className="pt-0 pb-0">
-											<div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-												<div className="lg:col-span-1">
-													<div className="space-y-2">
-														<div className="flex flex-col gap-2">
-															<div className="flex items-center gap-2 flex-wrap">
-																<p className="text-base font-bold text-[#1a2332]">{student.name}</p>
-																<Button
-																	variant="outline"
-																	onClick={() => openNotesDialog(student.id)}
-																	title="الملاحظات"
-																	disabled={student.savedToday}
-																	className={`h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 ${
-																		student.notes
-																			? "bg-[#D4AF37]/20 border-[#D4AF37] text-neutral-800 hover:bg-[#D4AF37]/25 hover:border-[#D4AF37] focus-visible:bg-[#D4AF37]/20 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
-																			: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
-																	}`}
-																>
-																	<MessageSquare className="w-3 h-3" />
-																</Button>
-																<Button
-																	variant="outline"
-																	onClick={() => openCompDialog(student.id)}
-																	title="تعويض الحفظ"
-																	disabled={student.savedToday}
-																	className="h-5 w-5 rounded-md p-0 transition-all flex-shrink-0 border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30"
-																>
-																	<RotateCcw className="w-3 h-3" />
-																</Button>
-															</div>
-                                                                                                                </div>
-														<div className="grid grid-cols-2 gap-2 w-full">
+									return (
+										<Card
+											key={student.id}
+											className={`overflow-hidden rounded-[30px] border shadow-[0_24px_60px_-32px_rgba(88,67,18,0.38)] transition-all ${
+												student.savedToday
+													? "border-[#D4AF37]/35 bg-[#fbf8ee]/90 opacity-80 pointer-events-none select-none"
+													: isNoPlanLocked
+														? "border-[#D4AF37]/25 bg-[#fbf8ee]/75 opacity-75"
+														: "border-[#D4AF37]/15 bg-white"
+											}`}
+										>
+											<CardContent className={`p-4 lg:p-3 xl:p-4 ${shouldExpandCard ? "" : "pb-3"}`}>
+												<div className={`${shouldExpandCard ? "space-y-4" : "space-y-3"}`} dir="rtl">
+													<div className="flex items-start justify-between gap-3">
+														<div className="min-w-0 flex-1 text-right">
+															<p className="text-lg font-black leading-none text-[#1a2332] lg:text-base xl:text-lg">{student.name}</p>
+														</div>
+														<div className="flex items-center gap-2">
 															<Button
 																variant="outline"
-																onClick={() => toggleAttendance(student.id, "present")}
+																onClick={() => openCompDialog(student.id)}
+																title="تعويض الحفظ"
 																disabled={student.savedToday}
-																className={`min-w-0 text-sm h-9 rounded-lg transition-all ${
-																	student.attendance === "present"
-																		? "font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-																}`}
-																style={student.attendance === "present" ? {
-																	backgroundColor: "rgba(212, 175, 55, 0.2)",
-																	borderColor: "#D4AF37",
-																	color: "#262626",
-																} : undefined}
+																className="h-8 w-8 rounded-full border-[#D4AF37]/70 bg-white text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800"
 															>
-																حاضر
+																<RotateCcw className="h-3.5 w-3.5" />
 															</Button>
 															<Button
 																variant="outline"
-																onClick={() => toggleAttendance(student.id, "late")}
+																onClick={() => openNotesDialog(student.id)}
+																title="الملاحظات"
 																disabled={student.savedToday}
-																className={`min-w-0 text-sm h-9 rounded-lg transition-all ${
-																	student.attendance === "late"
-																		? "font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
+																className={`h-8 w-8 rounded-full ${
+																	student.notes
+																		? "border-[#D4AF37] bg-[#D4AF37]/18 text-neutral-800"
+																		: "border-[#D4AF37]/70 bg-white text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800"
 																}`}
-																style={student.attendance === "late" ? {
-																	backgroundColor: "rgba(212, 175, 55, 0.2)",
-																	borderColor: "#D4AF37",
-																	color: "#262626",
-																} : undefined}
 															>
-																متأخر
-															</Button>
-															<Button
-																variant="outline"
-																onClick={() => toggleAttendance(student.id, "absent")}
-																disabled={student.savedToday}
-																className={`min-w-0 text-sm h-9 rounded-lg transition-all ${
-																	student.attendance === "absent"
-																		? "font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-																}`}
-																style={student.attendance === "absent" ? {
-																	backgroundColor: "rgba(212, 175, 55, 0.2)",
-																	borderColor: "#D4AF37",
-																	color: "#262626",
-																} : undefined}
-															>
-																غائب
-															</Button>
-															<Button
-																variant="outline"
-																onClick={() => toggleAttendance(student.id, "excused")}
-																disabled={student.savedToday}
-																className={`min-w-0 text-sm h-9 rounded-lg transition-all ${
-																	student.attendance === "excused"
-																		? "font-bold"
-																		: "border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]"
-																}`}
-																style={student.attendance === "excused" ? {
-																	backgroundColor: "rgba(212, 175, 55, 0.2)",
-																	borderColor: "#D4AF37",
-																	color: "#262626",
-																} : undefined}
-															>
-																مستأذن
+																<MessageSquare className="h-3.5 w-3.5" />
 															</Button>
 														</div>
-														{isEvaluatedAttendance(student.attendance) && !student.savedToday && student.hasPlan && (
-															<div className="space-y-2 pt-2">
-																<p className="text-sm font-semibold text-[#1a2332] text-center">تقييم الكل:</p>
-																<div className="grid grid-cols-2 gap-2">
-																	<Button
-																		variant="outline"
-																		onClick={() => setAllEvaluations(student.id, "excellent")}
-																		disabled={student.savedToday}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
-																	>
-																		ممتاز
-																	</Button>
-																	<Button
-																		variant="outline"
-																		onClick={() => setAllEvaluations(student.id, "very_good")}
-																		disabled={student.savedToday}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
-																	>
-																		جيد جداً
-																	</Button>
-																	<Button
-																		variant="outline"
-																		onClick={() => setAllEvaluations(student.id, "good")}
-																		disabled={student.savedToday}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
-																	>
-																		جيد
-																	</Button>
-																	<Button
-																		variant="outline"
-																		onClick={() => setAllEvaluations(student.id, "not_completed")}
-																		disabled={student.savedToday}
-																		className="text-xs border-[#D4AF37]/80 text-neutral-600 bg-white hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] active:bg-[#D4AF37]/15 focus-visible:bg-[#D4AF37]/10 focus-visible:border-[#D4AF37] focus-visible:text-neutral-800 focus-visible:ring-[#D4AF37]/30 transition-all"
-																	>
-																		لم يكمل
-																	</Button>
-																</div>
-															</div>
-														)}
 													</div>
-												</div>
 
-												{/* Evaluation Options */}
-												{isNoPlanLocked && (
-													<div className="lg:col-span-3 flex items-center justify-center">
-														<div className="w-full rounded-2xl border border-[#D4AF37]/20 bg-[#f8f3df]/60 px-5 py-8 text-center opacity-80">
+													{isNoPlanLocked && shouldExpandCard ? (
+														<div className="rounded-2xl bg-[#f8f3df] px-3 py-3 text-center">
 															<p className="text-sm font-semibold text-[#8b6b16]">لا توجد لديه خطة</p>
 														</div>
-													</div>
-												)}
-												{isEvaluatedAttendance(student.attendance) && !student.savedToday && student.hasPlan && (
-													<div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-6">
-														<EvaluationOption
-															studentId={student.id}
-															type="hafiz"
-															label="الحفظ"
-														/>
-														<EvaluationOption
-															studentId={student.id}
-															type="tikrar"
-															label="التكرار"
-														/>
-														<EvaluationOption
-															studentId={student.id}
-															type="samaa"
-															label="المراجعة"
-														/>
-														<EvaluationOption
-															studentId={student.id}
-															type="rabet"
-															label="الربط"
-														/>
-													</div>
-												)}
-											</div>
-										</CardContent>
-									</Card>
-											)
-										})()
-								))}
+													) : !isEvaluatedAttendance(student.attendance) && !student.savedToday && !student.hasPlan ? (
+														<div className="rounded-xl bg-[#f8f3df] px-3 py-2 text-center">
+															<p className="text-xs font-semibold text-[#8b6b16]">لا توجد لديه خطة</p>
+														</div>
+													) : shouldExpandCard && !isNoPlanLocked && shouldShowReportEvaluations ? (
+														<div className="rounded-3xl bg-[#fcfaf3] px-3 py-3 sm:px-4">
+															<div className="space-y-2.5">
+																{[...(student.selfReports || [])]
+																	.sort((left, right) => left.report_date.localeCompare(right.report_date))
+																	.map((report) => (
+																	<div key={report.id} className="grid gap-3 rounded-[22px] bg-white px-3 py-3 shadow-sm ring-1 ring-[#D4AF37]/10 md:grid-cols-[minmax(0,1fr)_128px] md:items-center">
+																		<div className="min-w-0 text-right">
+																			<p className="text-sm font-black text-[#1a2332]">{formatExecutionDay(report.report_date)}</p>
+																			{showReadingSegments && (
+																				<p className={`mt-1 text-sm font-semibold ${report.memorization_done ? "text-emerald-700" : "text-[#8b6b3f]"}`}>
+																					{getReportMemorizationSegment(student, report.report_date)}
+																				</p>
+																			)}
+																		</div>
+																		<div className="rounded-[20px] border border-[#D4AF37]/18 bg-[#fffaf0] px-3 py-2">
+																			<p className="mb-2 text-right text-[11px] font-extrabold tracking-[0.08em] text-[#a8842d]">التقييم</p>
+																			<Select
+																				value={student.reportEvaluations?.[report.report_date]}
+																				onValueChange={(value) => setReportEvaluation(student.id, report.report_date, value === UNSET_REPORT_EVALUATION ? undefined : value as EvaluationLevel)}
+																				disabled={(student.savedReportDates || []).includes(report.report_date)}
+																			>
+																				<SelectTrigger className="h-11 w-full rounded-2xl border-[#D4AF37]/45 bg-white px-3 text-base font-black text-[#1a2332] shadow-none focus:ring-[#D4AF37]/20" dir="rtl">
+																					<SelectValue placeholder="-" />
+																				</SelectTrigger>
+																				<SelectContent dir="rtl">
+																					<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
+																						-
+																					</SelectItem>
+																					{REPORT_EVALUATION_OPTIONS.map((option) => (
+																						<SelectItem key={`${report.id}-${option.level}`} value={option.level} className="text-right text-sm">
+																							{option.label}
+																						</SelectItem>
+																					))}
+																				</SelectContent>
+																			</Select>
+																		</div>
+																	</div>
+																	))}
+															</div>
+														</div>
+													) : null}
+
+												</div>
+											</CardContent>
+										</Card>
+									)
+								})}
 							</div>
 
-							<div className="flex justify-center gap-4 mt-8">
+							<div className="mt-8 flex justify-center gap-4">
 								<Button
 									onClick={handleReset}
 									variant="outline"
@@ -1194,10 +1361,11 @@ export default function HalaqahManagement() {
 									className="text-base h-12 px-8 rounded-lg transition-all border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] hover:text-neutral-800"
 									disabled={isSaving || !hasPendingStudents}
 								>
-									{saveStatus === "saving" && "جاري الحفظ..."}
-									{saveStatus === "success" && "تم الحفظ!"}
-									{saveStatus === "idle" && hasPendingStudents && "حفظ"}
-									{saveStatus === "idle" && !hasPendingStudents && (hasSavedToday ? "حفظ" : "اختر الطلاب أولاً")}
+									{saveStatus === "saving"
+										? "جاري الحفظ..."
+										: saveStatus === "success"
+											? "تم الحفظ!"
+											: "حفظ"}
 								</Button>
 							</div>
 						</>

@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Award, Medal, Gem, Trash2, Plus, User, Trophy, Star, Flame, Zap, Crown, Heart } from "lucide-react";
 
 interface Student {
   id: string;
   name: string;
+  halaqah?: string;
+  circle_name?: string;
 }
 
 interface Achievement {
@@ -21,10 +24,16 @@ interface Achievement {
 function StudentsAchievementsAdmin() {
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedCircle, setSelectedCircle] = useState("all");
   const [icon, setIcon] = useState<string>("trophy");
   const [achievementName, setAchievementName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [achievementsMap, setAchievementsMap] = useState<Record<string, Achievement[]>>({});
+
+  const normalizeCircleName = (value?: string | null) =>
+    (value || "")
+      .replace(/\s+/g, " ")
+      .trim();
 
   useEffect(() => {
     fetch("/api/students")
@@ -40,6 +49,20 @@ function StudentsAchievementsAdmin() {
         });
       });
   }, []);
+
+  const circles = Array.from(
+    new Set(
+      students
+        .map((student) => normalizeCircleName(student.halaqah || student.circle_name))
+        .filter(Boolean)
+    )
+  ).sort((left, right) => left.localeCompare(right, "ar"));
+
+  const filteredStudents = selectedCircle === "all"
+    ? students
+    : students.filter(
+        (student) => normalizeCircleName(student.halaqah || student.circle_name) === selectedCircle
+      );
 
   const handleSave = async () => {
     if (!selectedStudent || !achievementName) return;
@@ -117,17 +140,30 @@ function StudentsAchievementsAdmin() {
           {!selectedStudent ? (
             /* ── قائمة الطلاب ── */
             <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <Trophy className="w-4 h-4 text-[#D4AF37]" />
+              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex flex-col items-start gap-4">
+                <div className="flex items-center gap-3 shrink-0">
+                  <h2 className="text-base font-bold text-[#1a2332]">قائمة الطلاب</h2>
                 </div>
-                <h2 className="text-base font-bold text-[#1a2332]">قائمة الطلاب</h2>
-                <span className="mr-auto text-sm text-neutral-400">{students.length} طالب</span>
+                <div className="w-full max-w-[320px] shrink-0">
+                  <Select value={selectedCircle} onValueChange={setSelectedCircle} dir="rtl">
+                    <SelectTrigger className="text-sm bg-white">
+                      <SelectValue placeholder="اختر الحلقة" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      <SelectItem value="all">كل الحلقات</SelectItem>
+                      {circles.map((circle) => (
+                        <SelectItem key={circle} value={circle}>
+                          {circle}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="divide-y divide-[#D4AF37]/15">
-                {students.length === 0 ? (
+                {filteredStudents.length === 0 ? (
                   <div className="py-16 text-center text-neutral-400 text-sm">لا يوجد طلاب</div>
-                ) : students.map((student) => (
+                ) : filteredStudents.map((student) => (
                   <div key={student.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#D4AF37]/5 transition-colors gap-4">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
@@ -135,6 +171,7 @@ function StudentsAchievementsAdmin() {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-[#1a2332]">{student.name}</p>
+                        <p className="text-xs text-neutral-400 mt-0.5">{normalizeCircleName(student.halaqah || student.circle_name) || "غير محدد"}</p>
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {(achievementsMap[student.id]?.length > 0) ? (
                             achievementsMap[student.id].map((ach) => (

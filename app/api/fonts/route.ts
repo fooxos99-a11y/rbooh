@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js"
 const getSupabase = () =>
   createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
   )
 
 export async function GET(request: NextRequest) {

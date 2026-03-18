@@ -1,11 +1,12 @@
 ﻿"use client"
 
+import Link from "next/link"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Mail, Clock, CheckCircle, Archive, ArchiveX, Trash2 } from "lucide-react"
+import { Mail, Clock, CheckCircle, Archive, ArchiveX, Trash2, FileText, ClipboardCheck, BookOpen, UserCheck } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -29,11 +30,6 @@ const subjectLabels: Record<string, string> = {
 
 export default function ReportsPage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير");
-
-    // دالة لفتح السجل اليومي في نافذة جديدة
-    const openDailyAttendance = () => {
-      window.open("/admin/student-daily-attendance", "_blank")
-    }
   const [messages, setMessages] = useState<ContactMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<"all" | "unread" | "read" | "archived">("all")
@@ -152,6 +148,27 @@ export default function ReportsPage() {
           <div className="mb-8">
             <h1 className="text-4xl font-bold text-[#1a2332] mb-2">التقارير والرسائل</h1>
             <p className="text-lg text-gray-600">جميع الرسائل المرسلة من صفحة تواصل معنا</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { href: "/admin/reports/circle-short-report", label: "تقرير الحلقات المختصر", icon: FileText },
+              { href: "/admin/student-daily-attendance", label: "السجل اليومي للطلاب", icon: BookOpen },
+              { href: "/admin/staff-attendance", label: "التحضير", icon: ClipboardCheck },
+              { href: "/admin/teacher-attendance", label: "تقارير المعلمين", icon: UserCheck },
+            ].map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href} className="group rounded-2xl border-2 border-[#d8a355]/20 bg-white p-5 transition-all hover:border-[#d8a355] hover:shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-base font-bold text-[#1a2332]">{label}</p>
+                    <p className="mt-1 text-sm text-gray-500">فتح الصفحة</p>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8a355]/10 text-[#d8a355] transition group-hover:bg-[#d8a355]/15">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
 
           {/* Stats Cards */}

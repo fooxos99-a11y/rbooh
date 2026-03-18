@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import {
   applyAttendancePointsAdjustment,
+  calculateEvaluationLevelPoints,
   calculateTotalEvaluationPoints,
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
@@ -28,12 +29,7 @@ function hasCompleteEvaluation(levels: {
   samaa_level?: string | null
   rabet_level?: string | null
 }) {
-  return !!(
-    levels.hafiz_level &&
-    levels.tikrar_level &&
-    levels.samaa_level &&
-    levels.rabet_level
-  )
+  return !!levels.hafiz_level
 }
 
 export async function POST(request: NextRequest) {
@@ -57,7 +53,7 @@ export async function POST(request: NextRequest) {
         })
       ) {
         return NextResponse.json(
-          { error: "يجب إكمال جميع فروع التقييم للطالب الحاضر أو المتأخر قبل الحفظ", student_id: student.id },
+          { error: "يجب إكمال تقييم الحفظ للطالب الحاضر أو المتأخر قبل الحفظ", student_id: student.id },
           { status: 400 },
         )
       }
@@ -95,12 +91,7 @@ export async function POST(request: NextRequest) {
           .maybeSingle();
         if (oldEvaluation) {
           oldPoints = applyAttendancePointsAdjustment(
-            calculateTotalEvaluationPoints({
-              hafiz_level: oldEvaluation.hafiz_level,
-              tikrar_level: oldEvaluation.tikrar_level,
-              samaa_level: oldEvaluation.samaa_level,
-              rabet_level: oldEvaluation.rabet_level,
-            }),
+            calculateEvaluationLevelPoints(oldEvaluation.hafiz_level as any),
             existingRecord?.status,
           )
           await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id);
@@ -153,12 +144,7 @@ export async function POST(request: NextRequest) {
       // إضافة التقييم الجديد وحساب النقاط فقط إذا لم يكن غائب أو مستأذن
       if (isEvaluatedAttendance(status)) {
         const totalPoints = applyAttendancePointsAdjustment(
-          calculateTotalEvaluationPoints({
-            hafiz_level,
-            tikrar_level,
-            samaa_level,
-            rabet_level,
-          }),
+          calculateEvaluationLevelPoints(hafiz_level as any),
           status,
         )
         const { data: evaluationResult, error: evaluationError } = await supabase

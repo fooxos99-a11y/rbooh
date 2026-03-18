@@ -27,6 +27,17 @@ export function GlobalEditPointsDialog() {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  const normalizeCircleKey = (value?: string | null) =>
+    (value || "")
+      .replace(/\s+/g, " ")
+      .trim()
+
+  const getStudentsForCircle = (circleName?: string | null) => {
+    const normalizedCircle = normalizeCircleKey(circleName)
+    if (!normalizedCircle) return []
+    return studentsInCircles[normalizedCircle] || []
+  }
+
   useEffect(() => {
     fetchData()
   }, [])
@@ -44,19 +55,20 @@ export function GlobalEditPointsDialog() {
       if (!studentsRes.error && studentsRes.data) {
         const grouped: Record<string, any[]> = {}
         studentsRes.data.forEach((s) => {
-          if (!grouped[s.circle_name]) grouped[s.circle_name] = []
-          grouped[s.circle_name].push(s)
+          const circleKey = normalizeCircleKey(s.halaqah || s.circle_name || "غير محدد")
+          if (!grouped[circleKey]) grouped[circleKey] = []
+          grouped[circleKey].push(s)
         })
         setStudentsInCircles(grouped)
       }
     } catch (e) { console.error(e) }
   }
 
-  const availableStudentsForPoints = selectedCircleForPoints ? studentsInCircles[selectedCircleForPoints.trim()] || [] : []
+  const availableStudentsForPoints = getStudentsForCircle(selectedCircleForPoints)
 
   const handleSelectStudentForPoints = (studentId: string) => {
     setSelectedStudentForPoints(studentId)
-    const student = studentsInCircles[(selectedCircleForPoints || "").trim()]?.find((s) => s.id === studentId)
+    const student = getStudentsForCircle(selectedCircleForPoints).find((s) => s.id === studentId)
     if (student) {
       setEditingStudentPoints(student)
       setNewPoints(student.points?.toString() || "0")

@@ -2,6 +2,11 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getSaudiDateString } from "@/lib/saudi-time"
 
+function isAllowedAttendanceDate(date: string) {
+  const day = new Date(`${date}T00:00:00+03:00`).getDay()
+  return day === 0 || day === 3
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -45,7 +50,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log("[v0] POST teacher-attendance body:", body)
 
-    const { teacher_id, teacher_name, account_number, status, check_in_time } = body
+    const { teacher_id, teacher_name, account_number, status, check_in_time, attendance_date } = body
 
     if (!teacher_id) {
       console.error("[v0] Missing teacher_id")
@@ -63,8 +68,13 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
-    // Get today's date
-    const attendanceDate = getSaudiDateString()
+    const attendanceDate = typeof attendance_date === "string" && attendance_date.trim()
+      ? attendance_date.trim()
+      : getSaudiDateString()
+
+    if (!isAllowedAttendanceDate(attendanceDate)) {
+      return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء" }, { status: 400 })
+    }
 
     const attendanceRecord = {
       teacher_id,

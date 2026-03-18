@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { ShieldCheck, Users, BookOpen, Settings, UserPlus, FileText, MessageSquare, Bell, Map, Zap, ShoppingBag, Save, Banknote, BarChart3, Calendar } from "lucide-react"
+import { ShieldCheck, Users, BookOpen, Settings, UserPlus, FileText, MessageSquare, Bell, Map, Zap, ShoppingBag, Save, Banknote, BarChart3, Calendar, ExternalLink, ClipboardCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -17,6 +17,8 @@ const DASHBOARD_ACTIONS = [
   { key: "الصلاحيات",                 icon: ShieldCheck },
   { key: "طلبات التسجيل",            icon: UserPlus },
   { key: "التقارير",                   icon: FileText },
+  { key: "الغيابات",                 icon: Bell },
+  { key: "تحضير الطاقم",            icon: ClipboardCheck },
   { key: "الإرسال إلى أولياء الأمور", icon: MessageSquare },
   { key: "الإشعارات",                 icon: Bell },
   { key: "إدارة المسار",              icon: Map },
@@ -28,6 +30,10 @@ const DASHBOARD_ACTIONS = [
 ]
 
 const DEFAULT_ROLES = ["سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"]
+
+const ACTION_DISPLAY_LABELS: Record<string, string> = {
+  "تحضير الطاقم": "التحضير",
+}
 
 type PermissionsMap = Record<string, string[]>
 
@@ -218,7 +224,7 @@ export default function PermissionsPage() {
                         </div>
                         <span className={`text-sm font-medium transition-colors ${
                           granted ? "text-[#1a2332]" : "text-neutral-500"
-                        }`}>{key}</span>
+                        }`}>{ACTION_DISPLAY_LABELS[key] || key}</span>
                       </div>
 
                       {/* Toggle Switch */}

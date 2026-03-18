@@ -1,32 +1,13 @@
 "use client"
 
-import type React from "react"
 import { useEffect, useState } from "react"
-import { useRouter } from 'next/navigation'
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { ShoppingBag, Palette } from 'lucide-react'
+import { ShoppingBag } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { getSupabase } from "@/lib/supabase"
-
-const THEME_EMOJI: Record<string, string> = {
-  bats: '🦇', fire: '🔥', snow: '❄️', leaves: '🍃',
-  royal: '👑', dawn: '🌅', galaxy: '🌌', sunset_gold: '🌟', ocean_deep: '🌊',
-}
-const THEME_COLORS: Record<string, { primary: string; secondary: string; tertiary: string }> = {
-  bats:        { primary: '#000000', secondary: '#1a1a1a', tertiary: '#2a2a2a' },
-  fire:        { primary: '#ea580c', secondary: '#dc2626', tertiary: '#b91c1c' },
-  snow:        { primary: '#0284c7', secondary: '#0369a1', tertiary: '#0c4a6e' },
-  leaves:      { primary: '#22c55e', secondary: '#16a34a', tertiary: '#15803d' },
-  royal:       { primary: '#9333ea', secondary: '#a855f7', tertiary: '#d946ef' },
-  dawn:        { primary: '#fbbf24', secondary: '#f97316', tertiary: '#dc2626' },
-  galaxy:      { primary: '#7c3aed', secondary: '#a78bfa', tertiary: '#c4b5fd' },
-  sunset_gold: { primary: '#f59e0b', secondary: '#d97706', tertiary: '#b45309' },
-  ocean_deep:  { primary: '#0284c7', secondary: '#06b6d4', tertiary: '#22d3ee' },
-}
+import { ThemeRankPreview } from "@/components/theme-rank-preview"
 
 function StarCoinIcon({ size = 96, className = "" }: { size?: number; className?: string }) {
   const starPath = "M50 18 L58.5 35.5 L78 38.5 L64 52 L67.5 72 L50 62.5 L32.5 72 L36 52 L22 38.5 L41.5 35.5 Z"
@@ -93,70 +74,75 @@ export default function StorePage() {
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [ownedThemes, setOwnedThemes] = useState<string[]>([])
-  const router = useRouter()
   const { toast } = useToast()
 
   useEffect(() => {
-    const loggedIn = localStorage.getItem("isLoggedIn") === "true"
-    const role = localStorage.getItem("userRole")
-    setUserRole(role)
+    const initializeStore = async () => {
+      const loggedIn = localStorage.getItem("isLoggedIn") === "true"
+      const role = localStorage.getItem("userRole")
 
-    if (loggedIn && role === "student") {
-      fetchStudentData()
-      fetchStoreData()
-    } else {
-      setIsLoading(false)
+      setUserRole(role)
+
+      if (!loggedIn || role !== "student") {
+        setIsLoading(false)
+        return
+      }
+
+      try {
+        await Promise.all([fetchStudentData(), fetchStoreData()])
+      } finally {
+        setIsLoading(false)
+      }
     }
-    // eslint-disable-next-line
+
+    void initializeStore()
   }, [])
 
   const fetchStudentData = async () => {
     try {
       const accountNumber = localStorage.getItem("accountNumber")
-      const response = await fetch(`/api/students`)
+      const response = await fetch("/api/students")
       const data = await response.json()
-      const student = data.students?.find((s: any) => s.account_number === Number(accountNumber))
-      if (student) {
-        setStudentPoints(student.store_points || 0)
-        setStudentId(student.id)
-        // تحميل المظاهر المشتراة من قاعدة البيانات (تتزامن عبر الأجهزة)
-        try {
-          const purchaseRes = await fetch(`/api/purchases?student_id=${student.id}`)
-          const purchaseData = await purchaseRes.json()
-          if (purchaseData.purchases) {
-            const themes = (purchaseData.purchases as string[])
-              .filter((p) => p.startsWith('theme_'))
-              .map((p) => p.replace('theme_', ''))
-            setOwnedThemes(themes)
-            localStorage.setItem(`purchases_${student.id}`, JSON.stringify(purchaseData.purchases))
-          }
-        } catch {
-          // Fallback to localStorage cache
-          const key = `purchases_${student.id}`
-          const purchases = JSON.parse(localStorage.getItem(key) || '[]')
-          const themes = purchases
-            .filter((p: string) => p.startsWith('theme_'))
-            .map((p: string) => p.replace('theme_', ''))
-          setOwnedThemes(themes)
-        }
+
+      const student = data.students?.find((entry: any) => entry.account_number === Number(accountNumber))
+
+      if (!student) {
+        return
       }
+
+      setStudentId(student.id)
+      setStudentPoints(student.store_points || 0)
+      await fetchOwnedThemes(student.id)
     } catch (error) {
-      console.error("[v0] Error fetching student data:", error)
+      console.error("[store] Error fetching student data:", error)
+    }
+  }
+
+  const fetchOwnedThemes = async (currentStudentId: string) => {
+    const storageKey = `purchases_${currentStudentId}`
+    const cachedEntries: string[] = JSON.parse(localStorage.getItem(storageKey) || "[]")
+    const extractThemes = (entries: string[]) => entries.filter((entry) => entry.startsWith("theme_")).map((entry) => entry.replace("theme_", ""))
+
+    try {
+      const response = await fetch(`/api/purchases?student_id=${currentStudentId}`)
+      const data = await response.json()
+      const dbEntries: string[] = Array.isArray(data.purchases) ? data.purchases : []
+      const mergedEntries = [...new Set([...cachedEntries, ...dbEntries])]
+
+      localStorage.setItem(storageKey, JSON.stringify(mergedEntries))
+      setOwnedThemes(extractThemes(mergedEntries))
+    } catch (error) {
+      console.error("[store] Error fetching purchases:", error)
+      setOwnedThemes(extractThemes(cachedEntries))
     }
   }
 
   const fetchStoreData = async () => {
-    setIsLoading(true)
     const supabase = getSupabase()
     const { data: productsData } = await supabase.from("store_products").select("*")
     const { data: categoriesData } = await supabase.from("store_categories").select("*")
     setProducts(productsData || [])
     setCategories(categoriesData || [])
-    setIsLoading(false)
-  }
-
-  const handleCategoryClick = (categoryId: string) => {
-    router.push(`/store/${categoryId}`)
   }
 
   if (isLoading) {
@@ -254,50 +240,11 @@ export default function StorePage() {
                             style={{ border: prod.theme_key ? '2px solid #d8a355' : '1px solid #e5e7eb' }}>
 
                             {/* Image / Theme Preview */}
-                            {prod.theme_key ? (() => {
-                              const tc = THEME_COLORS[prod.theme_key] || { primary: '#d8a355', secondary: '#c99347', tertiary: '#b88a3d' }
-                              return (
-                                <div className="relative w-full overflow-hidden rounded-t-xl">
-                                  {/* Corner accents - Top Left */}
-                                  <div className="absolute top-0 left-0 w-16 h-16 overflow-hidden z-10">
-                                    <div className="absolute top-0 left-0 w-10 h-10 border-t-4 border-l-4 rounded-tl-lg border-[#d8a355]" />
-                                    <div className="absolute top-1 left-1 w-3 h-3 rounded-full animate-pulse bg-[#d8a355]" />
-                                    <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 rounded-tl-2xl border-[#d8a355]/20" />
-                                  </div>
-                                  {/* Corner accents - Top Right */}
-                                  <div className="absolute top-0 right-0 w-16 h-16 overflow-hidden z-10">
-                                    <div className="absolute top-0 right-0 w-10 h-10 border-t-4 border-r-4 rounded-tr-lg border-[#d8a355]" />
-                                    <div className="absolute top-2 right-2 w-0 h-0 border-t-[8px] border-l-[8px] border-l-transparent border-t-[#d8a355]" />
-                                    <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 rounded-tr-2xl border-[#d8a355]/20" />
-                                  </div>
-                                  {/* Corner accents - Bottom Left */}
-                                  <div className="absolute bottom-0 left-0 w-16 h-16 overflow-hidden z-10">
-                                    <div className="absolute bottom-0 left-0 w-10 h-10 border-b-4 border-l-4 rounded-bl-lg border-[#d8a355]" />
-                                    <div className="absolute bottom-2 left-2 w-3 h-3 rotate-45 bg-[#d8a355]/60" />
-                                    <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 rounded-bl-2xl border-[#d8a355]/20" />
-                                  </div>
-                                  {/* Corner accents - Bottom Right */}
-                                  <div className="absolute bottom-0 right-0 w-16 h-16 overflow-hidden z-10">
-                                    <div className="absolute bottom-0 right-0 w-10 h-10 border-b-4 border-r-4 rounded-br-lg border-[#d8a355]" />
-                                    <div className="absolute bottom-3 right-3 w-3 h-3 rotate-45 animate-pulse bg-[#d8a355]" style={{ animationDelay: '0.5s' }} />
-                                    <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 rounded-br-2xl border-[#d8a355]/20" />
-                                  </div>
-                                  {/* Preview inner */}
-                                  <div className="m-4 rounded-xl overflow-hidden border-2 h-32"
-                                    style={{
-                                      backgroundColor: `${tc.primary}10`,
-                                      borderColor: `${tc.primary}50`,
-                                      backgroundImage: `radial-gradient(circle at 20% 80%, ${tc.primary}08 0%, transparent 50%), radial-gradient(circle at 80% 20%, ${tc.secondary}06 0%, transparent 50%)`,
-                                    }}>
-                                    {/* top gradient bar */}
-                                    <div className="w-full h-2" style={{ backgroundImage: `linear-gradient(to right, ${tc.primary}, ${tc.secondary}, ${tc.tertiary})` }} />
-                                    <div className="flex items-center justify-center h-[calc(100%-8px)]">
-                                      <Palette className="w-12 h-12" style={{ color: tc.primary }} />
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })() : (
+                            {prod.theme_key ? (
+                              <div className="p-3 md:p-4">
+                                <ThemeRankPreview themeKey={prod.theme_key} />
+                              </div>
+                            ) : (
                               <div className="relative w-full bg-white flex items-center justify-center p-3 md:p-5 h-48 md:h-56">
                                 {prod.image_url ? (
                                   <img src={prod.image_url} alt={prod.name}

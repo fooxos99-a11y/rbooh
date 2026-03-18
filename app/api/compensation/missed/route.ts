@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { getPlanSessionContent } from "@/lib/quran-data"
-import { isEvaluatedAttendance } from "@/lib/student-attendance"
+import { buildPlanSessionProgress } from "@/lib/plan-session-progress"
+import { canAccessStudent, getRequestActor } from "@/lib/request-auth"
 
 interface MissedDayItem {
   date: string
@@ -13,14 +14,27 @@ interface MissedDayItem {
   hafiz_to_verse: string
 }
 
-export async function GET(request: Request) {
+export async function GET(request: import("next/server").NextRequest) {
   try {
     const supabase = await createClient()
+    const actor = await getRequestActor(request, supabase)
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
 
     if (!studentId) {
       return NextResponse.json({ error: "Missing student_id" }, { status: 400 })
+    }
+
+    const canViewStudent = await canAccessStudent({
+      supabase,
+      actor,
+      studentId,
+      allowStudentSelf: false,
+      allowTeacher: true,
+    })
+
+    if (!canViewStudent) {
+      return NextResponse.json({ error: "غير مصرح لك بعرض تعويضات هذا الطالب" }, { status: 403 })
     }
 
     // 1. Get the current active plan
@@ -57,24 +71,25 @@ export async function GET(request: Request) {
       .lte("date", yesterdayStr)
       .order("date", { ascending: true })
 
-    const ADVANCING_LEVELS = ["excellent", "good", "very_good"]
-    
-    // Create a Set of completed dates
-    const completedDates = new Set()
-    
-    if (attendanceRecords) {
-        for (const r of attendanceRecords) {
-        if (isEvaluatedAttendance(r.status)) {
-                const evals = Array.isArray(r.evaluations) ? r.evaluations : r.evaluations ? [r.evaluations] : []
-                if (evals.length > 0) {
-                    const ev = evals[evals.length - 1]
-                    if (ADVANCING_LEVELS.includes(ev.hafiz_level ?? "")) {
-                        completedDates.add(r.date)
-                    }
-                }
-            }
-        }
-    }
+    const { data: reports } = await supabase
+      .from("student_daily_reports")
+      .select("report_date, plan_session_number")
+      .eq("student_id", studentId)
+      .gte("report_date", plan.start_date)
+      .lte("report_date", yesterdayStr)
+      .order("report_date", { ascending: true })
+
+    const planProgress = buildPlanSessionProgress({
+      reports: reports || [],
+      attendanceRecords: attendanceRecords || [],
+      totalDays: plan.total_days,
+    })
+    const completedSessionNumbers = new Set(planProgress.completedSessionNumbers || [])
+    const currentHearingSessionNumber =
+      planProgress.failedSessionNumbers?.[0] ||
+      planProgress.awaitingHearingSessionNumbers?.[0] ||
+      planProgress.nextSessionNumber ||
+      Number.MAX_SAFE_INTEGER
 
     const missedDaysList: MissedDayItem[] = []
     
@@ -86,8 +101,8 @@ export async function GET(request: Request) {
         const dStr = d.toISOString().split("T")[0]
         const dayOfWeek = d.getDay() // 0: Sunday, 1: Monday, ..., 5: Friday, 6: Saturday
         
-        // Skip Friday (5) and Saturday (6)
-        if (dayOfWeek !== 5 && dayOfWeek !== 6) {
+        // Skip Saturday because it is the review-only day and does not advance memorization sessions.
+        if (dayOfWeek !== 6) {
         const dailyStr = String(plan.daily_pages)
         const daily = dailyStr === "0.3333" ? 0.3333 : dailyStr === "0.25" ? 0.25 : plan.daily_pages
         const sessionContent = getPlanSessionContent({
@@ -95,7 +110,7 @@ export async function GET(request: Request) {
           daily_pages: daily,
         }, sessionCounter)
 
-            if (!completedDates.has(dStr)) {
+            if (sessionCounter < currentHearingSessionNumber && !completedSessionNumbers.has(sessionCounter)) {
             if (!sessionContent) {
               sessionCounter++
               d.setDate(d.getDate() + 1)

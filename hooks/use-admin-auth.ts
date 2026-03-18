@@ -11,6 +11,17 @@ interface AdminAuthState {
   isFullAccess: boolean;
 }
 
+function getNormalizedAccountNumber(rawValue: string | null): number | null {
+  if (!rawValue) return null;
+
+  const normalized = rawValue
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .trim();
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 /**
  * Verifies that the current user is a valid admin by fetching their role
  * directly from the database (not from localStorage).
@@ -18,7 +29,7 @@ interface AdminAuthState {
  * If permissionKey is provided, also checks that the role has access to that specific page.
  * Redirects to /login if not authorized.
  */
-export function useAdminAuth(permissionKey?: string): AdminAuthState {
+export function useAdminAuth(permissionKey?: string | string[]): AdminAuthState {
   const router = useRouter();
   const [state, setState] = useState<AdminAuthState>({
     isLoading: true,
@@ -32,7 +43,8 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
 
     async function verify() {
       const isLoggedIn = localStorage.getItem("isLoggedIn") === "true";
-      const accountNumber = localStorage.getItem("accountNumber");
+      const accountNumberValue = localStorage.getItem("accountNumber") || localStorage.getItem("account_number");
+      const accountNumber = getNormalizedAccountNumber(accountNumberValue);
 
       if (!isLoggedIn || !accountNumber) {
         router.replace("/login");
@@ -46,7 +58,7 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
         const { data: userData, error } = await supabase
           .from("users")
           .select("role")
-          .eq("account_number", Number(accountNumber))
+          .eq("account_number", accountNumber)
           .single();
 
         if (error || !userData) {
@@ -64,7 +76,7 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
         }
 
         // 3. account_number=2 or "admin" always has full access to everything
-        if (Number(accountNumber) === 2 || freshRole === "admin") {
+        if (accountNumber === 2 || freshRole === "admin" || freshRole === "مدير") {
           localStorage.setItem("userRole", freshRole);
           if (!cancelled) {
             setState({ isLoading: false, isVerified: true, role: freshRole, isFullAccess: true });
@@ -97,7 +109,10 @@ export function useAdminAuth(permissionKey?: string): AdminAuthState {
         const hasAll = isFullAccess || rolePermissions.includes("all");
 
         // 5. If a specific permission key is required, check it
-        if (permissionKey && !hasAll && !rolePermissions.includes(permissionKey)) {
+        const requiredPermissions = Array.isArray(permissionKey) ? permissionKey : permissionKey ? [permissionKey] : [];
+        const hasRequiredPermission = requiredPermissions.length === 0 || requiredPermissions.some((permission) => rolePermissions.includes(permission));
+
+        if (requiredPermissions.length > 0 && !hasAll && !hasRequiredPermission) {
           localStorage.setItem("userRole", freshRole);
           // Redirect to home — they are an admin but don't have this page's permission
           router.replace("/");

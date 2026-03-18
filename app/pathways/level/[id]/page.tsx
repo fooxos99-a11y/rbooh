@@ -59,6 +59,15 @@ export default function LevelPage() {
   const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   // النقاط المستحقة من السيرفر بعد إنهاء المستوى
   const [lastAwardedPoints, setLastAwardedPoints] = useState<number>(0);
+
+  useEffect(() => {
+    const role = localStorage.getItem("userRole")
+    if (role === "student") {
+      alert("دخول مستويات المسار للطلاب متوقف، والاختبار يتم من الإدارة فقط.")
+      router.push("/pathways")
+    }
+  }, [router])
+
   // تحقق إذا كان الطالب أكمل هذا المستوى مسبقاً
   useEffect(() => {
     const checkCompletion = async () => {
@@ -72,7 +81,7 @@ export default function LevelPage() {
         // جلب uuid من قاعدة البيانات عبر رقم الحساب
         const supabase = createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
         );
         let accountNumber = currentUser.account_number || currentUser.id || studentId;
         const { data: studentRow, error: studentError } = await supabase
@@ -92,7 +101,7 @@ export default function LevelPage() {
       console.log("[LEVEL PAGE] studentId (uuid):", studentId, "levelId:", levelId);
       const supabase = createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
       );
       const { data, error } = await supabase
         .from("pathway_level_completions")
@@ -120,7 +129,7 @@ export default function LevelPage() {
 
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
     );
     // جلب محتوى المستوى
     const fetchContents = async () => {
@@ -273,7 +282,7 @@ export default function LevelPage() {
                             if (!studentId && currentUser.account_number) {
                               const supabase = createBrowserClient(
                                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                                process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!,
                               );
                               const { data: studentRow } = await supabase
                                 .from("students")

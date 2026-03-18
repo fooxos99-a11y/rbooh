@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { FileText, Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react"
 import { SiteLoader } from "@/components/ui/site-loader"
+import { getEvaluationLevelLabel } from "@/lib/student-attendance"
 
 export function GlobalStudentRecordsDialog() {
   const router = useRouter()
@@ -105,13 +106,10 @@ export function GlobalStudentRecordsDialog() {
   }
 
   const getLevelLabel = (level: string) => {
-    switch (level) {
-      case "excellent": return <span className="text-emerald-600 font-medium">ممتاز</span>;
-      case "very_good": return <span className="text-blue-600 font-medium">جيد جدا</span>;
-      case "good": return <span className="text-amber-600 font-medium">جيد</span>;
-      case "not_completed": return <span className="text-gray-400">-</span>;
-      default: return <span className="text-gray-400">-</span>;
-    }
+    const label = getEvaluationLevelLabel(level)
+    return label
+      ? <span className="text-emerald-600 font-medium">{label}</span>
+      : <span className="text-gray-400">-</span>
   }
 
   const formatReadingRange = (fromSurah?: string | null, fromVerse?: string | null, toSurah?: string | null, toVerse?: string | null) => {

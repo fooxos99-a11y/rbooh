@@ -234,7 +234,7 @@ export default function TeacherManagement() {
           <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.back()}
+                onClick={() => router.push("/admin/dashboard")}
                 className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
               >
                 <ArrowRight className="w-4 h-4" />
@@ -301,7 +301,15 @@ export default function TeacherManagement() {
             </Dialog>
 
             {/* Edit Dialog (no trigger, opened programmatically) */}
-            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+            <Dialog
+              open={isEditDialogOpen}
+              onOpenChange={(open) => {
+                setIsEditDialogOpen(open)
+                if (!open) {
+                  setEditingTeacher(null)
+                }
+              }}
+            >
               <DialogContent className="sm:max-w-[480px]">
                 <DialogHeader>
                   <DialogTitle className="text-xl text-[#1a2332]">تعديل معلومات المعلم</DialogTitle>

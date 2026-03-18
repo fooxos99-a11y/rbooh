@@ -198,7 +198,7 @@ export default function CircleManagement() {
           <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.back()}
+                onClick={() => router.push("/admin/dashboard")}
                 className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
               >
                 <ArrowRight className="w-4 h-4" />
@@ -293,7 +293,16 @@ export default function CircleManagement() {
         </div>
       </main>
 
-      <Dialog open={isStudentsDialogOpen} onOpenChange={setIsStudentsDialogOpen}>
+      <Dialog
+        open={isStudentsDialogOpen}
+        onOpenChange={(open) => {
+          setIsStudentsDialogOpen(open)
+          if (!open) {
+            setIsStudentInfoDialogOpen(false)
+            setSelectedStudent(null)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl text-[#1a2332]">طلاب {selectedCircle?.name}</DialogTitle>
@@ -343,7 +352,15 @@ export default function CircleManagement() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isStudentInfoDialogOpen} onOpenChange={setIsStudentInfoDialogOpen}>
+      <Dialog
+        open={isStudentInfoDialogOpen}
+        onOpenChange={(open) => {
+          setIsStudentInfoDialogOpen(open)
+          if (!open) {
+            setSelectedStudent(null)
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-[460px]" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl text-[#1a2332]">معلومات الطالب</DialogTitle>

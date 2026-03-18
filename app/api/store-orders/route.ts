@@ -2,7 +2,7 @@ export async function DELETE(request: Request) {
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
     );
     const body = await request.json();
     const { order_id, delete_all, ids } = body;
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     console.log("[store-orders] API called");
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
     );
     const body = await request.json();
     const { student_id, student_name, product_id, product_name, price } = body;

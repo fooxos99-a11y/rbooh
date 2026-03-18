@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { SURAHS, getPlanMemorizedRange } from "@/lib/quran-data"
-
-const ADVANCING_MEMORIZATION_LEVELS = ["excellent", "good", "very_good"]
+import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 
 function getNormalizedEndVerse(endSurahNumber: number, endVerse?: number | null) {
   if (endVerse && endVerse > 0) return endVerse
@@ -16,12 +15,12 @@ function hasCompletedMemorization(record: any) {
       ? [record.evaluations]
       : []
 
-  if ((record.status !== "present" && record.status !== "late") || evaluations.length === 0) {
+  if (evaluations.length === 0) {
     return false
   }
 
   const latestEvaluation = evaluations[evaluations.length - 1]
-  return ADVANCING_MEMORIZATION_LEVELS.includes(latestEvaluation?.hafiz_level ?? "")
+  return isPassingMemorizationLevel(latestEvaluation?.hafiz_level ?? null)
 }
 
 async function getCompletedDaysForPlan(supabase: any, studentId: string, startDate?: string | null) {
