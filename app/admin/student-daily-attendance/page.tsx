@@ -126,6 +126,18 @@ function getIssueReasonSummary(row: StudentIssueRow) {
   return "—"
 }
 
+function getIssueCountColumnTitle(scope: IssueScope) {
+  return scope === "today" ? "مشاكل اليوم" : "المجموع مع اليوم"
+}
+
+function getIssueCountValue(row: StudentIssueRow, scope: IssueScope) {
+  if (scope === "today") {
+    return row.issuesCount
+  }
+
+  return row.alertCount + row.warningCount + row.issuesCount
+}
+
 function formatActionDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
@@ -407,7 +419,7 @@ export default function StudentDailyAttendancePage() {
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">السبب</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">مجموع الإنذارات</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">{getIssueCountColumnTitle(selectedIssueScope)}</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">السجل السابق</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">الإجراءات</TableHead>
                     </TableRow>
@@ -446,7 +458,7 @@ export default function StudentDailyAttendancePage() {
                         <TableCell className="text-center">
                           <span className="inline-flex rounded-full border border-[#8fb1ff] bg-[#eaf1ff] px-3 py-1 font-semibold text-[#27428d]">{getIssueReasonSummary(row)}</span>
                         </TableCell>
-                        <TableCell className="text-center font-black text-[#1a2332]">{row.alertCount}</TableCell>
+                        <TableCell className="text-center font-black text-[#1a2332]">{getIssueCountValue(row, selectedIssueScope)}</TableCell>
                         <TableCell className="text-center text-sm leading-6">
                           {row.lastAction ? (
                             <div className="space-y-1 text-[#4b5563]">

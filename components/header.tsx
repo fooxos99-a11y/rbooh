@@ -987,7 +987,7 @@ export function Header() {
               }}>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#243870] shadow-[0_12px_30px_rgba(36,56,112,0.28)] backdrop-blur-sm transition-colors hover:bg-[#2c4488]"
+                    className="fixed left-3 top-3 z-[95] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#243870] shadow-[0_12px_30px_rgba(36,56,112,0.28)] backdrop-blur-sm transition-colors hover:bg-[#2c4488] md:left-4 md:top-4"
                     aria-label="الإشعارات"
                   >
                     <Bell size={22} className="text-white" />
