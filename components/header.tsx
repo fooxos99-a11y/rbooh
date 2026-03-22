@@ -1067,7 +1067,7 @@ export function Header() {
             {authResolved && !isLoggedIn && (
               <Button
                 onClick={() => handleNav("/login")}
-                className="bg-[#3453a7] hover:bg-[#27428d] text-white font-extrabold rounded-lg px-5 h-10 text-sm shadow-[0_12px_30px_rgba(52,83,167,0.28)]"
+                className="fixed left-3 top-3 z-[95] h-10 rounded-lg bg-[#3453a7] px-5 text-sm font-extrabold text-white shadow-[0_12px_30px_rgba(52,83,167,0.28)] hover:bg-[#27428d] md:left-4 md:top-4"
               >
                 دخول
               </Button>
