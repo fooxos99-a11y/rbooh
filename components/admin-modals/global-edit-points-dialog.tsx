@@ -99,7 +99,7 @@ export function GlobalEditPointsDialog() {
         toast({
           title: "✓ تم الحفظ بنجاح",
           description: "تم تحديث نقاط الطالب بنجاح",
-          className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+          className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
         })
         handleClose(false)
       } catch (error) {
@@ -117,7 +117,7 @@ export function GlobalEditPointsDialog() {
         <DialogHeader>
           <DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
             <span className="inline-flex items-center gap-2">
-              <Award className="w-5 h-5 text-[#D4AF37]" />
+              <Award className="w-5 h-5 text-[#003f55]" />
               <span>تعديل نقاط الطالب</span>
             </span>
           </DialogTitle>
@@ -154,8 +154,8 @@ export function GlobalEditPointsDialog() {
             <div className="space-y-3 pt-4 mt-2 border-t border-gray-100">
                <div className="flex items-center justify-between p-3 bg-neutral-50 rounded-xl">
                  <span className="text-sm text-neutral-600 font-medium">النقاط الحالية:</span>
-                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#D4AF37]/30">
-                   <TrendingUp className="w-4 h-4 text-[#D4AF37]" />
+                 <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#3453a7]/25">
+                   <TrendingUp className="w-4 h-4 text-[#003f55]" />
                    <span className="font-bold text-[#1a2332]">{editingStudentPoints.points || 0}</span>
                  </div>
                </div>
@@ -167,8 +167,8 @@ export function GlobalEditPointsDialog() {
           )}
         </div>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => handleClose(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-          <Button variant="outline" onClick={handleSavePoints} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600" disabled={!editingStudentPoints || !newPoints || isSubmitting}>
+          <Button variant="outline" onClick={() => handleClose(false)} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+          <Button variant="outline" onClick={handleSavePoints} className="text-sm h-9 rounded-lg border-[#3453a7]/35 text-neutral-600 hover:bg-[#3453a7]/8" disabled={!editingStudentPoints || !newPoints || isSubmitting}>
             {isSubmitting ? "جاري الحفظ..." : "حفظ النقاط"}
           </Button>
         </div>

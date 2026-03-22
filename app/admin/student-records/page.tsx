@@ -71,7 +71,7 @@ export default function StudentRecordsPage() {
                 >
                   <CardHeader className="bg-white text-[#1a2332] rounded-t-lg border-b-2 border-[#d8a355]/20">
                     <CardTitle className="text-2xl flex items-center gap-2">
-                      <BookOpen className="w-6 h-6 text-[#d8a355]" />
+                      <BookOpen className="w-6 h-6 text-[#003f55]" />
                       {circle.name}
                     </CardTitle>
                   </CardHeader>
@@ -79,7 +79,7 @@ export default function StudentRecordsPage() {
                     <div className="space-y-4">
                       <Button
                         onClick={() => handleCircleClick(circle.id)}
-                        className="w-full bg-[#d8a355] hover:bg-[#c99245] text-white font-bold py-3 text-lg"
+                        className="w-full bg-[#3453a7] hover:bg-[#27428d] text-white font-bold py-3 text-lg"
                       >
                         عرض أفضل الطلاب
                       </Button>

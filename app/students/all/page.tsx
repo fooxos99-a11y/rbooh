@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -19,6 +20,10 @@ type Student = {
 }
 
 export default function AllStudentsPage() {
+  const searchParams = useSearchParams()
+  const selectedCircle = searchParams.get("circle")?.trim() || ""
+  const scope = searchParams.get("scope")?.trim() || ""
+  const showAllStudents = scope === "all"
   const [allStudents, setAllStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
@@ -51,8 +56,12 @@ export default function AllStudentsPage() {
   useEffect(() => {
     const fetchAllStudents = async () => {
       try {
+        const studentsUrl = selectedCircle
+          ? `/api/students?circle=${encodeURIComponent(selectedCircle)}`
+          : "/api/students"
+
         const [studentsRes, themesRes, badgesRes, fontsRes] = await Promise.all([
-          fetch("/api/students", { cache: "no-store" }),
+          fetch(studentsUrl, { cache: "no-store" }),
           fetch("/api/themes", { cache: "no-store" }),
           fetch("/api/badges", { cache: "no-store" }),
           fetch("/api/fonts", { cache: "no-store" }),
@@ -81,9 +90,10 @@ export default function AllStudentsPage() {
             }
           })
           .sort((left, right) => Number(right.points ?? 0) - Number(left.points ?? 0))
-          .slice(0, 10)
 
-        setAllStudents(mappedStudents)
+        const visibleStudents = showAllStudents ? mappedStudents : mappedStudents.slice(0, 10)
+
+        setAllStudents(visibleStudents)
       } catch (error) {
         console.error("[students/all] Error fetching students:", error)
         setAllStudents([])
@@ -108,7 +118,14 @@ export default function AllStudentsPage() {
       window.removeEventListener("fontChanged", refresh)
       window.removeEventListener("effectChanged", refresh)
     }
-  }, [])
+  }, [selectedCircle, showAllStudents])
+
+  const pageTitle = selectedCircle ? selectedCircle : showAllStudents ? "جميع الطلاب" : "أفضل الطلاب"
+  const emptyStateText = selectedCircle
+    ? `لا يوجد طلاب مسجلين حالياً في حلقة ${selectedCircle}`
+    : showAllStudents
+    ? "لا يوجد طلاب مسجلين حالياً في الحلق"
+    : "لا يوجد طلاب مسجلين حالياً"
 
   if (loading) {
     return (
@@ -128,8 +145,8 @@ export default function AllStudentsPage() {
         <Header />
         <main className="flex flex-1 items-center justify-center">
           <div className="text-center">
-            <h1 className="mb-4 text-4xl font-bold text-[#1a2332] md:text-5xl">أفضل الطلاب</h1>
-            <p className="text-xl text-gray-600">لا يوجد طلاب مسجلين حالياً</p>
+            <h1 className="mb-4 text-4xl font-bold text-[#003f55] md:text-5xl">{pageTitle}</h1>
+            <p className="text-xl text-gray-600">{emptyStateText}</p>
           </div>
         </main>
         <Footer />
@@ -144,7 +161,7 @@ export default function AllStudentsPage() {
       <main className="flex-1 py-8 md:py-16">
         <div className="container mx-auto px-3 md:px-4">
           <div className="mb-8 text-center md:mb-16">
-            <h1 className="text-3xl font-black text-[#173d3a] md:text-5xl">أفضل الطلاب</h1>
+            <h1 className="text-3xl font-black text-[#003f55] md:text-5xl">{pageTitle}</h1>
           </div>
 
           <div className="mx-auto max-w-5xl">
@@ -171,7 +188,7 @@ export default function AllStudentsPage() {
       <button
         onClick={() => setIsAutoScrolling((current) => !current)}
         className={`fixed bottom-6 left-6 z-50 flex h-8 w-8 items-center justify-center rounded-full shadow-2xl transition-all duration-300 ${
-          isAutoScrolling ? "bg-red-500 text-white hover:bg-red-600" : "bg-[#d8a355] text-white opacity-50 hover:bg-[#c99347] hover:opacity-100"
+          isAutoScrolling ? "bg-red-500 text-white hover:bg-red-600" : "bg-[#3453a7] text-white opacity-50 hover:bg-[#27428d] hover:opacity-100"
         }`}
         title={isAutoScrolling ? "إيقاف النزول التلقائي" : "تشغيل النزول التلقائي"}
       >

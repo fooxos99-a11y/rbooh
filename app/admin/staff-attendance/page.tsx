@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { getSaudiDateString } from "@/lib/saudi-time"
+import { getSaudiDateString, getSaudiWeekday, getSaudiTimeString, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import { Calendar } from "lucide-react"
 
 type AttendanceStatus = "present" | "late" | "absent" | "excused" | null
@@ -72,7 +72,7 @@ function buildAttendanceTimestamp(date: string) {
 }
 
 function isAllowedAttendanceDate(date: string) {
-  const day = new Date(`${date}T00:00:00+03:00`).getDay()
+  const day = getSaudiWeekday(date)
   return day === 0 || day === 3
 }
 
@@ -89,6 +89,7 @@ export default function StaffAttendancePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [timeTick, setTimeTick] = useState(() => Date.now())
 
   const filteredStudentRecords = useMemo(() => {
     const base = selectedCircle === "all"
@@ -121,12 +122,30 @@ export default function StaffAttendancePage() {
   }, [selectedCircle, teacherRecords])
 
   const isAttendanceDateAllowed = isAllowedAttendanceDate(selectedDate)
+  const isAttendanceWindowOpen = isSaudiAttendanceWindowOpen(new Date(timeTick))
+  const saudiTimeLabel = getSaudiTimeString(new Date(timeTick))
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setTimeTick(Date.now())
+    }, 60_000)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   useEffect(() => {
     if (!authLoading && authVerified) {
-      void fetchRecords(selectedDate)
+      if (isAttendanceWindowOpen) {
+        void fetchRecords(selectedDate)
+      } else {
+        setStudentRecords([])
+        setTeacherRecords([])
+        setCircles([])
+        setIsLoading(false)
+        setIsRefreshing(false)
+      }
     }
-  }, [authLoading, authVerified, selectedDate])
+  }, [authLoading, authVerified, selectedDate, isAttendanceWindowOpen])
 
   useEffect(() => {
     if (selectedCircle !== "all" && !circles.includes(selectedCircle)) {
@@ -301,6 +320,11 @@ export default function StaffAttendancePage() {
   }
 
   const handleSave = async () => {
+    if (!isAttendanceWindowOpen) {
+      await showAlert("التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 12 ظهرًا بتوقيت السعودية", "تنبيه")
+      return
+    }
+
     try {
       setIsSaving(true)
       if (activeGroup === "students") {
@@ -335,7 +359,7 @@ export default function StaffAttendancePage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#eef6f8] to-white">
       <Header />
 
       <main className="flex-1 px-3 py-6 md:px-5 md:py-10">
@@ -344,13 +368,13 @@ export default function StaffAttendancePage() {
             <h1 className="text-3xl md:text-4xl font-black text-[#1a2332]">التحضير</h1>
           </section>
 
-          <Card className="border border-[#d8a355]/25 shadow-sm">
+          <Card className="border border-[#003f55]/15 shadow-sm">
             <CardContent className="pt-6">
               <div className="grid gap-4 lg:grid-cols-[220px_240px_1fr] lg:items-end">
                 <div className="space-y-2 text-right">
                   <Label className="text-sm font-semibold text-[#1a2332]">
                     <span className="inline-flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-[#d8a355]" />
+                      <Calendar className="h-4 w-4 text-[#003f55]" />
                       التاريخ
                     </span>
                   </Label>
@@ -371,53 +395,57 @@ export default function StaffAttendancePage() {
                   </Select>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-3">
-                  <div className="inline-flex rounded-2xl border border-[#d8a355]/25 bg-[#fffaf0] p-1">
+                  <div className="inline-flex rounded-2xl border border-[#003f55]/15 bg-[#f4fafb] p-1">
                     <button
                       type="button"
                       onClick={() => setActiveGroup("students")}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "students" ? "bg-[#d8a355] text-white" : "text-[#8b6b3f]"}`}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "students" ? "bg-[#3453a7] text-white" : "text-[#4d6b76] hover:text-[#3453a7]"}`}
                     >
                       طلاب
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveGroup("teachers")}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "teachers" ? "bg-[#d8a355] text-white" : "text-[#8b6b3f]"}`}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "teachers" ? "bg-[#3453a7] text-white" : "text-[#4d6b76] hover:text-[#3453a7]"}`}
                     >
                       معلمين
                     </button>
                   </div>
-                  {isRefreshing ? <span className="text-sm font-semibold text-[#8b6b3f]">جاري التحديث...</span> : null}
+                  {isRefreshing ? <span className="text-sm font-semibold text-[#4d6b76]">جاري التحديث...</span> : null}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border border-[#d8a355]/25 shadow-sm">
+          <Card className="border border-[#003f55]/15 shadow-sm">
             <CardHeader>
               <CardTitle className="text-right text-[#1a2332]">{activeGroup === "students" ? "قائمة الطلاب" : "قائمة المعلمين"}</CardTitle>
             </CardHeader>
             <CardContent>
               {isFutureDate ? (
-                <div className="rounded-2xl border border-dashed border-[#d8a355]/30 bg-[#fffdf7] px-4 py-10 text-center text-[#8b6b3f]">
+                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
                   لا يمكن اعتماد تحضير تاريخ مستقبلي.
                 </div>
+              ) : !isAttendanceWindowOpen ? (
+                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
+                  يفتح فقط يوم الأحد ويوم الأربعاء.
+                </div>
               ) : !isAttendanceDateAllowed ? (
-                <div className="rounded-2xl border border-dashed border-[#d8a355]/30 bg-[#fffdf7] px-4 py-10 text-center text-[#8b6b3f]">
+                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
                   التحضير متاح فقط يوم الأحد ويوم الأربعاء.
                 </div>
               ) : activeGroup === "students" ? (
                 filteredStudentRecords.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-[#d8a355]/30 bg-[#fffdf7] px-4 py-10 text-center text-[#8b6b3f]">
+                  <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
                     لا يوجد طلاب ضمن الفلترة الحالية.
                   </div>
                 ) : (
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     {filteredStudentRecords.map((record) => (
-                      <Card key={record.student_id} className={`border border-[#d8a355]/20 bg-white/95 shadow-sm ${record.isEvaluated ? "opacity-70" : ""}`}>
-                        <CardContent className="p-4" dir="rtl">
-                          <div className="mb-4 flex justify-start">
-                            <p className="text-lg font-black text-[#1a2332] text-left">{record.student_name}</p>
+                      <Card key={record.student_id} className={`border border-[#003f55]/12 bg-white/95 shadow-sm ${record.isEvaluated ? "opacity-70" : ""}`}>
+                        <CardContent className="p-3" dir="rtl">
+                          <div className="mb-3 flex justify-start">
+                            <p className="text-base font-black text-[#1a2332] text-left">{record.student_name}</p>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             {STATUS_OPTIONS.map((option) => {
@@ -430,7 +458,7 @@ export default function StaffAttendancePage() {
                                   disabled={record.isEvaluated || !isAttendanceDateAllowed}
                                   data-active={isActive}
                                   onClick={() => setStudentStatus(record.student_id, option.value)}
-                                  className={`h-11 rounded-xl font-bold transition-colors ${option.className}`}
+                                  className={`h-9 rounded-lg px-2 text-sm font-bold transition-colors ${option.className}`}
                                 >
                                   {option.label}
                                 </Button>
@@ -443,16 +471,16 @@ export default function StaffAttendancePage() {
                   </div>
                 )
               ) : filteredTeacherRecords.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#d8a355]/30 bg-[#fffdf7] px-4 py-10 text-center text-[#8b6b3f]">
+                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
                   لا يوجد معلمون ضمن الفلترة الحالية.
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   {filteredTeacherRecords.map((record) => (
-                    <Card key={record.teacher_id} className="border border-[#d8a355]/20 bg-white/95 shadow-sm">
-                      <CardContent className="p-4" dir="rtl">
-                        <div className="mb-4 flex justify-start">
-                          <p className="text-lg font-black text-[#1a2332] text-left">{record.teacher_name}</p>
+                    <Card key={record.teacher_id} className="border border-[#003f55]/12 bg-white/95 shadow-sm">
+                      <CardContent className="p-3" dir="rtl">
+                        <div className="mb-3 flex justify-start">
+                          <p className="text-base font-black text-[#1a2332] text-left">{record.teacher_name}</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           {STATUS_OPTIONS.map((option) => {
@@ -465,7 +493,7 @@ export default function StaffAttendancePage() {
                                 disabled={!isAttendanceDateAllowed}
                                 data-active={isActive}
                                 onClick={() => setTeacherStatus(record.teacher_id, option.value)}
-                                className={`h-11 rounded-xl font-bold transition-colors ${option.className}`}
+                                className={`h-9 rounded-lg px-2 text-sm font-bold transition-colors ${option.className}`}
                               >
                                 {option.label}
                               </Button>
@@ -484,8 +512,8 @@ export default function StaffAttendancePage() {
             <Button
               type="button"
               onClick={handleSave}
-              disabled={isSaving || isFutureDate || !isAttendanceDateAllowed}
-              className="h-12 min-w-[220px] rounded-xl bg-[#d8a355] text-white hover:bg-[#c99347]"
+              disabled={isSaving || isFutureDate || !isAttendanceDateAllowed || !isAttendanceWindowOpen}
+              className="h-12 min-w-[220px] rounded-xl bg-[#3453a7] text-white hover:bg-[#27428d]"
             >
               {isSaving ? "جاري الحفظ..." : "حفظ التحضير"}
             </Button>

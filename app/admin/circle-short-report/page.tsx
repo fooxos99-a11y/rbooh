@@ -160,35 +160,35 @@ export default function CircleShortReportPage() {
       <Header />
       <main className="px-4 py-10">
         <div className="container mx-auto max-w-7xl space-y-6">
-          <div className="flex items-center justify-start gap-3 border-b border-[#e8dfcc] pb-6">
+          <div className="flex items-center justify-start gap-3 border-b border-[#3453a7]/15 pb-6">
             <div className="text-right">
               <h1 className="text-3xl font-black text-[#1f2937]">تقرير الحلقات المختصر</h1>
               <p className="mt-2 text-sm font-semibold text-[#6b7280]">اختر الحلقة والفترة لعرض بيانات الطلاب بشكل مختصر ودقيق.</p>
             </div>
           </div>
 
-          <Card className="overflow-hidden rounded-[28px] border border-[#e6dfcb] bg-white py-0 shadow-sm">
+          <Card className="overflow-hidden rounded-[28px] border border-[#3453a7]/20 bg-white py-0 shadow-sm">
             <CardContent className="px-5 py-3">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-start">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                     <div className="relative lg:w-[220px]">
-                      <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b38a44]" />
+                      <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#003f55]" />
                       <Input
                         type="date"
                         value={endDate}
                         onChange={(event) => setEndDate(event.target.value)}
-                        className="h-11 rounded-2xl border-[#dccba0] pl-11 text-base"
+                        className="h-11 rounded-2xl border-[#003f55]/20 pl-11 text-base"
                       />
                     </div>
 
                     <div className="relative lg:w-[220px]">
-                      <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#b38a44]" />
+                      <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#003f55]" />
                       <Input
                         type="date"
                         value={startDate}
                         onChange={(event) => setStartDate(event.target.value)}
-                        className="h-11 rounded-2xl border-[#dccba0] pl-11 text-base"
+                        className="h-11 rounded-2xl border-[#003f55]/20 pl-11 text-base"
                       />
                     </div>
                   </div>
@@ -197,7 +197,7 @@ export default function CircleShortReportPage() {
                     type="button"
                     onClick={() => void fetchReport()}
                     disabled={isFetching}
-                    className="h-11 rounded-2xl bg-[#d8a355] px-4 text-base font-bold text-white hover:bg-[#c99347]"
+                    className="h-11 rounded-2xl bg-[#3453a7] px-4 text-base font-bold text-white hover:bg-[#27428d]"
                   >
                     {isFetching ? "جاري التحميل..." : "عرض"}
                   </Button>
@@ -205,7 +205,7 @@ export default function CircleShortReportPage() {
 
                 <div className="w-full lg:w-[340px] lg:flex-none lg:self-start">
                   <Select value={selectedCircle} onValueChange={setSelectedCircle}>
-                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#dccba0] px-4 text-right text-base [&>span]:text-right [&>svg]:order-first [&>svg]:ml-0 [&>svg]:mr-3">
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#8fb1ff] px-4 text-right text-base [&>span]:text-right [&>svg]:order-first [&>svg]:ml-0 [&>svg]:mr-3">
                       <SelectValue placeholder="اختر الحلقة" />
                     </SelectTrigger>
                     <SelectContent dir="rtl">
@@ -227,12 +227,12 @@ export default function CircleShortReportPage() {
             </CardContent>
           </Card>
 
-          <Card className="overflow-hidden rounded-[28px] border border-[#e6dfcb] bg-white py-0 shadow-sm">
+          <Card className="overflow-hidden rounded-[28px] border border-[#3453a7]/20 bg-white py-0 shadow-sm">
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="bg-[#fcfaf4] hover:bg-[#fcfaf4]">
+                    <TableRow className="bg-[#f7faff] hover:bg-[#f7faff]">
                       <TableHead className="min-w-[220px] text-right font-black text-[#1f2937]">اسم الطالب</TableHead>
                       <TableHead className="text-center font-black text-[#1f2937]">حضور</TableHead>
                       <TableHead className="text-center font-black text-[#1f2937]">غياب</TableHead>
@@ -262,7 +262,7 @@ export default function CircleShortReportPage() {
                       </TableRow>
                     ) : (
                       rows.map((row) => (
-                        <TableRow key={row.studentId} className="hover:bg-[#fffdf8]">
+                        <TableRow key={row.studentId} className="hover:bg-[#f7faff]">
                           <TableCell className="font-black text-[#1f2937]">{row.studentName}</TableCell>
                           <TableCell className="text-center font-bold text-[#2563eb]">{formatRatio(row.presentCount, row.attendanceTotal)}</TableCell>
                           <TableCell className="text-center font-bold text-red-600">{row.absentCount}</TableCell>

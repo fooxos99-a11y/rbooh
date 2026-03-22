@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { toast } from "sonner"
 
 const fonts = [
   { id: "font_cairo", name: "القاهرة", font: "'Cairo', sans-serif" },
@@ -17,7 +16,6 @@ interface FontSelectorProps {
 
 export function FontSelector({ studentId }: FontSelectorProps) {
   const [selectedFont, setSelectedFont] = useState<string | null>(null)
-  const [purchasedFonts, setPurchasedFonts] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -27,13 +25,6 @@ export function FontSelector({ studentId }: FontSelectorProps) {
   const loadFontData = async () => {
     try {
       if (!studentId) return
-
-      const purchases = localStorage.getItem(`purchases_${studentId}`)
-      if (purchases) {
-        const purchasedItems = JSON.parse(purchases)
-        const fontPurchases = purchasedItems.filter((p: string) => p.startsWith("font_"))
-        setPurchasedFonts(fontPurchases)
-      }
 
       const response = await fetch(`/api/fonts?t=${Date.now()}`, { cache: "no-store" })
       if (response.ok) {
@@ -50,11 +41,6 @@ export function FontSelector({ studentId }: FontSelectorProps) {
   }
 
   const handleFontSelect = async (fontId: string) => {
-    if (!purchasedFonts.includes(fontId)) {
-      toast.error("يجب عليك شراء هذا الخط من المتجر أولاً")
-      return
-    }
-
     setSelectedFont(fontId)
 
     try {
@@ -102,7 +88,7 @@ export function FontSelector({ studentId }: FontSelectorProps) {
         <h3 className="text-xl font-bold text-[#1a2332]">الخط</h3>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {fonts.filter((font) => purchasedFonts.includes(font.id)).map((font) => {
+        {fonts.map((font) => {
           const isActive = selectedFont === font.id
           return (
             <button

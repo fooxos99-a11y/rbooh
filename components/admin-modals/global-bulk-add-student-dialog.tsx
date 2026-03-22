@@ -3,13 +3,13 @@
 import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/use-toast"
-import { UserPlus } from "lucide-react"
+import { Plus, UserPlus } from "lucide-react"
 
 export function GlobalBulkAddStudentDialog() {
   const router = useRouter()
@@ -83,13 +83,14 @@ export function GlobalBulkAddStudentDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto [&>button]:hidden" dir="rtl">
-        <DialogHeader className="text-right pr-8">
-          <DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
-            <span className="inline-flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-[#C9A961]" />
-              <span>إضافة جماعية للطلاب</span>
-            </span>
+        <DialogHeader className="border-b border-[#003f55]/15 bg-gradient-to-r from-[#003f55]/6 to-transparent px-6 py-5 text-right">
+          <DialogTitle className="text-xl font-bold text-[#1a2332]">
+            <UserPlus className="h-5 w-5 text-[#003f55]" />
+            <span>إضافة جماعية للطلاب</span>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            نافذة لإضافة عدة طلاب دفعة واحدة مع اختيار الحلقة وإدخال الاسم ورقم الحساب لكل طالب.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           {/* اختيار الحلقة */}
@@ -137,18 +138,20 @@ export function GlobalBulkAddStudentDialog() {
           <button
             type="button"
             onClick={() => setBulkRows(prev => [...prev, { name: "", account: "" }])}
-            className="flex items-center gap-1.5 text-sm text-[#C9A961] hover:text-[#D4AF37] font-medium transition-colors"
+            className="inline-flex items-center gap-2 self-start rounded-full border border-[#3453a7]/18 bg-[#3453a7]/7 px-3 py-2 text-sm font-semibold text-[#3453a7] transition-colors hover:border-[#3453a7]/28 hover:bg-[#3453a7]/12 hover:text-[#27428d]"
           >
-            <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-base leading-none">+</span>
-            إضافة طالب
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#3453a7] shadow-sm ring-1 ring-[#3453a7]/15">
+              <Plus className="h-3.5 w-3.5 stroke-[2.6]" />
+            </span>
+            <span>إضافة طالب</span>
           </button>
         </div>
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={() => handleClose(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
+          <Button variant="outline" onClick={() => handleClose(false)} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600">إلغاء</Button>
           <Button
             onClick={handleBulkAddStudents}
             disabled={!bulkCircle || bulkRows.every(r => !r.name.trim() || !r.account.trim()) || isBulkSubmitting}
-            className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
+            className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
           >
             {isBulkSubmitting ? "جاري الحفظ..." : "حفظ"}
           </Button>

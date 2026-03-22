@@ -124,6 +124,7 @@ const RABT_OPTIONS = [
   { value: "10", label: "نصف جزء" },
   { value: "20", label: "جزء واحد" },
   { value: "40", label: "جزئين" },
+  { value: "60", label: "3 أجزاء" },
 ];
 
 const DAILY_OPTIONS = [
@@ -551,7 +552,7 @@ export default function StudentPlansPage() {
   useEffect(() => {
     const check = async () => {
       const loggedIn = localStorage.getItem("isLoggedIn") === "true";
-      const accountNumber = localStorage.getItem("accountNumber");
+      const accountNumber = localStorage.getItem("accountNumber") || localStorage.getItem("account_number");
       if (!loggedIn || !accountNumber) {
         router.push("/login");
         return;
@@ -585,9 +586,12 @@ export default function StudentPlansPage() {
   useEffect(() => {
     if (isLoading) return;
     setIsCirclesLoading(true);
-    fetch("/api/circles")
+    fetch("/api/circles", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setCircles(d.circles || []))
+      .then((d) => {
+        const loadedCircles = d.circles || [];
+        setCircles(loadedCircles);
+      })
       .catch(console.error)
       .finally(() => setIsCirclesLoading(false));
   }, [isLoading]);
@@ -613,11 +617,9 @@ export default function StudentPlansPage() {
       setStudentCompletedDays({});
 
       try {
-        const response = await fetch("/api/students");
+        const response = await fetch(`/api/students?circle=${encodeURIComponent(selectedCircle)}`, { cache: "no-store" });
         const data = await response.json();
-        const circleStudents = (data.students || []).filter(
-          (s: Student) => (s.halaqah || "").trim() === selectedCircle.trim(),
-        );
+        const circleStudents = data.students || [];
 
         if (isCancelled) return;
 
@@ -657,7 +659,16 @@ export default function StudentPlansPage() {
     await Promise.all(
       studs.map(async (s) => {
         try {
-          const res = await fetch(`/api/student-plans?student_id=${s.id}`, { headers: getClientAuthHeaders() });
+          const res = await fetch(`/api/student-plans?student_id=${s.id}`, {
+            cache: "no-store",
+            headers: getClientAuthHeaders(),
+          });
+          if (!res.ok) {
+            plans[s.id] = null;
+            progress[s.id] = 0;
+            completedDays[s.id] = 0;
+            return;
+          }
           const data = await res.json();
           plans[s.id] = data.plan || null;
           progress[s.id] = data.progressPercent || 0;
@@ -812,16 +823,23 @@ export default function StudentPlansPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        const refreshed = await fetchPlansForStudents([selectedStudent]);
         setSaveMsg({
           type: "success",
           text: data.message || `✓ تم حفظ الخطة — ${total} وجه خلال ${effectiveDays} يوم`,
         });
-        // تحديث الخطة في القائمة
         setStudentPlans((prev) => ({
           ...prev,
-          [selectedStudent.id]: data.plan,
+          [selectedStudent.id]: refreshed.plans[selectedStudent.id] ?? data.plan,
         }));
-        setStudentProgress((prev) => ({ ...prev, [selectedStudent.id]: 0 }));
+        setStudentProgress((prev) => ({
+          ...prev,
+          [selectedStudent.id]: refreshed.progress[selectedStudent.id] ?? 0,
+        }));
+        setStudentCompletedDays((prev) => ({
+          ...prev,
+          [selectedStudent.id]: refreshed.completedDays[selectedStudent.id] ?? 0,
+        }));
         setTimeout(() => setAddDialogOpen(false), 1500);
       } else {
         setSaveMsg({ type: "error", text: data.error || "فشل في حفظ الخطة" });
@@ -1257,20 +1275,20 @@ export default function StudentPlansPage() {
       <main className="flex-1 py-10 px-4">
         <div className="container mx-auto max-w-5xl space-y-8">
           {/* رأس الصفحة */}
-          <div className="border-b border-[#D4AF37]/40 pb-6 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-              <BookMarked className="w-5 h-5 text-[#D4AF37]" />
+          <div className="border-b border-[#3453a7]/20 pb-6 flex items-center gap-3">
+            <div className="w-10 h-10 flex items-center justify-center">
+              <BookMarked className="w-5 h-5 text-[#003f55]" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-[#1a2332]">خطط الطلاب</h1>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-[#3453a7]/20 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-[#D4AF37]" />
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <div>
                   <h2 className="text-base font-bold text-[#1a2332]">
@@ -1333,7 +1351,7 @@ export default function StudentPlansPage() {
                 لا يوجد طلاب في هذه الحلقة
               </div>
             ) : (
-              <div className="divide-y divide-[#D4AF37]/15">
+              <div className="divide-y divide-[#3453a7]/10">
                 {students.map((student) => {
                   const plan = studentPlans[student.id];
                   const progress = studentProgress[student.id] || 0;
@@ -1360,7 +1378,7 @@ export default function StudentPlansPage() {
                         {plan ? (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-semibold bg-[#D4AF37]/10 text-[#C9A961] border border-[#D4AF37]/30 rounded-md px-1.5 py-0.5 shrink-0">
+                              <span className="text-[10px] font-semibold bg-[#eaf1ff] text-[#27428d] border border-[#8fb1ff] rounded-md px-1.5 py-0.5 shrink-0">
                                 {dailyLabel(plan.daily_pages)}
                               </span>
                               <p className="text-xs text-neutral-500 truncate">
@@ -1373,11 +1391,11 @@ export default function StudentPlansPage() {
                                   className="h-full rounded-full transition-all duration-500"
                                   style={{
                                     width: `${progress}%`,
-                                    background: "linear-gradient(to right, #D4AF37, #C9A961)",
+                                    background: "linear-gradient(to right, #3453a7, #4a67b7)",
                                   }}
                                 />
                               </div>
-                              <span className="text-[10px] font-bold text-[#D4AF37] w-8 text-left">
+                              <span className="text-[10px] font-bold text-[#3453a7] w-8 text-left">
                                 {progress}%
                               </span>
                             </div>
@@ -1401,7 +1419,10 @@ export default function StudentPlansPage() {
                         )}
                         <button
                           onClick={() => openAddDialog(student)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] border border-[#D4AF37]/30 transition-colors"
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${plan
+                            ? "bg-[#3453a7] hover:bg-[#27428d] text-white border border-[#3453a7]"
+                            : "bg-[#eaf1ff] hover:bg-[#dbe7ff] text-[#27428d] border border-[#8fb1ff]"
+                          }`}
                         >
                           <Plus className="w-3.5 h-3.5" />
                           {plan ? "تعديل الخطة" : "إضافة خطة"}
@@ -1423,9 +1444,9 @@ export default function StudentPlansPage() {
           className="max-w-md bg-white rounded-2xl p-0 overflow-hidden"
           dir="rtl"
         >
-          <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
+          <DialogHeader className="px-6 py-5 border-b border-[#3453a7]/20 bg-gradient-to-r from-[#3453a7]/8 to-transparent">
             <DialogTitle className="flex w-full items-center justify-start gap-2 pl-1 text-left text-lg font-bold text-[#1a2332]">
-              <Target className="w-5 h-5 text-[#D4AF37]" />
+              <Target className="w-5 h-5 text-[#003f55]" />
               {isEditingPlan ? "تعديل خطة حفظ" : "إضافة خطة حفظ"}{selectedStudent ? ` — ${selectedStudent.name}` : ""}
             </DialogTitle>
           </DialogHeader>
@@ -1438,7 +1459,7 @@ export default function StudentPlansPage() {
             )}
             {/* الحفظ السابق وطريقة المراجعة والربط */}
             {!isMasteryOnlyStudent && (
-            <div className="space-y-2 pt-2 pb-2 border-y border-[#D4AF37]/20">
+            <div className="space-y-2 pt-2 pb-2 border-y border-[#3453a7]/15">
               {!shouldHidePreviousToggle && (
                 <label
                   className="plan-history-checkbox text-sm font-semibold text-[#1a2332]"
@@ -1464,7 +1485,7 @@ export default function StudentPlansPage() {
               )}
 
               {hasPrevious && !(isEditingPlan && isPreviousLocked) && (
-                <div className="bg-[#D4AF37]/5 p-3 rounded-xl border border-[#D4AF37]/20 space-y-3 mt-2">
+                <div className="bg-[#eaf1ff] p-3 rounded-xl border border-[#8fb1ff] space-y-3 mt-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* بداية الحفظ السابق */}
                     <div className="space-y-1.5 flex flex-col w-full">
@@ -1479,7 +1500,7 @@ export default function StudentPlansPage() {
                             <button
                               type="button"
                               disabled={isPreviousLocked}
-                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#8fb1ff] text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
                             >
                               <span className={prevStartSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevStartSurah
@@ -1490,14 +1511,14 @@ export default function StudentPlansPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-48 p-0" align="start" dir="rtl">
-                            <Command className="overflow-visible border-[#D4AF37]/20">
+                            <Command className="overflow-visible border-[#8fb1ff]">
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY; }}>
                                 {SURAHS.map((s) => (
                                   <CommandItem key={s.number} id={`prevStartSurah-${s.number}`} value={s.name} onSelect={() => { setPrevStartSurah(s.number.toString()); setPrevStartOpen(false); setPrevStartVerse(""); }}>
                                     {s.name}
-                                    {prevStartSurah === s.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#D4AF37]" />}
+                                    {prevStartSurah === s.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
                                   </CommandItem>
                                 ))}
                               </CommandList>
@@ -1506,7 +1527,7 @@ export default function StudentPlansPage() {
                         </Popover>
 
                         <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={isPreviousLocked || !prevStartSurah || prevStartVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-9 border-[#8fb1ff] text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
@@ -1533,7 +1554,7 @@ export default function StudentPlansPage() {
                             <button
                               type="button"
                               disabled={isPreviousLocked}
-                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#8fb1ff] text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
                             >
                               <span className={prevEndSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevEndSurah
@@ -1544,14 +1565,14 @@ export default function StudentPlansPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-48 p-0" align="start" dir="rtl">
-                            <Command className="overflow-visible border-[#D4AF37]/20">
+                            <Command className="overflow-visible border-[#8fb1ff]">
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY; }}>
                                 {SURAHS.map((s) => (
                                   <CommandItem key={s.number} id={`prevEndSurah-${s.number}`} value={s.name} onSelect={() => { setPrevEndSurah(s.number.toString()); setPrevEndOpen(false); setPrevEndVerse(""); }}>
                                     {s.name}
-                                    {prevEndSurah === s.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#D4AF37]" />}
+                                    {prevEndSurah === s.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
                                   </CommandItem>
                                 ))}
                               </CommandList>
@@ -1560,7 +1581,7 @@ export default function StudentPlansPage() {
                         </Popover>
 
                         <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={isPreviousLocked || !prevEndSurah || prevEndVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-9 border-[#8fb1ff] text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
@@ -1590,7 +1611,7 @@ export default function StudentPlansPage() {
                     <div className="flex-1">
                       <Popover open={startOpen} onOpenChange={setStartOpen}>
                   <PopoverTrigger asChild>
-                    <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#D4AF37]/40 text-sm bg-white text-right hover:border-[#D4AF37] transition-colors">
+                    <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#8fb1ff] text-sm bg-white text-right hover:border-[#3453a7] transition-colors">
                       <span
                         className={
                           startSurah
@@ -1634,7 +1655,7 @@ export default function StudentPlansPage() {
                           >
                             {s.name}
                             {startSurah === String(s.number) && (
-                              <Check className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              <Check className="w-3.5 h-3.5 text-[#003f55]" />
                             )}
                           </CommandItem>
                         ))}
@@ -1645,7 +1666,7 @@ export default function StudentPlansPage() {
                     </div>
                     
                       <Select value={startVerse} onValueChange={setStartVerse} disabled={!startSurah || startVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-10 border-[#8fb1ff] hover:border-[#3453a7] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent className="max-h-48" dir="rtl">
@@ -1667,7 +1688,7 @@ export default function StudentPlansPage() {
                     <div className="flex-1">
                       <Popover open={endOpen} onOpenChange={setEndOpen}>
                   <PopoverTrigger asChild>
-                    <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#D4AF37]/40 text-sm bg-white text-right hover:border-[#D4AF37] transition-colors">
+                    <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#8fb1ff] text-sm bg-white text-right hover:border-[#3453a7] transition-colors">
                       <span
                         className={
                           isEndValid
@@ -1710,7 +1731,7 @@ export default function StudentPlansPage() {
                           >
                             {s.name}
                             {endSurah === String(s.number) && (
-                              <Check className="w-3.5 h-3.5 text-[#D4AF37]" />
+                              <Check className="w-3.5 h-3.5 text-[#003f55]" />
                             )}
                           </CommandItem>
                         ))}
@@ -1720,7 +1741,7 @@ export default function StudentPlansPage() {
                 </Popover>
                     </div>
                     <Select value={endVerse} onValueChange={setEndVerse} disabled={!endSurah || endVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-10 border-[#8fb1ff] hover:border-[#3453a7] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent className="max-h-48" dir="rtl">
@@ -1745,7 +1766,7 @@ export default function StudentPlansPage() {
                 </label>
                 <Select value={dailyPages} onValueChange={setDailyPages}>
                   <SelectTrigger
-                    className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white"
+                    className="border-[#8fb1ff] focus:border-[#3453a7] rounded-xl text-right bg-white"
                     dir="rtl"
                   >
                     <SelectValue />
@@ -1774,7 +1795,7 @@ export default function StudentPlansPage() {
                   dir="rtl"
                 >
                   <SelectTrigger
-                    className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white"
+                    className="border-[#8fb1ff] focus:border-[#3453a7] rounded-xl text-right bg-white"
                     dir="rtl"
                   >
                     <SelectValue />
@@ -1803,7 +1824,7 @@ export default function StudentPlansPage() {
                   dir="rtl"
                 >
                   <SelectTrigger
-                    className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white"
+                    className="border-[#8fb1ff] focus:border-[#3453a7] rounded-xl text-right bg-white"
                     dir="rtl"
                   >
                     <SelectValue />
@@ -1851,8 +1872,8 @@ export default function StudentPlansPage() {
                         (s) => s.number === Math.min(startNum, endNum),
                       );
                 return (
-                  <div className="rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/30 p-4 space-y-3">
-                    <p className="text-xs font-bold text-[#D4AF37]">
+                  <div className="rounded-xl bg-[#eaf1ff] border border-[#8fb1ff] p-4 space-y-3">
+                    <p className="text-xs font-bold text-[#3453a7]">
                       معاينة الخطة
                     </p>
                     <div className="flex items-center gap-2 text-sm">
@@ -1903,19 +1924,19 @@ export default function StudentPlansPage() {
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
+          <div className="px-6 py-4 border-t border-[#8fb1ff] flex gap-3">
             <Button
               variant="outline"
               onClick={handleSavePlan}
               disabled={isSaving || !startSurah || !endSurah}
-              className="flex-1 border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+              className="flex-1 border-[#8fb1ff] text-neutral-600 rounded-xl h-10 hover:bg-[#eaf1ff]"
             >
               {isSaving ? "جاري الحفظ..." : "حفظ الخطة"}
             </Button>
             <Button
               variant="outline"
               onClick={() => setAddDialogOpen(false)}
-              className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+              className="border-[#003f55]/20 text-neutral-600 rounded-xl h-10 hover:bg-[#003f55]/8"
             >
               إلغاء
             </Button>
@@ -1989,7 +2010,7 @@ export default function StudentPlansPage() {
           </div>
 
           <div className="px-6 py-4 border-t border-neutral-200 flex justify-end">
-            <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-neutral-300">
+            <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8">
               إغلاق
             </Button>
           </div>

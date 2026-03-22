@@ -195,23 +195,23 @@ export default function CircleManagement() {
       <main className="flex-1 py-10 px-4">
         <div className="container mx-auto max-w-4xl space-y-8">
 
-          <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
+          <div className="flex items-center justify-between border-b border-[#3453a7]/20 pb-6">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.push("/admin/dashboard")}
-                className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
+                onClick={() => router.push("/")}
+                className="w-9 h-9 rounded-lg border border-[#3453a7]/20 flex items-center justify-center text-[#3453a7] hover:bg-[#3453a7]/8 transition-colors"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-[#D4AF37]" />
+              <div className="w-10 h-10 flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-[#003f55]" />
               </div>
               <h1 className="text-2xl font-bold text-[#1a2332]">إدارة الحلقات</h1>
             </div>
 
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors">
+                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3453a7] hover:bg-[#27428d] text-white text-sm font-semibold transition-colors">
                   <Plus className="w-4 h-4" />
                   إضافة حلقة
                 </button>
@@ -234,36 +234,36 @@ export default function CircleManagement() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-                  <Button onClick={handleAddCircle} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">حفظ</Button>
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+                  <Button onClick={handleAddCircle} className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
 
           {circles.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-16 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-4">
-                <BookOpen className="w-7 h-7 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm p-16 text-center">
+              <div className="w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <BookOpen className="w-7 h-7 text-[#003f55]" />
               </div>
               <p className="text-lg font-semibold text-neutral-500">لا يوجد حلقات حالياً</p>
               <p className="text-sm text-neutral-400 mt-1">قم بإضافة حلقة جديدة للبدء</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <BookOpen className="w-4 h-4 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-[#3453a7]/20 flex items-center gap-3">
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-base font-bold text-[#1a2332]">قائمة الحلقات</h2>
                 <span className="mr-auto text-sm text-neutral-400">{circles.length} حلقة</span>
               </div>
-              <div className="divide-y divide-[#D4AF37]/20">
+              <div className="divide-y divide-[#3453a7]/12">
                 {circles.map((circle) => (
                   <div key={circle.name} className="flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/3 transition-colors">
                     <div className="flex items-center gap-4">
-                      <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
-                        <BookOpen className="w-5 h-5 text-[#D4AF37]" />
+                      <div className="w-11 h-11 flex items-center justify-center shrink-0">
+                        <BookOpen className="w-5 h-5 text-[#003f55]" />
                       </div>
                       <div>
                         <p className="text-base font-bold text-[#1a2332]">{circle.name}</p>
@@ -272,7 +272,7 @@ export default function CircleManagement() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => handleViewCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] text-sm font-medium transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#3453a7]/25 text-[#3453a7] hover:bg-[#3453a7]/8 hover:text-[#3453a7] text-sm font-medium transition-colors"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         عرض الطلاب
@@ -314,7 +314,7 @@ export default function CircleManagement() {
                 <SiteLoader />
               </div>
             ) : circleStudents.length > 0 ? (
-              <div className="divide-y divide-[#D4AF37]/20 rounded-xl border border-[#D4AF37]/40 overflow-hidden">
+              <div className="divide-y divide-[#3453a7]/12 rounded-xl border border-[#3453a7]/20 overflow-hidden">
                 {circleStudents.map((student) => (
                   <div key={student.id} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-[#D4AF37]/3 transition-colors">
                     <div className="flex items-center gap-3">
@@ -328,7 +328,7 @@ export default function CircleManagement() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleViewStudentInfo(student)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] text-xs font-medium transition-colors"
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#3453a7]/25 text-[#3453a7] hover:bg-[#3453a7]/8 hover:text-[#3453a7] text-xs font-medium transition-colors"
                       >
                         <Info className="w-3 h-3" /> عرض
                       </button>
@@ -374,14 +374,14 @@ export default function CircleManagement() {
                   { label: "رقم الهوية", value: selectedStudent.id_number || "—" },
                   { label: "الحلقة", value: selectedStudent.halaqah },
                 ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between items-center px-4 py-3 bg-[#fafaf9] rounded-xl border border-[#D4AF37]/20">
+                  <div key={label} className="flex justify-between items-center px-4 py-3 bg-[#fafaf9] rounded-xl border border-[#3453a7]/15">
                     <span className="text-sm font-semibold text-neutral-500">{label}</span>
                     <span className="text-sm font-bold text-[#1a2332]">{value}</span>
                   </div>
                 ))}
               </div>
               <div className="flex justify-end pt-2">
-                <Button onClick={() => setIsStudentInfoDialogOpen(false)} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">
+                <Button onClick={() => setIsStudentInfoDialogOpen(false)} className="border border-[#3453a7]/25 bg-[#3453a7]/8 hover:bg-[#3453a7]/12 text-[#3453a7] hover:text-[#3453a7]">
                   إغلاق
                 </Button>
               </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { ShieldCheck, Users, BookOpen, Settings, UserPlus, FileText, MessageSquare, Bell, Map, Zap, ShoppingBag, Save, Banknote, BarChart3, Calendar, ExternalLink, ClipboardCheck } from "lucide-react"
+import { ShieldCheck, Users, BookOpen, Settings, UserPlus, FileText, MessageSquare, Bell, Map, Save, Banknote, BarChart3, Calendar, ExternalLink, ClipboardCheck } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -17,14 +17,11 @@ const DASHBOARD_ACTIONS = [
   { key: "الصلاحيات",                 icon: ShieldCheck },
   { key: "طلبات التسجيل",            icon: UserPlus },
   { key: "التقارير",                   icon: FileText },
-  { key: "الغيابات",                 icon: Bell },
   { key: "تحضير الطاقم",            icon: ClipboardCheck },
   { key: "الإرسال إلى أولياء الأمور", icon: MessageSquare },
   { key: "الإشعارات",                 icon: Bell },
   { key: "إدارة المسار",              icon: Map },
   { key: "إنهاء الفصل",               icon: Calendar },
-  { key: "إدارة الألعاب",             icon: Zap },
-  { key: "إدارة المتجر",              icon: ShoppingBag },
   { key: "المالية",                   icon: Banknote },
   { key: "الإحصائيات",              icon: BarChart3 },
 ]
@@ -153,8 +150,8 @@ export default function PermissionsPage() {
                 onClick={() => setSelectedRole(role)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all flex-1 justify-center min-w-[100px] ${
                   selectedRole === role
-                    ? "bg-[#D4AF37] text-white shadow-md"
-                    : "text-neutral-500 hover:bg-[#f5f1e8] hover:text-[#D4AF37]"
+                    ? "bg-[#3453a7] text-white shadow-md"
+                    : "text-neutral-500 hover:bg-[#f5f1e8] hover:text-[#003f55]"
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5 opacity-80" />
@@ -174,7 +171,7 @@ export default function PermissionsPage() {
               <div className="px-6 pt-5 pb-4 border-b border-[#f0ebe0]">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#C9A961] flex items-center justify-center shadow">
+                    <div className="w-10 h-10 flex items-center justify-center">
                       <ShieldCheck className="w-5 h-5 text-white" />
                     </div>
                     <div>
@@ -187,7 +184,7 @@ export default function PermissionsPage() {
                     className={`text-xs px-4 py-2 rounded-lg font-semibold border transition-all ${
                       allGranted
                         ? "bg-red-50 border-red-200 text-red-500 hover:bg-red-100"
-                        : "bg-[#D4AF37]/10 border-[#D4AF37]/30 text-[#C9A961] hover:bg-[#D4AF37]/20"
+                        : "bg-[#3453a7] border-[#3453a7] text-white hover:bg-[#27428d]"
                     }`}
                   >
                     {allGranted ? "إلغاء الكل" : "تفعيل الكل"}
@@ -196,7 +193,7 @@ export default function PermissionsPage() {
                 {/* Progress bar */}
                 <div className="h-1.5 bg-neutral-100 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-l from-[#C9A961] to-[#D4AF37] rounded-full transition-all duration-500"
+                    className="h-full bg-gradient-to-l from-[#8fb1ff] to-[#3453a7] rounded-full transition-all duration-500"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
@@ -211,14 +208,14 @@ export default function PermissionsPage() {
                       key={key}
                       onClick={() => togglePermission(key)}
                       className={`flex items-center justify-between px-6 py-4 cursor-pointer transition-colors group ${
-                        granted ? "hover:bg-[#D4AF37]/10" : "hover:bg-neutral-50"
+                        granted ? "hover:bg-[#eaf1ff]" : "hover:bg-[#f7faff]"
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
                           granted
-                            ? "bg-[#D4AF37]/15 text-[#C9A961]"
-                            : "bg-neutral-100 text-neutral-400 group-hover:bg-[#D4AF37]/10 group-hover:text-[#D4AF37]"
+                            ? "bg-[#eaf1ff] text-[#3453a7]"
+                            : "bg-neutral-100 text-neutral-400 group-hover:bg-[#eaf1ff] group-hover:text-[#3453a7]"
                         }`}>
                           <Icon className="w-4 h-4" />
                         </div>
@@ -229,7 +226,7 @@ export default function PermissionsPage() {
 
                       {/* Toggle Switch */}
                       <div className={`relative w-12 h-6 rounded-full transition-all duration-700 ease-[cubic-bezier(0.22,0.61,0.36,1)] ${
-                        granted ? "bg-[#D4AF37]" : "bg-neutral-200"
+                        granted ? "bg-[#3453a7]" : "bg-neutral-200"
                       }`}>
                         <div className={`absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform duration-500 ease-[cubic-bezier(0.22,0.61,0.36,1)] ${
                           granted ? "translate-x-6 scale-100" : "translate-x-0 scale-95"
@@ -248,7 +245,7 @@ export default function PermissionsPage() {
                 <button
                   onClick={savePermissions}
                   disabled={isSaving}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-l from-[#C9A961] to-[#D4AF37] hover:opacity-90 text-white rounded-xl font-semibold shadow-md transition-all disabled:opacity-60 text-sm"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-[#3453a7] hover:bg-[#27428d] text-white rounded-xl font-semibold shadow-md transition-all disabled:opacity-60 text-sm"
                 >
                   <Save className="w-4 h-4" />
                   {isSaving ? "جاري الحفظ..." : "حفظ التغييرات"}

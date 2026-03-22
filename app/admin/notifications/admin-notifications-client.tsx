@@ -176,8 +176,8 @@ export default function AdminNotificationsClient() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center gap-4 mb-8 justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
-            <Bell className="w-6 h-6 text-[#D4AF37]" />
+          <div className="w-12 h-12 flex items-center justify-center">
+            <Bell className="w-6 h-6 text-[#003f55]" />
           </div>
           <h1 className="text-3xl font-bold text-[#1a2332]">الإشعارات</h1>
         </div>
@@ -190,21 +190,21 @@ export default function AdminNotificationsClient() {
             <div className="flex-1 grid grid-cols-3 gap-2">
               <button 
                 onClick={() => setTargetType("students")}
-                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "students" ? 'border-[#D4AF37] bg-[#D4AF37]/5 text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
+                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "students" ? 'border-[#3453a7] bg-[#eaf1ff] text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
               >
                 <GraduationCap className="w-6 h-6" />
                 <span className="font-bold">الطلاب</span>
               </button>
               <button 
                 onClick={() => setTargetType("teachers")}
-                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "teachers" ? 'border-[#D4AF37] bg-[#D4AF37]/5 text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
+                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "teachers" ? 'border-[#3453a7] bg-[#eaf1ff] text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
               >
                 <Users className="w-6 h-6" />
                 <span className="font-bold">المعلمين</span>
               </button>
               <button 
                 onClick={() => setTargetType("admins")}
-                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "admins" ? 'border-[#D4AF37] bg-[#D4AF37]/5 text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
+                className={`p-3 rounded-xl flex flex-col items-center gap-2 border-2 transition-all ${targetType === "admins" ? 'border-[#3453a7] bg-[#eaf1ff] text-[#1a2332]' : 'border-transparent bg-white text-gray-500 hover:bg-gray-50'}`}
               >
                 <ShieldCheck className="w-6 h-6" />
                 <span className="font-bold">الإداريين</span>
@@ -217,7 +217,7 @@ export default function AdminNotificationsClient() {
               <select
                 value={selectedHalaqah}
                 onChange={(e) => setSelectedHalaqah(e.target.value)}
-                className="w-full md:w-64 h-12 px-4 rounded-xl border border-gray-300 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none"
+                className="w-full md:w-64 h-12 px-4 rounded-xl border border-[#8fb1ff] focus:border-[#3453a7] focus:ring-1 focus:ring-[#3453a7]/25 outline-none"
               >
                 <option value="all">جميع الحلقات ({users.filter(u => u.role === "student").length} طالب)</option>
                 {halaqat.map(h => (
@@ -235,7 +235,7 @@ export default function AdminNotificationsClient() {
                 placeholder="ابحث بالاسم أو رقم الحساب..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-12 pr-12 pl-4 rounded-xl border border-gray-300 focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-none"
+                className="w-full h-12 pr-12 pl-4 rounded-xl border border-[#8fb1ff] focus:border-[#3453a7] focus:ring-1 focus:ring-[#3453a7]/25 outline-none"
               />
             </div>
           </div>
@@ -247,7 +247,7 @@ export default function AdminNotificationsClient() {
             onClick={areAllSelected ? deselectAll : selectAll}
             className="flex items-center gap-2 px-4 py-2 text-[#1a2332] font-bold rounded-lg hover:bg-gray-50"
           >
-            {areAllSelected ? <CheckSquare className="w-5 h-5 text-[#D4AF37]" /> : <Square className="w-5 h-5 text-gray-400" />}
+            {areAllSelected ? <CheckSquare className="w-5 h-5 text-[#003f55]" /> : <Square className="w-5 h-5 text-gray-400" />}
             <span>تحديد الكل ({filteredUsers.length})</span>
           </button>
 
@@ -257,12 +257,12 @@ export default function AdminNotificationsClient() {
               placeholder="إشعار موحد للمحددين..."
               value={globalMessage}
               onChange={(e) => handleGlobalMessageChange(e.target.value)}
-              className="flex-1 h-10 px-4 rounded-lg border border-[#D4AF37]/30 focus:border-[#D4AF37] outline-none"
+              className="flex-1 h-10 px-4 rounded-lg border border-[#8fb1ff] focus:border-[#3453a7] outline-none"
             />
             <button
               onClick={handleSend}
               disabled={sending || Object.keys(selectedUsers).length === 0}
-              className="h-10 px-6 bg-[#D4AF37] hover:bg-[#C9A961] text-white font-bold rounded-lg flex items-center gap-2 disabled:opacity-50 transition-all shadow-sm"
+              className="h-10 px-6 bg-[#3453a7] hover:bg-[#27428d] text-white font-bold rounded-lg flex items-center gap-2 disabled:opacity-50 transition-all shadow-sm"
             >
               {sending ? <SiteLoader color="#ffffff" /> : <Send className="w-5 h-5" />}
               <span className="hidden sm:inline">إرسال</span>
@@ -279,7 +279,7 @@ export default function AdminNotificationsClient() {
           ) : (
             <div className="grid gap-3">
               {filteredUsers.map((user) => (
-                <div key={user.account_number} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-[#D4AF37]/30 transition-colors">
+                <div key={user.account_number} className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 bg-white rounded-xl border border-[#3453a7]/12 shadow-sm hover:border-[#3453a7]/30 transition-colors">
                   
                   <div className="flex items-center gap-3 min-w-[250px]">
                     <button 
@@ -295,7 +295,7 @@ export default function AdminNotificationsClient() {
                       className="flex-shrink-0"
                     >
                       {selectedUsers[user.account_number] ? 
-                        <CheckSquare className="w-6 h-6 text-[#D4AF37]" /> : 
+                        <CheckSquare className="w-6 h-6 text-[#003f55]" /> : 
                         <Square className="w-6 h-6 text-gray-300" />
                       }
                     </button>
@@ -306,7 +306,7 @@ export default function AdminNotificationsClient() {
                         {user.halaqah && (
                            <>
                            <span>•</span>
-                           <span className="bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded text-[10px] font-bold">
+                          <span className="bg-[#eaf1ff] text-[#3453a7] border border-[#8fb1ff] px-2 py-0.5 rounded text-[10px] font-bold">
                              {user.halaqah}
                            </span>
                            </>
@@ -321,7 +321,7 @@ export default function AdminNotificationsClient() {
                       placeholder="اكتب إشعاراً مخصصاً لهذا المستخدم..."
                       value={userMessages[user.account_number] || ""}
                       onChange={(e) => handleMessageChange(user.account_number, e.target.value)}
-                      className="w-full h-12 px-4 rounded-lg bg-gray-50 border border-transparent focus:bg-white focus:border-[#D4AF37]/50 focus:ring-0 outline-none transition-all"
+                      className="w-full h-12 px-4 rounded-lg bg-[#f7faff] border border-transparent focus:bg-white focus:border-[#8fb1ff] focus:ring-0 outline-none transition-all"
                     />
                   </div>
                 </div>

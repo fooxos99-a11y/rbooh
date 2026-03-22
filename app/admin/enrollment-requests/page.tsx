@@ -83,7 +83,7 @@ function clearSavedTestResults(requestId: string) {
 
 function buildDefaultTestResults(juzNumbers: number[], currentResults?: Record<number, EnrollmentJuzTestStatus>) {
   return juzNumbers.reduce<Record<number, EnrollmentJuzTestStatus>>((accumulator, juzNumber) => {
-    accumulator[juzNumber] = currentResults?.[juzNumber] || "pass"
+    accumulator[juzNumber] = currentResults?.[juzNumber] === "fail" ? "fail" : "review"
     return accumulator
   }, {})
 }
@@ -513,7 +513,7 @@ export default function EnrollmentRequestsPage() {
 
 								<button
 									onClick={copyEnrollmentLink}
-									className="inline-flex items-center gap-2 rounded-2xl bg-[#D4AF37] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#c59f28]"
+                  className="inline-flex items-center gap-2 rounded-2xl bg-[#3453a7] px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-[#27428d]"
 								>
 									{copiedLink ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}
 									<span>نسخ الرابط</span>
@@ -522,7 +522,7 @@ export default function EnrollmentRequestsPage() {
 								<Link
 									href="/enroll"
 									target="_blank"
-                  className="inline-flex items-center justify-center rounded-2xl border border-[#D4AF37]/40 bg-white px-4 py-3 text-sm font-semibold text-[#D4AF37] transition-all hover:bg-[#D4AF37]/5"
+                  className="inline-flex items-center justify-center rounded-2xl bg-[#3453a7] px-4 py-3 text-sm font-semibold text-white transition-all hover:bg-[#27428d]"
 									title="معاينة نموذج التسجيل"
 								>
 									<ExternalLink className="h-5 w-5" />
@@ -556,7 +556,7 @@ export default function EnrollmentRequestsPage() {
 											<th className="px-6 py-4 font-semibold">الاسم الثلاثي</th>
 											<th className="px-6 py-4 font-semibold">رقم ولي الأمر</th>
 											<th className="px-6 py-4 font-semibold">رقم الهوية</th>
-											<th className="px-6 py-4 font-semibold">المرحلة الدراسية</th>
+                      <th className="px-6 py-4 font-semibold">العمر</th>
 											<th className="px-6 py-4 font-semibold">المحفوظ</th>
 											<th className="px-6 py-4 font-semibold">تاريخ الطلب</th>
 											<th className="px-6 py-4 font-semibold">الإجراءات</th>
@@ -656,7 +656,7 @@ export default function EnrollmentRequestsPage() {
 								<Input value={acceptForm.account_number} onChange={(e) => setAcceptForm({ ...acceptForm, account_number: e.target.value })} />
 							</div>
 							<div className="grid gap-2 md:col-span-2">
-								<Label>المرحلة الدراسية</Label>
+                <Label>العمر</Label>
 								<Input value={acceptForm.educational_stage} onChange={(e) => setAcceptForm({ ...acceptForm, educational_stage: e.target.value })} />
 							</div>
 						</div>
@@ -730,7 +730,7 @@ export default function EnrollmentRequestsPage() {
 					</div>
 
           <DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
-						<Button variant="outline" onClick={() => setAcceptRequest(null)}>إلغاء</Button>
+            <Button variant="outline" onClick={() => setAcceptRequest(null)} className="border-[#003f55]/20">إلغاء</Button>
 						<Button
               disabled={isAccepting || !isAcceptReady}
 							onClick={handleConfirmAccept}
@@ -763,14 +763,13 @@ export default function EnrollmentRequestsPage() {
                     <p className="font-semibold text-[#1a2332]">الجزء {juzNumber}</p>
                   </div>
                   <Select
-                    value={juzTestResults[juzNumber] || "pass"}
+                    value={juzTestResults[juzNumber] === "fail" ? "fail" : "review"}
                     onValueChange={(value: EnrollmentJuzTestStatus) => setJuzTestResults((prev) => ({ ...prev, [juzNumber]: value }))}
                   >
                     <SelectTrigger className="w-[130px]">
                       <SelectValue placeholder="اختر النتيجة" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="pass">ناجح</SelectItem>
                       <SelectItem value="fail">راسب</SelectItem>
                       <SelectItem value="review">عرض</SelectItem>
                     </SelectContent>
@@ -781,7 +780,7 @@ export default function EnrollmentRequestsPage() {
           </div>
 
 					<DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
-            <Button variant="outline" onClick={() => setIsTestDialogOpen(false)}>إغلاق</Button>
+            <Button variant="outline" onClick={() => setIsTestDialogOpen(false)} className="border-[#003f55]/20">إغلاق</Button>
             <Button
               onClick={async () => {
                 if (!acceptRequest) return
@@ -872,9 +871,9 @@ export default function EnrollmentRequestsPage() {
 											<SelectValue placeholder="اختر النتيجة" />
 										</SelectTrigger>
 										<SelectContent>
-											<SelectItem value="pass">ناجح</SelectItem>
-											<SelectItem value="fail">راسب</SelectItem>
-											<SelectItem value="needs_mastery">اتقان</SelectItem>
+                      <SelectItem value="needs_mastery">إتقان</SelectItem>
+                      <SelectItem value="pass">ناجح</SelectItem>
+                      <SelectItem value="fail">راسب</SelectItem>
 										</SelectContent>
 									</Select>
 								</div>
@@ -883,7 +882,7 @@ export default function EnrollmentRequestsPage() {
 					</div>
 
 					<DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
-						<Button variant="outline" onClick={() => setIsReviewDialogOpen(false)}>إغلاق</Button>
+            <Button variant="outline" onClick={() => setIsReviewDialogOpen(false)} className="border-[#003f55]/20">إغلاق</Button>
 						<Button
 							onClick={async () => {
 								if (!acceptRequest) return

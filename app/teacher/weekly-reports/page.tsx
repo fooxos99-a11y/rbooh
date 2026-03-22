@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getClientAccountNumber } from "@/lib/client-auth";
 import { ArrowRight } from "lucide-react";
 
 import { CircleWeeklyReports } from "@/components/circle-weekly-reports";
@@ -24,7 +25,7 @@ export default function TeacherWeeklyReportsPage() {
     async function fetchTeacherCircle() {
       const loggedIn = localStorage.getItem("isLoggedIn") === "true";
       const userRole = localStorage.getItem("userRole");
-      const accountNumber = localStorage.getItem("accountNumber");
+      const accountNumber = getClientAccountNumber();
 
       if (!loggedIn || (userRole !== "teacher" && userRole !== "deputy_teacher") || !accountNumber) {
         router.push("/login");
@@ -32,7 +33,7 @@ export default function TeacherWeeklyReportsPage() {
       }
 
       try {
-        const response = await fetch(`/api/teachers?account_number=${accountNumber}`);
+        const response = await fetch(`/api/teachers?account_number=${accountNumber}`, { cache: "no-store" });
         const data = await response.json();
         const teacher = (data.teachers?.[0] ?? null) as TeacherData | null;
 

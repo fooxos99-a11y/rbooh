@@ -162,7 +162,7 @@ const SECTION_LABELS: Array<{ key: FinanceSection; label: string }> = [
   { key: "trips", label: "الرحلات" },
 ]
 
-const fieldClassName = "h-11 rounded-xl border border-[#e5d7b6] bg-white px-3 text-sm font-semibold text-[#1f2937] outline-none focus:border-[#d8a355]"
+const fieldClassName = "h-11 rounded-xl border border-[#8fb1ff] bg-white px-3 text-sm font-semibold text-[#1f2937] outline-none focus:border-[#3453a7]"
 
 function getDateInputValue(value: Date) {
   return value.toISOString().slice(0, 10)
@@ -361,7 +361,7 @@ function SummaryCard({
   tone: string
 }) {
   return (
-    <Card className="overflow-hidden border-[#e7dcc0] shadow-sm">
+    <Card className="overflow-hidden border-[#8fb1ff] shadow-sm">
       <CardContent className="p-0">
         <div className={`flex items-center justify-between px-5 py-5 ${tone}`}>
           <div>
@@ -391,7 +391,7 @@ function SectionButton({
       type="button"
       variant="outline"
       onClick={onClick}
-      className={active ? "border-[#d8a355] bg-[#d8a355] text-white hover:bg-[#c79448] hover:text-white" : "border-[#dccba0] bg-white"}
+      className={active ? "border-[#3453a7] bg-[#3453a7] text-white hover:bg-[#27428d] hover:text-white" : "border-[#8fb1ff] bg-white text-[#1f2937] hover:bg-[#eaf1ff] hover:text-[#27428d]"}
     >
       {label}
     </Button>
@@ -721,11 +721,11 @@ export default function FinancePage() {
       <Header />
       <main className="px-4 py-10">
         <div className="container mx-auto max-w-7xl space-y-8">
-          <section className="rounded-[32px] border border-[#eadfc7] bg-white/90 p-6 shadow-[0_20px_60px_-45px_rgba(26,35,50,0.45)] backdrop-blur">
+          <section className="rounded-[32px] border border-[#8fb1ff] bg-white/90 p-6 shadow-[0_20px_60px_-45px_rgba(26,35,50,0.45)] backdrop-blur">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-2xl">
                 <div className="inline-flex items-center gap-3 text-[#1a2332]">
-                  <div className="rounded-2xl bg-[#f4ead7] p-3 text-[#9a6a1b] shadow-sm">
+                  <div className="rounded-2xl bg-[#eaf1ff] p-3 text-[#3453a7] shadow-sm">
                     <Landmark className="h-5 w-5" />
                   </div>
                   <h1 className="text-3xl font-black md:text-4xl">لوحة المالية</h1>
@@ -780,7 +780,7 @@ export default function FinancePage() {
               <CardHeader className="flex flex-row items-center justify-between space-y-0 border-b border-[#f1e7d2] pb-4">
                 <div className="flex items-center gap-3">
                   <CardTitle className="text-xl font-black text-[#1a2332]">الفواتير</CardTitle>
-                  <FileText className="h-5 w-5 text-[#d8a355]" />
+                  <FileText className="h-5 w-5 text-[#003f55]" />
                 </div>
                 <SectionActions onAdd={() => openAddDialog("invoices")} />
               </CardHeader>
@@ -1097,8 +1097,8 @@ export default function FinancePage() {
           ) : null}
 
           <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={closeDialog}>إلغاء</Button>
-            <Button type="button" onClick={() => { void handleAddRecord() }} className="bg-[#d8a355] text-white hover:bg-[#c79448]">إضافة</Button>
+            <Button type="button" variant="outline" onClick={closeDialog} className="border-[#003f55]/20">إلغاء</Button>
+            <Button type="button" onClick={() => { void handleAddRecord() }} className="bg-[#3453a7] text-white hover:bg-[#27428d]">إضافة</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

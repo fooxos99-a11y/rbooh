@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
-import { BookOpen, Check, Lock, Star } from "lucide-react"
+import { Check, Lock, Star } from "lucide-react"
 
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
@@ -217,14 +217,13 @@ export default function PathwaysPage() {
         <div className="container mx-auto max-w-6xl">
           <div className="mb-8 text-center md:mb-12">
             <div className="mb-3 flex items-center justify-center gap-2 md:mb-4 md:gap-3">
-              <BookOpen className="h-6 w-6 text-[#d8a355] md:h-8 md:w-8" />
               <h1 className="text-3xl font-bold text-[#1a2332] md:text-5xl">المسار</h1>
             </div>
           </div>
 
-          <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-br from-[#00312e] via-[#023232] to-[#001a18] p-6 text-white shadow-2xl md:mb-12 md:rounded-3xl md:p-10">
-            <div className="pointer-events-none absolute right-0 top-0 h-48 w-48 translate-x-1/4 -translate-y-1/2 rounded-full bg-[#d8a355]/10" />
-            <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 -translate-x-1/4 translate-y-1/2 rounded-full bg-[#d8a355]/8" />
+          <div className="relative mb-8 overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f2f6d] via-[#1f4d9a] to-[#7db7ff] p-6 text-white shadow-2xl md:mb-12 md:rounded-3xl md:p-10">
+            <div className="pointer-events-none absolute right-0 top-0 h-48 w-48 translate-x-1/4 -translate-y-1/2 rounded-full bg-[#cfe0ff]/14" />
+            <div className="pointer-events-none absolute bottom-0 left-0 h-36 w-36 -translate-x-1/4 translate-y-1/2 rounded-full bg-[#dce9ff]/12" />
 
             <div className="relative z-10 grid grid-cols-1 items-center gap-6 md:grid-cols-3 md:gap-10">
               <div className="md:col-span-2">
@@ -232,13 +231,13 @@ export default function PathwaysPage() {
                   <p className="text-sm font-bold tracking-wide opacity-90 md:text-base">التقدم في المسار</p>
                 </div>
 
-                <div className="relative h-7 overflow-hidden rounded-full border border-white/10 bg-black/30 shadow-inner md:h-9">
+                <div className="relative h-7 overflow-hidden rounded-full border border-white/14 bg-[#153874]/55 shadow-inner md:h-9">
                   <div
                     className="absolute right-0 top-0 h-full rounded-full transition-all duration-1000 ease-out"
                     style={{
                       width: `${progressPercentage}%`,
-                      background: "linear-gradient(90deg, #b8843a 0%, #d8a355 50%, #f5c96a 100%)",
-                      boxShadow: "0 0 18px 3px rgba(216,163,85,0.5)",
+                      background: "linear-gradient(90deg, #dbe9ff 0%, #bcd4ff 45%, #8fb8ff 100%)",
+                      boxShadow: "0 0 18px 3px rgba(191,217,255,0.22)",
                     }}
                   >
                     <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/20 to-transparent" />
@@ -247,7 +246,7 @@ export default function PathwaysPage() {
                   {[25, 50, 75].map((milestone) => (
                     <div
                       key={milestone}
-                      className="absolute bottom-1 top-1 w-px bg-white/20"
+                      className="absolute bottom-1 top-1 w-px bg-white/18"
                       style={{ right: `${100 - milestone}%` }}
                     />
                   ))}
@@ -255,7 +254,7 @@ export default function PathwaysPage() {
 
                 <div className="mt-2 flex justify-between px-1">
                   {[0, 25, 50, 75, 100].map((milestone) => (
-                    <span key={milestone} className="text-[10px] font-medium opacity-40 md:text-xs">
+                    <span key={milestone} className="text-[10px] font-semibold text-white/55 md:text-xs">
                       {milestone}%
                     </span>
                   ))}
@@ -264,19 +263,19 @@ export default function PathwaysPage() {
 
               <div className="flex flex-col items-center justify-center p-4 md:p-6">
                 <Star
-                  className="mb-4 h-12 w-12 fill-[#f4d03f] text-[#f4d03f] drop-shadow-[0_0_14px_rgba(244,208,63,0.5)] md:h-16 md:w-16"
+                  className="mb-4 h-12 w-12 fill-[#dcecff] text-[#dcecff] drop-shadow-[0_0_14px_rgba(220,236,255,0.2)] md:h-16 md:w-16"
                   strokeWidth={2.1}
                 />
                 <div
                   className="text-5xl font-black leading-none tracking-tight md:text-6xl"
-                  style={{ color: "#f5c96a", textShadow: "0 0 30px rgba(216,163,85,0.6), 0 2px 0 rgba(0,0,0,0.4)" }}
+                  style={{ color: "#f5f9ff", textShadow: "0 10px 30px rgba(8,24,61,0.28), 0 2px 0 rgba(16,44,100,0.35)" }}
                 >
                   {totalPoints}
                 </div>
                 <div className="mt-2 flex items-center gap-1.5">
-                  <div className="h-px w-6 bg-[#d8a355]/40" />
-                  <p className="text-xs font-semibold tracking-widest opacity-70 md:text-sm">الإجمالي</p>
-                  <div className="h-px w-6 bg-[#d8a355]/40" />
+                  <div className="h-px w-6 bg-white/25" />
+                  <p className="text-xs font-semibold tracking-widest text-white/75 md:text-sm">الإجمالي</p>
+                  <div className="h-px w-6 bg-white/25" />
                 </div>
               </div>
             </div>
@@ -313,26 +312,26 @@ export default function PathwaysPage() {
                   }`}
                   style={{
                     background: level.isCompleted
-                      ? "linear-gradient(160deg, #f5f0e8 0%, #efe8d8 100%)"
+                      ? "linear-gradient(160deg, #eef3ff 0%, #dfe8ff 100%)"
                       : level.isLocked
                         ? "linear-gradient(160deg, #f4f4f4 0%, #e8e8e8 100%)"
-                        : "linear-gradient(160deg, #ffffff 0%, #fdf8f0 100%)",
+                        : "linear-gradient(160deg, #ffffff 0%, #f7faff 100%)",
                     border: level.isCompleted
-                      ? "1.5px solid rgba(216,163,85,0.4)"
+                      ? "1.5px solid rgba(52,83,167,0.32)"
                       : level.isLocked
                         ? "1.5px solid rgba(0,0,0,0.08)"
-                        : "1.5px solid rgba(216,163,85,0.35)",
-                    boxShadow: level.isLocked ? "none" : "0 2px 12px rgba(216,163,85,0.08)",
+                        : "1.5px solid rgba(52,83,167,0.24)",
+                      boxShadow: level.isLocked ? "none" : "0 2px 12px rgba(52,83,167,0.08)",
                   }}
                 >
                   <div
                     className="h-1 w-full"
                     style={{
                       background: level.isCompleted
-                        ? "linear-gradient(90deg, #d8a355, #f5c96a, #d8a355)"
+                        ? "linear-gradient(90deg, #3453a7, #7db7ff, #3453a7)"
                         : level.isLocked
                           ? "#d1d5db"
-                          : "linear-gradient(90deg, #d8a355, #f5c96a)",
+                          : "linear-gradient(90deg, #3453a7, #7db7ff)",
                       opacity: level.isLocked ? 0.5 : 1,
                     }}
                   />
@@ -343,12 +342,12 @@ export default function PathwaysPage() {
                         className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl font-black md:h-14 md:w-14 md:text-2xl"
                         style={{
                           background: level.isCompleted
-                            ? "linear-gradient(145deg, #d8a355, #b8843a)"
+                            ? "linear-gradient(145deg, #3453a7, #27428d)"
                             : level.isLocked
                               ? "#e5e7eb"
-                              : "linear-gradient(145deg, #f5c96a, #d8a355)",
-                          color: level.isLocked ? "#9ca3af" : level.isCompleted ? "#ffffff" : "#3d2000",
-                          boxShadow: level.isLocked ? "none" : "0 2px 8px rgba(216,163,85,0.35)",
+                                : "linear-gradient(145deg, #7db7ff, #3453a7)",
+                              color: level.isLocked ? "#9ca3af" : "#ffffff",
+                              boxShadow: level.isLocked ? "none" : "0 2px 8px rgba(52,83,167,0.28)",
                         }}
                       >
                         {level.id}
@@ -356,7 +355,7 @@ export default function PathwaysPage() {
 
                       <div className="flex flex-col items-end gap-2">
                         {level.isCompleted && (
-                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#d8a355]">
+                          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3453a7]">
                             <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
                           </div>
                         )}
@@ -389,7 +388,7 @@ export default function PathwaysPage() {
                               key={`${level.id}-${item.juzNumber}-${item.status}`}
                               className={`rounded-xl border px-3 py-2 ${
                                 item.status === "pass"
-                                  ? "border-[#D4AF37]/35 bg-[#fff7e7] text-[#9a6d16]"
+                                  ? "border-[#3453a7]/30 bg-[#f3f7ff] text-[#3453a7]"
                                   : "border-red-200 bg-red-50 text-red-600"
                               }`}
                             >
@@ -403,7 +402,7 @@ export default function PathwaysPage() {
                       )}
 
                       {!hasAnyTestResults && !level.isLocked && !level.isCompleted && (
-                        <p className="text-[11px] font-semibold text-amber-700">في انتظار النتيجة</p>
+                        <p className="text-[11px] font-semibold text-[#3453a7]">في انتظار النتيجة</p>
                       )}
                     </div>
 
@@ -413,17 +412,17 @@ export default function PathwaysPage() {
                           className={`h-4 w-4 ${
                             level.isLocked
                               ? "fill-gray-300 text-gray-300"
-                              : "fill-[#f4d03f] text-[#f4d03f] drop-shadow-[0_0_4px_rgba(244,208,63,0.35)]"
+                              : "fill-[#8fd3ff] text-[#8fd3ff] drop-shadow-[0_0_4px_rgba(143,211,255,0.35)]"
                           }`}
                           strokeWidth={1.8}
                         />
-                        <span className={`text-sm font-bold ${level.isLocked ? "text-gray-300" : "text-[#d8a355]"}`}>
+                        <span className={`text-sm font-bold ${level.isLocked ? "text-gray-300" : "text-[#3453a7]"}`}>
                           {level.userPoints}
                         </span>
                       </div>
 
                       {level.isCompleted ? (
-                        <div className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-[#d8a355]/25 bg-[#d8a355]/10 text-sm font-bold text-[#d8a355] md:h-11">
+                        <div className="flex h-10 w-full items-center justify-center gap-1.5 rounded-lg border border-[#3453a7]/25 bg-[#3453a7]/10 text-sm font-bold text-[#3453a7] md:h-11">
                           <Check className="h-3.5 w-3.5" strokeWidth={3} />
                           مكتمل
                         </div>
@@ -433,8 +432,8 @@ export default function PathwaysPage() {
                         </div>
                       ) : !hasAnyTestResults ? (
                         <div
-                          className="flex h-10 w-full items-center justify-center rounded-lg text-sm font-bold text-[#3d2000] md:h-11"
-                          style={{ background: "linear-gradient(135deg, #f5c96a 0%, #d8a355 100%)" }}
+                          className="flex h-10 w-full items-center justify-center rounded-lg text-sm font-bold text-white md:h-11"
+                          style={{ background: "linear-gradient(135deg, #3453a7 0%, #4a67b7 100%)" }}
                         >
                           في انتظار النتيجة
                         </div>

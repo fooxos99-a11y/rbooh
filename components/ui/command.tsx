@@ -34,7 +34,7 @@ function CommandDialog({
   description = 'Search for a command to run...',
   children,
   className,
-  showCloseButton = true,
+  showCloseButton = false,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
@@ -67,7 +67,7 @@ function CommandInput({
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex h-9 items-center gap-2 border-b border-[#D4AF37]/20 bg-white px-3"
+      className="flex h-9 items-center gap-2 border-b border-[#3453a7]/15 bg-white px-3"
     >
       <SearchIcon className="size-4 shrink-0 text-[#8b6b3f]/70" />
       <CommandPrimitive.Input
@@ -147,7 +147,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-[#1a2332] outline-hidden select-none transition-colors data-[selected=true]:bg-[#D4AF37]/18 data-[selected=true]:text-[#1a2332] data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-[#8b6b3f]",
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-[#1a2332] outline-hidden select-none transition-colors data-[selected=true]:bg-[#3453a7]/12 data-[selected=true]:text-[#1a2332] data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-[#3453a7]",
         className,
       )}
       {...props}

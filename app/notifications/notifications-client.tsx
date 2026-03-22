@@ -69,7 +69,7 @@ export default function NotificationsClient() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
-        <SiteLoader size="md" color="#d8a355" />
+        <SiteLoader size="md" color="#003f55" />
       </div>
     )
   }
@@ -77,8 +77,8 @@ export default function NotificationsClient() {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="p-6 border-b border-gray-100 flex items-center gap-3">
-        <div className="w-12 h-12 rounded-full bg-[#d8a355]/10 flex items-center justify-center">
-          <Bell className="w-6 h-6 text-[#d8a355]" />
+        <div className="w-12 h-12 flex items-center justify-center">
+          <Bell className="w-6 h-6 text-[#003f55]" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-[#023232]">الإشعارات</h1>
@@ -96,9 +96,9 @@ export default function NotificationsClient() {
           </div>
         ) : (
           notifications.map((notification) => (
-            <div key={notification.id} className={`p-6 transition-colors ${!notification.is_read ? 'bg-[#d8a355]/[0.02]' : 'hover:bg-gray-50'}`}>
+            <div key={notification.id} className={`p-6 transition-colors ${!notification.is_read ? 'bg-[#3453a7]/[0.03]' : 'hover:bg-gray-50'}`}>
               <div className="flex items-start gap-4">
-                <div className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${!notification.is_read ? 'bg-[#d8a355]' : 'bg-transparent'}`} />
+                <div className={`mt-1 flex-shrink-0 w-2 h-2 rounded-full ${!notification.is_read ? 'bg-[#3453a7]' : 'bg-transparent'}`} />
                 <div className="flex-1">
                   <p className={`text-base leading-relaxed ${!notification.is_read ? 'font-bold text-[#023232]' : 'text-gray-600'}`}>
                     {notification.message}

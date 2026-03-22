@@ -153,17 +153,17 @@ export default function ReportsPage() {
           <div className="grid grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
             {[
               { href: "/admin/reports/circle-short-report", label: "تقرير الحلقات المختصر", icon: FileText },
-              { href: "/admin/student-daily-attendance", label: "السجل اليومي للطلاب", icon: BookOpen },
+              { href: "/admin/student-daily-attendance", label: "متابعة التنفيذ", icon: BookOpen },
               { href: "/admin/staff-attendance", label: "التحضير", icon: ClipboardCheck },
               { href: "/admin/teacher-attendance", label: "تقارير المعلمين", icon: UserCheck },
             ].map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className="group rounded-2xl border-2 border-[#d8a355]/20 bg-white p-5 transition-all hover:border-[#d8a355] hover:shadow-sm">
+              <Link key={href} href={href} className="group rounded-2xl border-2 border-[#3453a7]/20 bg-white p-5 transition-all hover:border-[#3453a7] hover:shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-base font-bold text-[#1a2332]">{label}</p>
                     <p className="mt-1 text-sm text-gray-500">فتح الصفحة</p>
                   </div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#d8a355]/10 text-[#d8a355] transition group-hover:bg-[#d8a355]/15">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#003f55]/10 text-[#003f55] transition group-hover:bg-[#003f55]/15">
                     <Icon className="h-5 w-5" />
                   </div>
                 </div>
@@ -173,54 +173,54 @@ export default function ReportsPage() {
 
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <Card className="border-2 border-[#d8a355] bg-white">
+            <Card className="border-2 border-[#8fb1ff] bg-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">إجمالي الرسائل</p>
                     <p className="text-3xl font-bold text-[#1a2332]">{messages.length}</p>
                   </div>
-                  <Mail className="w-10 h-10 text-[#d8a355]" />
+                  <Mail className="w-10 h-10 text-[#003f55]" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-[#d8a355] bg-white">
+            <Card className="border-2 border-[#8fb1ff] bg-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">غير مقروءة</p>
-                    <p className="text-3xl font-bold text-[#d8a355]">{unreadCount}</p>
+                    <p className="text-3xl font-bold text-[#3453a7]">{unreadCount}</p>
                   </div>
-                  <Clock className="w-10 h-10 text-[#d8a355]" />
+                  <Clock className="w-10 h-10 text-[#003f55]" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-[#d8a355] bg-white">
+            <Card className="border-2 border-[#8fb1ff] bg-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">مقروءة</p>
-                    <p className="text-3xl font-bold text-[#d8a355]">
+                    <p className="text-3xl font-bold text-[#3453a7]">
                       {messages.filter((m) => m.status === "read").length}
                     </p>
                   </div>
-                  <CheckCircle className="w-10 h-10 text-[#d8a355]" />
+                  <CheckCircle className="w-10 h-10 text-[#003f55]" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-[#d8a355] bg-white">
+            <Card className="border-2 border-[#8fb1ff] bg-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600 mb-1">مؤرشفة</p>
-                    <p className="text-3xl font-bold text-[#d8a355]">
+                    <p className="text-3xl font-bold text-[#3453a7]">
                       {messages.filter((m) => m.status === "archived").length}
                     </p>
                   </div>
-                  <Archive className="w-10 h-10 text-[#d8a355]" />
+                  <Archive className="w-10 h-10 text-[#003f55]" />
                 </div>
               </CardContent>
             </Card>
@@ -231,28 +231,28 @@ export default function ReportsPage() {
             <Button
               onClick={() => setFilter("all")}
               variant={filter === "all" ? "default" : "outline"}
-              className={filter === "all" ? "bg-[#d8a355] hover:bg-[#c99245]" : ""}
+              className={filter === "all" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
             >
               الكل
             </Button>
             <Button
               onClick={() => setFilter("unread")}
               variant={filter === "unread" ? "default" : "outline"}
-              className={filter === "unread" ? "bg-[#d8a355] hover:bg-[#c99245]" : ""}
+              className={filter === "unread" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
             >
               غير مقروءة
             </Button>
             <Button
               onClick={() => setFilter("read")}
               variant={filter === "read" ? "default" : "outline"}
-              className={filter === "read" ? "bg-[#d8a355] hover:bg-[#c99245]" : ""}
+              className={filter === "read" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
             >
               مقروءة
             </Button>
             <Button
               onClick={() => setFilter("archived")}
               variant={filter === "archived" ? "default" : "outline"}
-              className={filter === "archived" ? "bg-[#d8a355] hover:bg-[#c99245]" : ""}
+              className={filter === "archived" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
             >
               مؤرشفة
             </Button>
@@ -318,7 +318,7 @@ export default function ReportsPage() {
                           <Button
                             onClick={() => markAsRead(message.id)}
                             size="sm"
-                            className="bg-[#d8a355] hover:bg-[#c99245]"
+                            className="bg-[#3453a7] hover:bg-[#27428d] text-white"
                           >
                             <CheckCircle className="w-4 h-4 ml-1" />
                             تعليم كمقروءة
@@ -328,7 +328,7 @@ export default function ReportsPage() {
                           <Button
                             onClick={() => unarchiveMessage(message.id)}
                             size="sm"
-                            className="bg-[#d8a355] hover:bg-[#c99245]"
+                            className="bg-[#3453a7] hover:bg-[#27428d] text-white"
                           >
                             <ArchiveX className="w-4 h-4 ml-1" />
                             إلغاء الأرشفة

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
 
 // Enable route caching for 30 seconds
@@ -7,7 +8,7 @@ export const revalidate = 30
 // GET all circles
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: circles, error: circlesError } = await supabase
       .from("circles")
@@ -16,18 +17,19 @@ export async function GET() {
 
     if (circlesError) throw circlesError
 
-    // Get student counts for each circle
     const { data: students, error: studentsError } = await supabase.from("students").select("halaqah")
 
-    if (studentsError) throw studentsError
-
-    // Count students per circle
     const studentCounts = new Map()
-    students?.forEach((student) => {
-      if (student.halaqah) {
-        studentCounts.set(student.halaqah, (studentCounts.get(student.halaqah) || 0) + 1)
-      }
-    })
+
+    if (studentsError) {
+      console.warn("[circles] Failed to fetch student counts, returning circles without counts:", studentsError)
+    } else {
+      students?.forEach((student) => {
+        if (student.halaqah) {
+          studentCounts.set(student.halaqah, (studentCounts.get(student.halaqah) || 0) + 1)
+        }
+      })
+    }
 
     const circlesWithCounts = circles?.map((circle) => ({
       id: circle.id,

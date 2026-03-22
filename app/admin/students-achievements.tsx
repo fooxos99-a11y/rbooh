@@ -101,7 +101,7 @@ function StudentsAchievementsAdmin() {
   };
 
   const renderIcon = (type: string, cls = "w-4 h-4") => {
-    const color = "text-[#D4AF37]";
+    const color = "text-[#003f55]";
     switch (type) {
       case "medal":  return <Medal  className={`${cls} ${color}`} />;
       case "gem":    return <Gem    className={`${cls} ${color}`} />;
@@ -123,8 +123,8 @@ function StudentsAchievementsAdmin() {
           {/* Page header */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                <Trophy className="w-5 h-5 text-[#D4AF37]" />
+                <div className="w-10 h-10 flex items-center justify-center">
+                  <Trophy className="w-5 h-5 text-[#003f55]" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-[#1a2332]">
@@ -139,8 +139,8 @@ function StudentsAchievementsAdmin() {
 
           {!selectedStudent ? (
             /* ── قائمة الطلاب ── */
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex flex-col items-start gap-4">
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-[#3453a7]/20 flex flex-col items-start gap-4">
                 <div className="flex items-center gap-3 shrink-0">
                   <h2 className="text-base font-bold text-[#1a2332]">قائمة الطلاب</h2>
                 </div>
@@ -160,14 +160,14 @@ function StudentsAchievementsAdmin() {
                   </Select>
                 </div>
               </div>
-              <div className="divide-y divide-[#D4AF37]/15">
+              <div className="divide-y divide-[#3453a7]/10">
                 {filteredStudents.length === 0 ? (
                   <div className="py-16 text-center text-neutral-400 text-sm">لا يوجد طلاب</div>
                 ) : filteredStudents.map((student) => (
-                  <div key={student.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#D4AF37]/5 transition-colors gap-4">
+                  <div key={student.id} className="flex items-center justify-between px-6 py-4 hover:bg-[#3453a7]/5 transition-colors gap-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
-                        <User className="w-4 h-4 text-[#D4AF37]" />
+                      <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                        <User className="w-4 h-4 text-[#003f55]" />
                       </div>
                       <div>
                         <p className="text-sm font-bold text-[#1a2332]">{student.name}</p>
@@ -175,7 +175,7 @@ function StudentsAchievementsAdmin() {
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {(achievementsMap[student.id]?.length > 0) ? (
                             achievementsMap[student.id].map((ach) => (
-                              <div key={ach.id} className="group/item flex items-center gap-1 bg-[#D4AF37]/8 border border-[#D4AF37]/25 px-2.5 py-0.5 rounded-full">
+                              <div key={ach.id} className="group/item flex items-center gap-1 bg-[#3453a7]/7 border border-[#3453a7]/18 px-2.5 py-0.5 rounded-full">
                                 {renderIcon(ach.icon_type)}
                                 <span className="text-xs text-neutral-700">{ach.title}</span>
                                 <button
@@ -195,7 +195,7 @@ function StudentsAchievementsAdmin() {
                     </div>
                     <button
                       onClick={() => setSelectedStudent(student)}
-                      className="flex items-center gap-1.5 text-sm h-9 px-4 rounded-lg border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] transition-all font-medium shrink-0"
+                      className="flex items-center gap-1.5 text-sm h-9 px-4 rounded-lg bg-[#3453a7] hover:bg-[#27428d] text-white transition-all font-medium shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       إضافة
@@ -206,10 +206,10 @@ function StudentsAchievementsAdmin() {
             </div>
           ) : (
             /* ── نافذة إضافة إنجاز ── */
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden max-w-lg mx-auto">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40">
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden max-w-lg mx-auto">
+              <div className="px-6 py-5 border-b border-[#3453a7]/20">
                 <h2 className="text-base font-bold text-[#1a2332]">إنجاز جديد</h2>
-                <p className="text-sm text-neutral-400 mt-0.5">للطالب: <span className="text-[#C9A961] font-semibold">{selectedStudent.name}</span></p>
+                <p className="text-sm text-neutral-400 mt-0.5">للطالب: <span className="text-[#3453a7] font-semibold">{selectedStudent.name}</span></p>
               </div>
               <div className="p-6 space-y-6">
                 {/* اختيار الرمز */}
@@ -231,8 +231,8 @@ function StudentsAchievementsAdmin() {
                         onClick={() => setIcon(type)}
                         className={`flex flex-col items-center gap-2 py-3 rounded-xl border-2 transition-all font-medium text-sm
                           ${icon === type
-                            ? "border-[#D4AF37] bg-[#D4AF37]/10 text-[#C9A961]"
-                            : "border-neutral-100 bg-neutral-50 text-neutral-400 hover:border-[#D4AF37]/40"
+                            ? "border-[#003f55] bg-[#003f55]/8 text-[#003f55]"
+                            : "border-neutral-100 bg-neutral-50 text-neutral-400 hover:border-[#003f55]/30 hover:text-[#003f55]"
                           }`}
                       >
                         <Icon className="w-6 h-6" />
@@ -246,7 +246,7 @@ function StudentsAchievementsAdmin() {
                 <div>
                   <p className="text-sm font-medium text-neutral-600 mb-2">عنوان الإنجاز</p>
                   <input
-                    className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 transition-all text-[#1a2332] bg-[#fafaf9]"
+                    className="w-full border border-neutral-200 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-[#3453a7] focus:ring-2 focus:ring-[#3453a7]/20 transition-all text-[#1a2332] bg-[#fafaf9]"
                     placeholder="مثال: حفظ جزء عم"
                     value={achievementName}
                     onChange={(e) => setAchievementName(e.target.value)}
@@ -259,14 +259,14 @@ function StudentsAchievementsAdmin() {
                   <Button
                     variant="outline"
                     onClick={() => setSelectedStudent(null)}
-                    className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                    className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600"
                   >
                     إلغاء
                   </Button>
                   <Button
                     onClick={handleSave}
                     disabled={isSaving || !achievementName}
-                    className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
+                    className="bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
                   >
                     {isSaving ? "جاري الحفظ..." : "حفظ الإنجاز"}
                   </Button>

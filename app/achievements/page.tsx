@@ -11,7 +11,7 @@ function ConfirmDialog({ open, onConfirm, onCancel, message }: { open: boolean, 
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" dir="rtl">
-      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm text-center border border-[#D4AF37]/30">
+      <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm text-center border border-[#3453a7]/20">
         <div className="w-12 h-12 rounded-full bg-red-50 border border-red-200 flex items-center justify-center mx-auto mb-4">
           <Trash2 className="w-5 h-5 text-red-500" />
         </div>
@@ -113,11 +113,11 @@ function AchievementsPage() {
       {/* نافذة إضافة إنجاز */}
       {isDialogOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md border border-[#D4AF37]/30 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-[#D4AF37]/20">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md border border-[#3453a7]/20 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-[#3453a7]/15">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <Trophy className="w-4 h-4 text-[#D4AF37]" />
+                  <div className="w-9 h-9 flex items-center justify-center">
+                  <Trophy className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-base font-bold text-[#1a2332]">إضافة إنجاز جديد</h2>
               </div>
@@ -158,7 +158,7 @@ function AchievementsPage() {
             >
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-[#1a2332]/70">الأيقونة</label>
-                <select className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#D4AF37]/60 bg-white" value={form.icon_type} onChange={e => setForm(f => ({ ...f, icon_type: e.target.value }))}>
+                <select className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#3453a7]/60 bg-white" value={form.icon_type} onChange={e => setForm(f => ({ ...f, icon_type: e.target.value }))}>
                   <option value="trophy">🏆 كأس</option>
                   <option value="award">🎖️ ميدالية</option>
                   <option value="certificate">📜 شهادة</option>
@@ -171,7 +171,7 @@ function AchievementsPage() {
                   <input type="file" accept="image/*" className="w-full border border-neutral-200 rounded-xl px-3 py-2 text-sm" onChange={e => { const file = e.target.files && e.target.files[0]; setForm(f => ({ ...f, image_file: file || null })); }} />
                   {form.image_file && (
                     <div className="mt-2 flex justify-center">
-                      <img src={URL.createObjectURL(form.image_file)} alt="معاينة" className="max-h-24 rounded-xl shadow border border-[#D4AF37]/20" style={{maxWidth: '150px'}} />
+                      <img src={URL.createObjectURL(form.image_file)} alt="معاينة" className="max-h-24 rounded-xl shadow border border-[#3453a7]/15" style={{maxWidth: '150px'}} />
                     </div>
                   )}
                 </div>
@@ -183,14 +183,14 @@ function AchievementsPage() {
               ].map(({ key, label, type, required }) => (
                 <div key={key} className="space-y-1.5">
                   <label className="text-sm font-semibold text-[#1a2332]/70">{label}</label>
-                  <input type={type} required={required} className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#D4AF37]/60" value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
+                  <input type={type} required={required} className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#3453a7]/60" value={(form as any)[key]} onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))} />
                 </div>
               ))}
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-[#1a2332]/70">الوصف</label>
-                <textarea required rows={3} className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#D4AF37]/60 resize-none" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                <textarea required rows={3} className="w-full border border-neutral-200 rounded-xl px-3 py-2.5 text-sm text-[#1a2332] focus:outline-none focus:border-[#3453a7]/60 resize-none" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
               </div>
-              <button type="submit" className="w-full py-2.5 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/50 text-[#C9A961] hover:bg-[#D4AF37]/20 hover:text-[#D4AF37] font-bold text-sm transition-colors">
+              <button type="submit" className="w-full py-2.5 rounded-xl bg-[#3453a7] hover:bg-[#27428d] text-white font-bold text-sm transition-colors">
                 إضافة الإنجاز
               </button>
             </form>
@@ -202,16 +202,16 @@ function AchievementsPage() {
         <div className="container mx-auto max-w-4xl space-y-8">
 
           {/* Page Header */}
-          <div className="flex flex-col items-center justify-center border-b border-[#D4AF37]/40 pb-8 text-center relative mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center mb-4">
-              <Trophy className="w-8 h-8 text-[#D4AF37]" />
+          <div className="flex flex-col items-center justify-center border-b border-[#3453a7]/20 pb-8 text-center relative mb-8">
+            <div className="w-16 h-16 flex items-center justify-center mb-4">
+              <Trophy className="w-8 h-8 text-[#003f55]" />
             </div>
             <h1 className="text-3xl font-bold text-[#1a2332]">الإنجازات</h1>
             
             {(userRole && userRole !== "student" && userRole !== "teacher") && (
               <button
                 onClick={() => setIsDialogOpen(true)}
-                className="absolute top-0 right-0 flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors"
+                className="absolute top-0 right-0 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3453a7] hover:bg-[#27428d] text-white text-sm font-semibold transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 إضافة إنجاز
@@ -221,9 +221,9 @@ function AchievementsPage() {
 
           {/* Achievements */}
           {achievements.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm py-16 flex flex-col items-center gap-3 text-center px-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mb-2">
-                <Trophy className="w-7 h-7 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm py-16 flex flex-col items-center gap-3 text-center px-4">
+              <div className="w-14 h-14 flex items-center justify-center mb-2">
+                <Trophy className="w-7 h-7 text-[#003f55]" />
               </div>
               <p className="text-lg font-semibold text-neutral-500">لا توجد إنجازات حالياً</p>
             </div>
@@ -232,18 +232,18 @@ function AchievementsPage() {
               {achievements.map((achievement) => {
                 const IconComponent = getIconComponent(achievement.icon_type)
                 return (
-                  <div key={achievement.id} className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+                  <div key={achievement.id} className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                     <div className="flex flex-col sm:flex-row">
                       {/* Icon / Image panel */}
-                      <div className="sm:w-44 sm:h-auto flex-shrink-0 bg-[#D4AF37]/5 border-b sm:border-b-0 sm:border-l border-[#D4AF37]/20 flex items-center justify-center relative">
+                      <div className="sm:w-44 sm:h-auto flex-shrink-0 border-b sm:border-b-0 sm:border-l border-[#3453a7]/15 flex items-center justify-center relative">
                         {achievement.image_url ? (
                           <img src={achievement.image_url} alt={achievement.title} className="w-full h-auto sm:h-full sm:object-cover" />
                         ) : (
-                          <div className="w-16 h-16 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                            <IconComponent className="w-8 h-8 text-[#D4AF37]" />
+                          <div className="w-16 h-16 flex items-center justify-center">
+                            <IconComponent className="w-8 h-8 text-[#003f55]" />
                           </div>
                         )}
-                        <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-[#D4AF37] to-[#C9A961]" />
+                        <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-[#3453a7] to-[#4a67b7]" />
                       </div>
 
                       {/* Content */}
@@ -257,12 +257,12 @@ function AchievementsPage() {
                           </button>
                         )}
                         {achievement.category && (
-                          <span className="inline-block bg-[#D4AF37]/10 border border-[#D4AF37]/30 px-2.5 py-0.5 rounded-full text-xs font-semibold text-[#C9A961] mb-3">
+                          <span className="inline-block bg-[#3453a7]/8 border border-[#3453a7]/20 px-2.5 py-0.5 rounded-full text-xs font-semibold text-[#3453a7] mb-3">
                             {achievement.category}
                           </span>
                         )}
                         <h2 className="text-lg font-bold text-[#1a2332] mb-1">{achievement.title}</h2>
-                        <p className="text-sm font-semibold text-[#D4AF37] mb-2">{achievement.student_name}</p>
+                        <p className="text-sm font-semibold text-[#3453a7] mb-2">{achievement.student_name}</p>
                         <p className="text-sm text-neutral-500 leading-relaxed mb-3">{achievement.description}</p>
                         <p className="text-xs text-neutral-400">{achievement.date}</p>
                       </div>

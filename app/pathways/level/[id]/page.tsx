@@ -179,7 +179,7 @@ export default function LevelPage() {
         <div className="w-full max-w-2xl">
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <SiteLoader size="lg" color="#d8a355" />
+            <SiteLoader size="lg" color="#003f55" />
           </div>
         ) : error ? (
           <div className="bg-red-100 text-red-700 rounded-lg p-4 text-center font-bold shadow">{error}</div>
@@ -231,7 +231,7 @@ export default function LevelPage() {
             {/* زر بدء الاختبار */}
             {!showQuiz && !quizDone && questions.length > 0 && !alreadyCompleted && (
               <div className="flex justify-center mb-8">
-                <Button onClick={() => setShowQuiz(true)} className="bg-[#d8a355] hover:bg-[#eab676] text-[#00312e] font-extrabold px-16 py-5 text-2xl rounded-full shadow-2xl transition">ابدأ الاختبار</Button>
+                <Button onClick={() => setShowQuiz(true)} className="bg-[#3453a7] hover:bg-[#27428d] text-white font-extrabold px-16 py-5 text-2xl rounded-full shadow-2xl transition">ابدأ الاختبار</Button>
               </div>
             )}
             {/* عرض الأسئلة */}
@@ -244,7 +244,7 @@ export default function LevelPage() {
                     <Button
                       key={idx}
                       variant={answers[currentQuestion] === idx ? "default" : "outline"}
-                      className={`w-full text-right text-lg font-bold ${answers[currentQuestion] === idx ? "bg-[#d8a355] text-[#00312e] border-[#d8a355] rounded-full shadow-lg hover:bg-[#d8a355] focus:bg-[#d8a355] active:bg-[#d8a355]" : "border-[#00312e]/20"}`}
+                      className={`w-full text-right text-lg font-bold ${answers[currentQuestion] === idx ? "bg-[#3453a7] text-white border-[#3453a7] rounded-full shadow-lg hover:bg-[#27428d] focus:bg-[#3453a7] active:bg-[#3453a7]" : "border-[#00312e]/20"}`}
                       onClick={() => {
                         const newAnswers = [...answers];
                         newAnswers[currentQuestion] = idx;
@@ -262,7 +262,7 @@ export default function LevelPage() {
                     <Button
                       onClick={() => setCurrentQuestion((q) => q + 1)}
                       disabled={typeof answers[currentQuestion] === "undefined" || isSubmitting}
-                      className="bg-[#d8a355] text-[#00312e] font-bold px-8 py-3 rounded-full shadow-lg transition hover:bg-[#d8a355] focus:bg-[#d8a355] active:bg-[#d8a355]"
+                      className="bg-[#3453a7] text-white font-bold px-8 py-3 rounded-full shadow-lg transition hover:bg-[#27428d] focus:bg-[#3453a7] active:bg-[#3453a7]"
                     >التالي</Button>
                   ) : (
                     <Button
@@ -334,7 +334,7 @@ export default function LevelPage() {
                         }, 2000);
                       }}
                       disabled={typeof answers[currentQuestion] === "undefined" || isSubmitting}
-                      className="bg-[#d8a355] hover:bg-[#eab676] text-[#00312e] font-bold px-8 py-3 rounded-full shadow-lg"
+                      className="bg-[#3453a7] hover:bg-[#27428d] text-white font-bold px-8 py-3 rounded-full shadow-lg"
                     >إنهاء الاختبار</Button>
                   )}
                 </div>

@@ -12,6 +12,10 @@ type RequestActor = {
 const ADMIN_ROLES = new Set(["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"])
 const TEACHER_ROLES = new Set(["teacher", "deputy_teacher"])
 
+function normalizeHalaqahName(value?: string | null) {
+  return (value || "").trim().toLowerCase()
+}
+
 function normalizeAccountNumber(rawValue: string | null) {
   if (!rawValue) return null
 
@@ -90,11 +94,15 @@ export async function canAccessStudent(params: {
     .eq("id", studentId)
     .maybeSingle()
 
-  return !!student?.halaqah && !!actor.halaqah && student.halaqah === actor.halaqah
+  return !!normalizeHalaqahName(student?.halaqah) && !!normalizeHalaqahName(actor.halaqah)
+    && normalizeHalaqahName(student?.halaqah) === normalizeHalaqahName(actor.halaqah)
 }
 
 export function canManageHalaqah(actor: RequestActor | null, halaqah?: string | null) {
   if (!actor) return false
   if (isAdminRole(actor.role)) return true
-  return isTeacherRole(actor.role) && !!halaqah && !!actor.halaqah && actor.halaqah === halaqah
+  return isTeacherRole(actor.role)
+    && !!normalizeHalaqahName(halaqah)
+    && !!normalizeHalaqahName(actor.halaqah)
+    && normalizeHalaqahName(actor.halaqah) === normalizeHalaqahName(halaqah)
 }

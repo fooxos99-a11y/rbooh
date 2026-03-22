@@ -73,7 +73,7 @@ export default function AchievementsManagementPage() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <h1 className="text-3xl font-bold mb-6 flex items-center gap-2">
-        <Award className="w-7 h-7 text-[#D4AF37]" /> إدارة الإنجازات
+        <Award className="w-7 h-7 text-[#003f55]" /> إدارة الإنجازات
       </h1>
       <div className="bg-white rounded-lg shadow p-4 mb-8">
         <h2 className="text-xl font-bold mb-4">إضافة إنجاز جديد</h2>
@@ -90,7 +90,7 @@ export default function AchievementsManagementPage() {
             <Label>الوصف</Label>
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="أدخل وصف الإنجاز" />
           </div>
-          <Button onClick={handleAddAchievement} disabled={isSubmitting} className="bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-[#023232] font-bold">
+          <Button onClick={handleAddAchievement} disabled={isSubmitting} className="bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white font-bold">
             {isSubmitting ? "جاري الإضافة..." : "إضافة الإنجاز"}
           </Button>
         </div>

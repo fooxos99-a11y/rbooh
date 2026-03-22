@@ -7,7 +7,6 @@ import {
   calculateTotalEvaluationPoints,
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
-  isPassingMemorizationLevel,
 } from "@/lib/student-attendance"
 
 function getKsaDateString() {
@@ -111,8 +110,6 @@ export async function GET(request: NextRequest) {
           id: record.id,
           date: record.date,
           status: record.status,
-          is_compensation: !!record.is_compensation,
-          compensation_status: record.is_compensation && isPassingMemorizationLevel(lastEval?.hafiz_level ?? null) ? "passed" : null,
           hafiz_level: isAbsent ? "not_completed" : (lastEval?.hafiz_level || null),
           tikrar_level: isAbsent ? "not_completed" : (lastEval?.tikrar_level || null),
           samaa_level: isAbsent ? "not_completed" : (lastEval?.samaa_level || null),

@@ -1432,6 +1432,107 @@ export interface PlanSupportSessionContent {
   rabt: PlanSessionContent | null
 }
 
+function getOrderedContentBounds(content: PlanSessionContent) {
+  const fromSurah = SURAHS.find((surah) => surah.name === content.fromSurah)
+  const toSurah = SURAHS.find((surah) => surah.name === content.toSurah)
+
+  if (!fromSurah || !toSurah) {
+    return null
+  }
+
+  const startRef = {
+    surah: fromSurah.number,
+    ayah: Number(content.fromVerse) || 1,
+  }
+  const endRef = {
+    surah: toSurah.number,
+    ayah: Number(content.toVerse) || 1,
+  }
+
+  return compareAyahReferences(startRef.surah, startRef.ayah, endRef.surah, endRef.ayah) <= 0
+    ? { startRef, endRef }
+    : { startRef: endRef, endRef: startRef }
+}
+
+function getIntersectedSessionContent(baseContent: PlanSessionContent, excludedContent: PlanSessionContent) {
+  const baseBounds = getOrderedContentBounds(baseContent)
+  const excludedBounds = getOrderedContentBounds(excludedContent)
+
+  if (!baseBounds || !excludedBounds) {
+    return null
+  }
+
+  const startRef = compareAyahReferences(
+    baseBounds.startRef.surah,
+    baseBounds.startRef.ayah,
+    excludedBounds.startRef.surah,
+    excludedBounds.startRef.ayah,
+  ) >= 0
+    ? baseBounds.startRef
+    : excludedBounds.startRef
+  const endRef = compareAyahReferences(
+    baseBounds.endRef.surah,
+    baseBounds.endRef.ayah,
+    excludedBounds.endRef.surah,
+    excludedBounds.endRef.ayah,
+  ) <= 0
+    ? baseBounds.endRef
+    : excludedBounds.endRef
+
+  if (compareAyahReferences(startRef.surah, startRef.ayah, endRef.surah, endRef.ayah) > 0) {
+    return null
+  }
+
+  return createPlanSessionContent(startRef, endRef)
+}
+
+function formatSupportContentExceptionText(content: PlanSessionContent, excludedRanges: PlanSessionContent[]) {
+  const normalizedBaseText = content.text
+    .replace(/من\s+سورة\s+/u, "من ")
+    .replace(/إلى\s+سورة\s+/u, "إلى ")
+    .trim()
+  const exclusionsText = excludedRanges
+    .map((range) => range.text.replace(/\s+مرورًا بسورة\s+.+$/u, "").replace(/\s+مرورا بسورة\s+.+$/u, "").trim())
+    .join("، ")
+
+  if (!exclusionsText) {
+    return normalizedBaseText
+  }
+
+  return `${normalizedBaseText} (ما عدا ${exclusionsText})`
+}
+
+function getFailedSessionContents(plan: SessionPlanBounds, failedSessionNumbers?: number[] | null) {
+  const normalizedSessionNumbers = Array.from(new Set((failedSessionNumbers || []).filter((value) => value > 0))).sort((left, right) => left - right)
+
+  return normalizedSessionNumbers
+    .map((sessionNumber) => getPlanSessionContent(plan, sessionNumber))
+    .filter((content): content is PlanSessionContent => Boolean(content))
+}
+
+function applyFailedSessionExclusionsToRabt(
+  plan: SessionPlanBounds,
+  rabt: PlanSessionContent | null,
+  failedSessionNumbers?: number[] | null,
+) {
+  if (!rabt) {
+    return rabt
+  }
+
+  const excludedRanges = getFailedSessionContents(plan, failedSessionNumbers)
+    .map((range) => getIntersectedSessionContent(rabt, range))
+    .filter((range): range is PlanSessionContent => Boolean(range))
+
+  if (excludedRanges.length === 0) {
+    return rabt
+  }
+
+  return {
+    ...rabt,
+    text: formatSupportContentExceptionText(rabt, excludedRanges),
+  }
+}
+
 export interface SessionPlanBounds {
   start_surah_number: number
   start_verse?: number | null
@@ -2238,13 +2339,22 @@ function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNu
   return { muraajaa, rabt }
 }
 
-export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedDays: number): PlanSupportSessionContent {
+export function getPlanSupportSessionContent(
+  plan: SessionPlanBounds,
+  completedDays: number,
+  failedSessionNumbers?: number[] | null,
+): PlanSupportSessionContent {
   const totalDays = resolvePlanTotalDays(plan)
   const activeDayNum = getActivePlanDayNumber(totalDays, completedDays, plan.start_date, plan.created_at)
   const direction = plan.direction === "desc" ? "desc" : "asc"
 
   if (direction !== "asc") {
-    return getLegacyPlanSupportSessionContent(plan, activeDayNum)
+    const legacyContent = getLegacyPlanSupportSessionContent(plan, activeDayNum)
+
+    return {
+      ...legacyContent,
+      rabt: applyFailedSessionExclusionsToRabt(plan, legacyContent.rabt, failedSessionNumbers),
+    }
   }
 
   const completedPlanPages = calculateCompletedPlanPages(
@@ -2264,9 +2374,12 @@ export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedD
 
   const rabtPref = Number(plan.rabt_pages) || 0
   const rabtSourceSegmentIndex = getRabtSourceSegmentIndex(memorizedSegments, plan, activeDayNum)
-  const rabt = getTrailingSegmentContentAtIndex(memorizedSegments, rabtSourceSegmentIndex, rabtPref)
-  const rabtVisiblePages = rabt && rabtSourceSegmentIndex >= 0
-    ? Math.min(rabtPref, getAvailablePagesThroughSegmentIndex(memorizedSegments, rabtSourceSegmentIndex))
+  const rabtSourceSegment = rabtSourceSegmentIndex >= 0 ? memorizedSegments[rabtSourceSegmentIndex] : null
+  const rabtSourceSegments = rabtSourceSegment ? [rabtSourceSegment] : []
+  const rabtSourceSegmentPages = rabtSourceSegment ? getMemorizedPageSegmentSize(rabtSourceSegment) : 0
+  const rabt = getTrailingSegmentContentAtIndex(rabtSourceSegments, rabtSourceSegments.length - 1, rabtPref)
+  const rabtVisiblePages = rabt
+    ? Math.min(rabtPref, rabtSourceSegmentPages)
     : 0
 
   const muraajaaPoolSegments = trimPagesFromSegmentIndex(memorizedSegments, rabtSourceSegmentIndex, rabtVisiblePages)
@@ -2280,7 +2393,10 @@ export function getPlanSupportSessionContent(plan: SessionPlanBounds, completedD
       )
     : null
 
-  return { muraajaa, rabt }
+  return {
+    muraajaa,
+    rabt: applyFailedSessionExclusionsToRabt(plan, rabt, failedSessionNumbers),
+  }
 }
 
 function getOffsetPlanSessionContent(

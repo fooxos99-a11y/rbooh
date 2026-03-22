@@ -106,31 +106,31 @@ export default function PathwaysResultsPage() {
         <div className="container mx-auto max-w-4xl space-y-8">
 
           {/* Page Header */}
-          <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
+          <div className="flex items-center justify-between border-b border-[#3453a7]/20 pb-6">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => router.back()}
-                className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
+                className="w-9 h-9 rounded-lg border border-[#3453a7]/20 flex items-center justify-center text-[#3453a7] hover:bg-[#3453a7]/8 transition-colors"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center">
-                <Trophy className="w-5 h-5 text-[#D4AF37]" />
+              <div className="w-10 h-10 flex items-center justify-center">
+                <Trophy className="w-5 h-5 text-[#003f55]" />
               </div>
               <h1 className="text-2xl font-bold text-[#1a2332]">نتائج المسار</h1>
             </div>
           </div>
 
           {/* Halaqah Selector */}
-          <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-6">
-            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#D4AF37]/20">
-              <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                <Users className="w-4 h-4 text-[#D4AF37]" />
+          <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#3453a7]/12">
+              <div className="w-9 h-9 flex items-center justify-center">
+                <Users className="w-4 h-4 text-[#003f55]" />
               </div>
               <h2 className="text-base font-bold text-[#1a2332]">اختر الحلقة</h2>
             </div>
             <Select value={selectedHalaqah} onValueChange={(val) => { setSelectedHalaqah(val); setSelectedLevel(''); }}>
-              <SelectTrigger className="w-full sm:w-72 border-[#D4AF37]/40 text-[#1a2332] rounded-xl h-11 focus:ring-[#D4AF37]/30">
+              <SelectTrigger className="w-full sm:w-72 border-[#3453a7]/25 text-[#1a2332] rounded-xl h-11 focus:ring-[#3453a7]/20">
                 <SelectValue placeholder="اختر الحلقة" />
               </SelectTrigger>
               <SelectContent>
@@ -142,15 +142,15 @@ export default function PathwaysResultsPage() {
           </div>
 
           {/* Level Selector */}
-          <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-6">
-            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#D4AF37]/20">
-              <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                <BookOpen className="w-4 h-4 text-[#D4AF37]" />
+          <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#3453a7]/12">
+              <div className="w-9 h-9 flex items-center justify-center">
+                <BookOpen className="w-4 h-4 text-[#003f55]" />
               </div>
               <h2 className="text-base font-bold text-[#1a2332]">اختر المستوى</h2>
             </div>
             <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-              <SelectTrigger className="w-full sm:w-72 border-[#D4AF37]/40 text-[#1a2332] rounded-xl h-11 focus:ring-[#D4AF37]/30">
+              <SelectTrigger className="w-full sm:w-72 border-[#3453a7]/25 text-[#1a2332] rounded-xl h-11 focus:ring-[#3453a7]/20">
                 <SelectValue placeholder="اختر المستوى" />
               </SelectTrigger>
               <SelectContent>
@@ -164,10 +164,10 @@ export default function PathwaysResultsPage() {
           </div>
 
           {/* Results Table */}
-          <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-            <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                <Users className="w-4 h-4 text-[#D4AF37]" />
+          <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-[#3453a7]/20 flex items-center gap-3">
+              <div className="w-9 h-9 flex items-center justify-center">
+                <Users className="w-4 h-4 text-[#003f55]" />
               </div>
               <h2 className="text-base font-bold text-[#1a2332]">
                 {selectedLevelTitle ? `نتائج: ${selectedLevelTitle}` : "النتائج"}
@@ -179,13 +179,13 @@ export default function PathwaysResultsPage() {
 
             {results.length === 0 ? (
               <div className="py-16 flex flex-col items-center gap-3 text-center px-4">
-                <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-2">
-                  <Trophy className="w-7 h-7 text-[#D4AF37]" />
+                <div className="w-14 h-14 flex items-center justify-center mx-auto mb-2">
+                  <Trophy className="w-7 h-7 text-[#003f55]" />
                 </div>
                 <p className="text-lg font-semibold text-neutral-500">لا يوجد طلاب اختبروا هذا المستوى بعد</p>
               </div>
             ) : (
-              <div className="divide-y divide-[#D4AF37]/20">
+              <div className="divide-y divide-[#3453a7]/12">
                 {/* Table Head */}
                 <div className="grid grid-cols-2 px-6 py-3 bg-[#D4AF37]/5">
                   <span className="text-sm font-semibold text-[#1a2332]/60">اسم الطالب</span>
@@ -203,7 +203,7 @@ export default function PathwaysResultsPage() {
                       <span className="text-sm font-bold text-[#1a2332]">{r.student_name}</span>
                     </div>
                     <div className="flex justify-center">
-                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-sm font-bold text-[#C9A961]">
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#3453a7]/8 border border-[#3453a7]/20 text-sm font-bold text-[#3453a7]">
                         {r.points}
                         <Trophy className="w-3 h-3" />
                       </span>

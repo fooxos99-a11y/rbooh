@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { User, Edit2, Save, X } from "lucide-react"
+import { Edit2, Save, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
@@ -145,7 +145,7 @@ export default function AdminProfilePage() {
             <p className="text-2xl text-[#1a2332] mb-4">لم يتم العثور على بيانات الإداري</p>
             <Button
               onClick={() => router.push("/login")}
-              className="bg-gradient-to-r from-[#d8a355] to-[#c99347] hover:from-[#c99347] hover:to-[#b88341] text-[#00312e] font-bold"
+                className="bg-[#3453a7] hover:bg-[#27428d] text-white font-bold"
             >
               العودة لتسجيل الدخول
             </Button>
@@ -164,18 +164,6 @@ export default function AdminProfilePage() {
 
       <main className="flex-1 py-12 px-4">
         <div className="container mx-auto max-w-4xl">
-          <div className="bg-gradient-to-r from-[#d8a355] to-[#c99347] rounded-3xl shadow-2xl p-8 mb-8 text-white">
-            <div className="flex items-center gap-6">
-              <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-xl">
-                <User className="w-12 h-12 text-[#d8a355]" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-4xl font-bold mb-2">{adminData.name}</h1>
-                <p className="text-xl opacity-90">حساب إداري</p>
-              </div>
-            </div>
-          </div>
-
           <Card className="border-2 border-[#d8a355]/20 shadow-lg">
             <CardHeader className="bg-white flex flex-row items-center justify-between">
               <div>
@@ -185,7 +173,7 @@ export default function AdminProfilePage() {
               {!isEditing && (
                 <Button
                   onClick={() => setIsEditing(true)}
-                  className="bg-gradient-to-r from-[#d8a355] to-[#c99347] hover:from-[#c99347] hover:to-[#b88341] text-[#00312e] font-bold"
+                  className="bg-[#3453a7] hover:bg-[#27428d] text-white font-bold"
                 >
                   <Edit2 className="w-4 h-4 ml-2" />
                   تعديل البيانات
@@ -257,7 +245,7 @@ export default function AdminProfilePage() {
                   <Button
                     onClick={handleCancel}
                     variant="outline"
-                    className="font-bold bg-transparent"
+                    className="font-bold bg-transparent border-[#003f55]/20"
                     disabled={isSaving}
                   >
                     <X className="w-4 h-4 ml-2" />
@@ -265,7 +253,7 @@ export default function AdminProfilePage() {
                   </Button>
                   <Button
                     onClick={handleSave}
-                    className="bg-gradient-to-r from-[#d8a355] to-[#c99347] hover:from-[#c99347] hover:to-[#b88341] text-[#00312e] font-bold"
+                    className="bg-[#3453a7] hover:bg-[#27428d] text-white font-bold"
                     disabled={isSaving}
                   >
                     <Save className="w-4 h-4 ml-2" />

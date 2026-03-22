@@ -42,6 +42,7 @@ type Totals = {
 type StudentRow = {
   id: string;
   name: string | null;
+  halaqah: string | null;
 };
 
 type CircleRow = {
@@ -591,7 +592,7 @@ export default function StatisticsPage() {
       const { start, end } = getDateRange(dateFilter, customRange);
 
       const [studentsResult, circlesResult, plansResult] = await Promise.all([
-        supabase.from("students").select("id, name"),
+        supabase.from("students").select("id, name, halaqah"),
         supabase.from("circles").select("id, name"),
         supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode"),
       ]);
@@ -654,10 +655,12 @@ export default function StatisticsPage() {
       setAllCircles([...circles].sort((left, right) => (left.name || "").localeCompare(right.name || "ar")));
 
       const studentNames = new Map(students.map((student) => [student.id, student.name?.trim() || TEXT.unknownStudent]));
+      const studentCircles = new Map(students.map((student) => [student.id, student.halaqah?.trim() || TEXT.unknownCircle]));
       const plansByStudent = new Map(plans.map((plan) => [plan.student_id, plan]));
       const dailyReportByStudentDate = new Map(
         dailyReports.map((report) => [`${report.student_id}::${report.report_date}`, report] as const),
       );
+      const presentAttendanceKeys = new Set<string>();
 
       const studentStats = new Map<string, StudentSummary>();
       const circleStats = new Map<string, CircleSummary>();
@@ -725,17 +728,15 @@ export default function StatisticsPage() {
 
         attendanceTotal += 1;
         circleSummary.totalAttend += 1;
+        presentAttendanceKeys.add(`${studentId}::${record.date}`);
 
         const evaluation = getEvaluationRecord(record.evaluations);
         const dailyReport = dailyReportByStudentDate.get(`${studentId}::${record.date}`);
         const isSaturdayReviewOnly = isSaturdayReviewOnlyDay(record.date);
+        const fallbackReviewPages = Math.max(reviewPages, Number(plan?.muraajaa_pages ?? 0), 0);
+        const fallbackTiePages = Math.max(tiePages, Number(plan?.rabt_pages ?? 0), 0);
 
-        if (dailyReport?.memorization_done && !isSaturdayReviewOnly) {
-          studentSummary.memorized += dailyPages;
-          circleSummary.memorized += dailyPages;
-          memorizedTotal += dailyPages;
-          memorizedPoolByStudent.set(studentId, memorizedPoolPages + dailyPages);
-        } else if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
+        if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
           studentSummary.memorized += dailyPages;
           circleSummary.memorized += dailyPages;
           memorizedTotal += dailyPages;
@@ -754,28 +755,68 @@ export default function StatisticsPage() {
         }
 
         if (dailyReport?.review_done) {
-          studentSummary.revised += reviewPages;
-          circleSummary.revised += reviewPages;
-          revisedTotal += reviewPages;
+          studentSummary.revised += fallbackReviewPages;
+          circleSummary.revised += fallbackReviewPages;
+          revisedTotal += fallbackReviewPages;
         } else if (isPassingMemorizationLevel(evaluation.samaa_level ?? null)) {
-          studentSummary.revised += reviewPages;
-          circleSummary.revised += reviewPages;
-          revisedTotal += reviewPages;
+          studentSummary.revised += fallbackReviewPages;
+          circleSummary.revised += fallbackReviewPages;
+          revisedTotal += fallbackReviewPages;
         }
 
         if (dailyReport?.linking_done && !isSaturdayReviewOnly) {
-          studentSummary.tied += tiePages;
-          circleSummary.tied += tiePages;
-          tiedTotal += tiePages;
+          studentSummary.tied += fallbackTiePages;
+          circleSummary.tied += fallbackTiePages;
+          tiedTotal += fallbackTiePages;
         } else if (isPassingMemorizationLevel(evaluation.rabet_level ?? null)) {
-          studentSummary.tied += tiePages;
-          circleSummary.tied += tiePages;
-          tiedTotal += tiePages;
+          studentSummary.tied += fallbackTiePages;
+          circleSummary.tied += fallbackTiePages;
+          tiedTotal += fallbackTiePages;
         }
 
         const earnedPoints = applyAttendancePointsAdjustment(calculateTotalEvaluationPoints(evaluation), status);
         studentSummary.earnedPoints += earnedPoints;
         circleSummary.earnedPoints += earnedPoints;
+      }
+
+      for (const report of dailyReports) {
+        const reportKey = `${report.student_id}::${report.report_date}`;
+        if (presentAttendanceKeys.has(reportKey)) {
+          continue;
+        }
+
+        const plan = plansByStudent.get(report.student_id);
+        if (!plan) {
+          continue;
+        }
+
+        const studentName = studentNames.get(report.student_id) ?? TEXT.unknownStudent;
+        const circleName = studentCircles.get(report.student_id) ?? TEXT.unknownCircle;
+        const studentSummary = studentStats.get(report.student_id) ?? createStudentSummary(report.student_id, studentName, circleName);
+        studentStats.set(report.student_id, studentSummary);
+        if (studentSummary.circleName === TEXT.unknownCircle && circleName !== TEXT.unknownCircle) {
+          studentSummary.circleName = circleName;
+        }
+
+        const circleSummary = circleStats.get(circleName) ?? createCircleSummary(circleName);
+        circleStats.set(circleName, circleSummary);
+
+        const baseMemorizedPool = calculatePreviousMemorizedPages(plan);
+        const reviewPoolPages = resolvePlanReviewPoolPages(plan, baseMemorizedPool);
+        const reviewPages = Math.max(resolvePlanReviewPagesPreference(plan, reviewPoolPages), Number(plan.muraajaa_pages ?? 0), 0);
+        const tiePages = Math.max(Number(plan.rabt_pages ?? 0), 0);
+
+        if (report.review_done) {
+          studentSummary.revised += reviewPages;
+          circleSummary.revised += reviewPages;
+          revisedTotal += reviewPages;
+        }
+
+        if (report.linking_done && !isSaturdayReviewOnlyDay(report.report_date)) {
+          studentSummary.tied += tiePages;
+          circleSummary.tied += tiePages;
+          tiedTotal += tiePages;
+        }
       }
 
       const studentArray = Array.from(studentStats.values()).map((item) => ({
@@ -822,9 +863,9 @@ export default function StatisticsPage() {
         revised: revisedTotal,
         tied: tiedTotal,
       });
-      setTopMemorizers([...studentArray].sort((left, right) => right.memorized - left.memorized).slice(0, 5));
-      setTopRevisers([...studentArray].sort((left, right) => right.revised - left.revised).slice(0, 5));
-      setTopTied([...studentArray].sort((left, right) => right.tied - left.tied).slice(0, 5));
+      setTopMemorizers([...studentArray].filter((item) => item.memorized > 0).sort((left, right) => right.memorized - left.memorized).slice(0, 5));
+      setTopRevisers([...studentArray].filter((item) => item.revised > 0).sort((left, right) => right.revised - left.revised).slice(0, 5));
+      setTopTied([...studentArray].filter((item) => item.tied > 0).sort((left, right) => right.tied - left.tied).slice(0, 5));
       setTopCircles([...circleArray].sort((left, right) => right.score - left.score).slice(0, 5));
     } catch (caughtError) {
       const message = caughtError instanceof Error ? caughtError.message : String(caughtError);

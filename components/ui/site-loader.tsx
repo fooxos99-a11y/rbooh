@@ -30,7 +30,7 @@ const sizeVars: Record<SiteLoaderSize, CSSProperties> = {
 
 export function SiteLoader({
   className,
-  color = "#D4AF37",
+  color = "#003f55",
   size = "md",
   label = "Loading",
   text,
@@ -58,7 +58,7 @@ export function SiteLoader({
             <span key={index} className="site-loader__dot" />
           ))}
         </div>
-        {text ? <p className="text-sm font-medium text-[#8b7355] text-center">{text}</p> : null}
+        {text ? <p className="text-sm font-medium text-[#003f55] text-center">{text}</p> : null}
       </div>
     </div>
   )

@@ -120,7 +120,7 @@ export default function AllCirclesPage() {
         <Header />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-bold text-[#1a2332] mb-4">أفضل الحلقات</h1>
+            <h1 className="text-4xl md:text-5xl font-bold text-[#003f55] mb-4">أفضل الحلقات</h1>
             <p className="text-xl text-gray-600">لا توجد حلقات تحتوي على نقاط حالياً</p>
           </div>
         </main>
@@ -136,7 +136,7 @@ export default function AllCirclesPage() {
       <main className="flex-1 py-8 md:py-16">
         <div className="container mx-auto px-3 md:px-4">
           <div className="mb-8 text-center md:mb-16">
-            <h1 className="text-3xl font-black text-[#173d3a] md:text-5xl">أفضل الحلقات</h1>
+            <h1 className="text-3xl font-black text-[#003f55] md:text-5xl">أفضل الحلقات</h1>
           </div>
 
           <div className="max-w-5xl mx-auto">
@@ -156,7 +156,7 @@ export default function AllCirclesPage() {
         className={`fixed bottom-6 left-6 w-8 h-8 rounded-full shadow-2xl transition-all duration-300 z-50 flex items-center justify-center ${
           isAutoScrolling
             ? "bg-red-500 hover:bg-red-600 text-white"
-            : "bg-[#d8a355] hover:bg-[#c99347] text-white opacity-50 hover:opacity-100"
+            : "bg-[#3453a7] hover:bg-[#27428d] text-white opacity-50 hover:opacity-100"
         }`}
         title={isAutoScrolling ? "إيقاف النزول التلقائي" : "تشغيل النزول التلقائي (وضع شاشة العرض)"}
       >

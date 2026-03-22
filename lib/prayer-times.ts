@@ -8,17 +8,17 @@ const BURAIDAH_LONGITUDE = "43.96"
 const RIYADH_TIMEZONE = "Asia/Riyadh"
 const DEFAULT_ASR_GRACE_MINUTES = 50
 const DAILY_PRAYER_TIMES_TABLE = "daily_prayer_times"
-const ASR_PRAYER_NAME = "asr"
+const ISHA_PRAYER_NAME = "isha"
 const CURRENT_DAY_CACHE_TTL_MS = 15 * 60 * 1000
 
-const dailyAsrCache = new Map<string, { promise: Promise<string | null>; expiresAt: number }>()
+const dailyPrayerCache = new Map<string, { promise: Promise<string | null>; expiresAt: number }>()
 
 function parseClockToMinutes(clock: string) {
 	const [hours, minutes] = clock.split(" ")[0].split(":").map(Number)
 	return hours * 60 + minutes
 }
 
-function isValidAsrTime(clock: string | null) {
+function isValidPrayerTime(clock: string | null) {
 	if (!clock) {
 		return false
 	}
@@ -30,7 +30,7 @@ function isValidAsrTime(clock: string | null) {
 	return Number.isFinite(hour) && Number.isFinite(minute) && hour >= 12 && hour <= 23 && minute >= 0 && minute <= 59
 }
 
-function extractAsrTimeFromHtml(html: string) {
+function extractPrayerTimeFromHtml(html: string, prayerName: string) {
 	const prayerBlocks = html.matchAll(
 		/<div class="prayTime newPrayTime[^"]*">[\s\S]*?<input type="hidden" class="mawaquitTime" value="\d{4}-\d{2}-\d{2} (\d{2}:\d{2})" \/>[\s\S]*?<img[^>]*alt="([^"]+)" title="([^"]+)"[\s\S]*?<\/div>\s*<\/div>/gi,
 	)
@@ -40,15 +40,15 @@ function extractAsrTimeFromHtml(html: string) {
 		const alt = (match[2] || "").toLowerCase()
 		const title = (match[3] || "").toLowerCase()
 
-		if ((alt === ASR_PRAYER_NAME || title === ASR_PRAYER_NAME) && isValidAsrTime(prayerTime)) {
+		if ((alt === prayerName || title === prayerName) && isValidPrayerTime(prayerTime)) {
 			return prayerTime
 		}
 	}
 
-	const encodedAsrMatch = html.match(/&quot;asr&quot;:&quot;(\d{2}):(\d{2})\s+\\u0645&quot;/i)
-	if (encodedAsrMatch) {
-		const encodedTime = `${encodedAsrMatch[1]}:${encodedAsrMatch[2]}`
-		if (isValidAsrTime(encodedTime)) {
+	const encodedPrayerMatch = html.match(new RegExp(`&quot;${prayerName}&quot;:&quot;(\\d{2}):(\\d{2})\\s+\\\\u0645&quot;`, "i"))
+	if (encodedPrayerMatch) {
+		const encodedTime = `${encodedPrayerMatch[1]}:${encodedPrayerMatch[2]}`
+		if (isValidPrayerTime(encodedTime)) {
 			return encodedTime
 		}
 	}
@@ -95,7 +95,7 @@ function getRiyadhTimeParts(timestamp: string) {
 	}
 }
 
-async function getStoredBuraidahAsrTime(attendanceDate: string) {
+async function getStoredBuraidahPrayerTime(attendanceDate: string, prayerName: string) {
 	try {
 		const supabase = await createClient()
 		const { data, error } = await supabase
@@ -103,10 +103,10 @@ async function getStoredBuraidahAsrTime(attendanceDate: string) {
 			.select("prayer_time")
 			.eq("prayer_date", attendanceDate)
 			.eq("city_name", BURAIDAH_CITY_NAME)
-			.eq("prayer_name", ASR_PRAYER_NAME)
+			.eq("prayer_name", prayerName)
 			.maybeSingle()
 
-		if (error || typeof data?.prayer_time !== "string" || !isValidAsrTime(data.prayer_time)) {
+		if (error || typeof data?.prayer_time !== "string" || !isValidPrayerTime(data.prayer_time)) {
 			return null
 		}
 
@@ -116,7 +116,7 @@ async function getStoredBuraidahAsrTime(attendanceDate: string) {
 	}
 }
 
-async function storeBuraidahAsrTime(attendanceDate: string, prayerTime: string) {
+async function storeBuraidahPrayerTime(attendanceDate: string, prayerName: string, prayerTime: string) {
 	try {
 		const supabase = await createClient()
 		await supabase.from(DAILY_PRAYER_TIMES_TABLE).upsert(
@@ -124,7 +124,7 @@ async function storeBuraidahAsrTime(attendanceDate: string, prayerTime: string) 
 				prayer_date: attendanceDate,
 				city_id: BURAIDAH_CITY_ID,
 				city_name: BURAIDAH_CITY_NAME,
-				prayer_name: ASR_PRAYER_NAME,
+				prayer_name: prayerName,
 				prayer_time: prayerTime,
 				source: "Almosaly",
 				fetched_at: new Date().toISOString(),
@@ -136,18 +136,19 @@ async function storeBuraidahAsrTime(attendanceDate: string, prayerTime: string) 
 	}
 }
 
-export async function getBuraidahAsrTime(attendanceDate: string) {
+async function getBuraidahPrayerTime(attendanceDate: string, prayerName: string) {
 	const isToday = isCurrentSaudiDate(attendanceDate)
-	const cachedEntry = dailyAsrCache.get(attendanceDate)
+	const cacheKey = `${attendanceDate}:${prayerName}`
+	const cachedEntry = dailyPrayerCache.get(cacheKey)
 
 	if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
 		return cachedEntry.promise
 	}
 
 	const promise = (async () => {
-		const storedAsrTime = await getStoredBuraidahAsrTime(attendanceDate)
-		if (storedAsrTime && !isToday) {
-			return storedAsrTime
+		const storedPrayerTime = await getStoredBuraidahPrayerTime(attendanceDate, prayerName)
+		if (storedPrayerTime && !isToday) {
+			return storedPrayerTime
 		}
 
 		const url = new URL(`${ALMOSALY_BASE_URL}/home/getMawaquit`)
@@ -170,25 +171,25 @@ export async function getBuraidahAsrTime(attendanceDate: string) {
 			}
 
 			const html = await response.text()
-			const asrTime = extractAsrTimeFromHtml(html)
+			const prayerTime = extractPrayerTimeFromHtml(html, prayerName)
 
-			if (asrTime) {
-				if (asrTime !== storedAsrTime) {
-					await storeBuraidahAsrTime(attendanceDate, asrTime)
+			if (prayerTime) {
+				if (prayerTime !== storedPrayerTime) {
+					await storeBuraidahPrayerTime(attendanceDate, prayerName, prayerTime)
 				}
-				return asrTime
+				return prayerTime
 			}
 		} catch {
-			if (storedAsrTime) {
-				return storedAsrTime
+			if (storedPrayerTime) {
+				return storedPrayerTime
 			}
 			throw new Error(`Failed to fetch Almosaly prayer times for ${attendanceDate}`)
 		}
 
-		return storedAsrTime
+		return storedPrayerTime
 	})()
 
-	dailyAsrCache.set(attendanceDate, {
+	dailyPrayerCache.set(cacheKey, {
 		promise,
 		expiresAt: isToday ? Date.now() + CURRENT_DAY_CACHE_TTL_MS : Number.POSITIVE_INFINITY,
 	})
@@ -196,8 +197,12 @@ export async function getBuraidahAsrTime(attendanceDate: string) {
 	return promise
 }
 
+export async function getBuraidahIshaTime(attendanceDate: string) {
+	return getBuraidahPrayerTime(attendanceDate, ISHA_PRAYER_NAME)
+}
+
 export interface TeacherAttendanceTimingStatus {
-	asrTime: string | null
+	ishaTime: string | null
 	graceDeadline: string | null
 	checkInTimeLocal: string | null
 	isLate: boolean | null
@@ -214,12 +219,12 @@ export async function getTeacherAttendanceTimingStatus(
 	record: { attendance_date: string; check_in_time: string; status: string },
 	graceMinutes = DEFAULT_ASR_GRACE_MINUTES,
 ) {
-	const asrTime = await getBuraidahAsrTime(record.attendance_date)
+	const ishaTime = await getBuraidahIshaTime(record.attendance_date)
 
-	if (!asrTime || record.status !== "present") {
+	if (!ishaTime || record.status !== "present") {
 		return {
-			asrTime,
-			graceDeadline: asrTime ? formatMinutes(parseClockToMinutes(asrTime) + graceMinutes) : null,
+			ishaTime,
+			graceDeadline: ishaTime ? formatMinutes(parseClockToMinutes(ishaTime) + graceMinutes) : null,
 			checkInTimeLocal: record.check_in_time ? getRiyadhTimeParts(record.check_in_time).formatted : null,
 			isLate: null,
 			isEarly: null,
@@ -232,8 +237,8 @@ export async function getTeacherAttendanceTimingStatus(
 		} satisfies TeacherAttendanceTimingStatus
 	}
 
-	const asrMinutes = parseClockToMinutes(asrTime)
-	const graceDeadlineMinutes = asrMinutes + graceMinutes
+	const ishaMinutes = parseClockToMinutes(ishaTime)
+	const graceDeadlineMinutes = ishaMinutes + graceMinutes
 	const localCheckIn = getRiyadhTimeParts(record.check_in_time)
 	const checkInMinutes = localCheckIn.hour * 60 + localCheckIn.minute
 	const lateMinutes = Math.max(0, checkInMinutes - graceDeadlineMinutes)
@@ -241,7 +246,7 @@ export async function getTeacherAttendanceTimingStatus(
 	const isOnTime = checkInMinutes === graceDeadlineMinutes
 
 	return {
-		asrTime: formatMinutes(asrMinutes),
+		ishaTime: formatMinutes(ishaMinutes),
 		graceDeadline: formatMinutes(graceDeadlineMinutes),
 		checkInTimeLocal: localCheckIn.formatted,
 		isLate: lateMinutes > 0,

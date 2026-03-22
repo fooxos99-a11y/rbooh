@@ -1,10 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+
 import { useState, useEffect } from "react";
 
 import Image from "next/image";
-
-import { useRouter } from "next/navigation";
+import { StudentDailyExecutionDialog } from "@/components/student-daily-execution-dialog";
 
 import {
   ChevronLeft,
@@ -14,13 +15,10 @@ import {
   Menu,
   ClipboardCheck,
   Trophy,
-  Store,
+  Star,
   Map,
-  Target,
   MessageSquare,
   Home,
-  Gamepad2,
-  Star,
   UserPlus,
   UserMinus,
   ArrowRightLeft,
@@ -31,11 +29,9 @@ import {
   Edit2,
   BookOpen,
   ShieldCheck,
-  Zap,
   Bell,
   Send,
   Calendar,
-  ShoppingBag,
   Phone,
   Banknote,
   BarChart3,
@@ -57,6 +53,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SiteLoader } from "@/components/ui/site-loader";
+import { getClientAuthHeaders } from "@/lib/client-auth";
 
 interface Circle {
   name: string;
@@ -64,7 +61,13 @@ interface Circle {
   studentCount: number;
 }
 
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+}
+
 const CIRCLES_CACHE_DURATION = 5 * 60 * 1000;
+const ROLE_CACHE_DURATION = 5 * 60 * 1000;
 
 function NavItem({
   icon: Icon,
@@ -199,11 +202,13 @@ export function Header() {
 
   const [circles, setCircles] = useState<Circle[]>([]);
 
-  const [circlesLoading, setCirclesLoading] = useState(true);
+  const [circlesLoading, setCirclesLoading] = useState(false);
+  const [circlesLoaded, setCirclesLoaded] = useState(false);
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  const [isStudentsOpen, setIsStudentsOpen] = useState(false);
+  const [isCirclesOpen, setIsCirclesOpen] = useState(true);
+  const [isTopStudentsOpen, setIsTopStudentsOpen] = useState(false);
 
   const [isAdminStudentsOpen, setIsAdminStudentsOpen] = useState(false);
 
@@ -212,8 +217,6 @@ export function Header() {
   const [isAdminCommOpen, setIsAdminCommOpen] = useState(false);
 
   const [isAdminGeneralOpen, setIsAdminGeneralOpen] = useState(false);
-
-  const [isAdminGamesOpen, setIsAdminGamesOpen] = useState(false);
 
   const [validAdminRoles, setValidAdminRoles] = useState<string[]>([
     "admin",
@@ -230,7 +233,6 @@ export function Header() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<{id:string;message:string;is_read:boolean;created_at:string}[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
-  const [dailyChallengePlayedToday, setDailyChallengePlayedToday] = useState(false);
   const [sidebarPlanProgress, setSidebarPlanProgress] = useState<number | null>(null);
   const [sidebarQuranProgress, setSidebarQuranProgress] = useState<number | null>(null);
   const [sidebarQuranLevel, setSidebarQuranLevel] = useState<number>(0);
@@ -249,11 +251,21 @@ export function Header() {
   const confirmDialog = useConfirmDialog();
 
   const fetchNotificationStartAt = async (accountNumber: string) => {
+    const cacheKey = `notificationStartAt_${accountNumber}`;
+    const cachedValue = localStorage.getItem(cacheKey);
+    if (cachedValue) {
+      setNotificationStartAt(cachedValue);
+      return cachedValue;
+    }
+
     try {
       const response = await fetch(`/api/account-created-at?account_number=${accountNumber}`, { cache: "no-store" });
       const data = await response.json();
       const createdAt = typeof data.created_at === "string" ? data.created_at : null;
       setNotificationStartAt(createdAt);
+      if (createdAt) {
+        localStorage.setItem(cacheKey, createdAt);
+      }
       return createdAt;
     } catch {
       setNotificationStartAt(null);
@@ -261,9 +273,16 @@ export function Header() {
     }
   };
 
+  const openDailyExecution = () => {
+    setIsMobileMenuOpen(false);
+    scrollToTop();
+    window.dispatchEvent(new Event("studentDailyExecution:open"));
+  };
+
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "instant" });
 
   useEffect(() => {
+      let cleanup: (() => void) | undefined;
         // جلب الترتيب العام للطالب عند تحميل القائمة الجانبية
         const fetchGlobalRank = async () => {
           const accNum = localStorage.getItem("accountNumber");
@@ -327,30 +346,12 @@ export function Header() {
     const accNumStr = localStorage.getItem("accountNumber");
     if (accNumStr) setUserAccountNumber(Number(accNumStr));
 
-    // Check if student played today's daily challenge
     if (accNumStr) {
-      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-      const lastPlay = localStorage.getItem(`lastPlayDate_${accNumStr}`);
-      setDailyChallengePlayedToday(lastPlay === todayStr);
+      const cachedUnread = localStorage.getItem(`unreadCount_${accNumStr}`);
+      if (cachedUnread) {
+        setUnreadCount(Number(cachedUnread) || 0);
+      }
     }
-    const fetchUnread = async () => {
-      if (!accNumStr) return;
-      try {
-        const createdAt = await fetchNotificationStartAt(accNumStr);
-        const supabase = createClient();
-        let query = supabase
-          .from("notifications")
-          .select("id", { count: "exact", head: true })
-          .eq("user_account_number", accNumStr)
-          .eq("is_read", false);
-        if (createdAt) {
-          query = query.gte("created_at", createdAt);
-        }
-        const { count } = await query;
-        setUnreadCount(count || 0);
-      } catch {}
-    };
-    fetchUnread();
 
     if (loggedIn && role === "student") {
       const accNum = localStorage.getItem("accountNumber");
@@ -370,19 +371,61 @@ export function Header() {
         fetchSidebarPlan(accNum);
       }
       else setIsSidebarStudentStatsLoading(false);
+
+      const cachedCircles = localStorage.getItem("circlesCache");
+      const circlesCacheTime = localStorage.getItem("circlesCacheTime");
+      const hasFreshCirclesCache = Boolean(
+        cachedCircles &&
+        circlesCacheTime &&
+        Date.now() - Number(circlesCacheTime) < CIRCLES_CACHE_DURATION
+      );
+
+      if (hasFreshCirclesCache) {
+        try {
+          const parsedCircles = JSON.parse(cachedCircles || "[]");
+          setCircles(parsedCircles);
+          setCirclesLoaded(true);
+        } catch {}
+      } else {
+        const idleWindow = window as IdleWindow;
+        const loadCachedCirclesInBackground = () => loadCircles();
+
+        if (typeof idleWindow.requestIdleCallback === "function") {
+          const idleId = idleWindow.requestIdleCallback(loadCachedCirclesInBackground, { timeout: 2000 });
+          cleanup = () => {
+            if (typeof idleWindow.cancelIdleCallback === "function") {
+              idleWindow.cancelIdleCallback(idleId);
+            }
+          };
+        } else {
+          const timeoutId = window.setTimeout(loadCachedCirclesInBackground, 1200);
+          cleanup = () => window.clearTimeout(timeoutId);
+        }
+      }
     } else {
       setIsSidebarStudentStatsLoading(false);
     }
-
-    loadCircles();
 
     // Verify fresh role from DB (background) to keep sidebar in sync
     if (loggedIn) {
       const accountNumber = localStorage.getItem("accountNumber");
       if (accountNumber) {
-        verifyFreshRole(accountNumber);
+        const roleCacheKey = `verifiedRole_${accountNumber}`;
+        const roleCacheTimeKey = `verifiedRoleAt_${accountNumber}`;
+        const cachedRole = localStorage.getItem(roleCacheKey);
+        const cachedRoleAt = Number(localStorage.getItem(roleCacheTimeKey) || "0");
+
+        if (cachedRole) {
+          setUserRole(cachedRole);
+        }
+
+        if (Date.now() - cachedRoleAt > ROLE_CACHE_DURATION) {
+          verifyFreshRole(accountNumber);
+        }
       }
     }
+
+    return () => cleanup?.();
   }, []);
 
   const verifyFreshRole = async (accountNumber: string) => {
@@ -419,6 +462,8 @@ export function Header() {
 
       // Update localStorage and state with fresh role
       localStorage.setItem("userRole", freshRole);
+      localStorage.setItem(`verifiedRole_${accountNumber}`, freshRole);
+      localStorage.setItem(`verifiedRoleAt_${accountNumber}`, Date.now().toString());
       setUserRole(freshRole);
       setValidAdminRoles(freshAdminRoles);
 
@@ -439,6 +484,10 @@ export function Header() {
   };
 
   const loadCircles = () => {
+    if (circlesLoading || circlesLoaded) {
+      return;
+    }
+
     const cachedData = localStorage.getItem("circlesCache");
 
     const cacheTime = localStorage.getItem("circlesCacheTime");
@@ -451,6 +500,7 @@ export function Header() {
       setCircles(JSON.parse(cachedData));
 
       setCirclesLoading(false);
+      setCirclesLoaded(true);
     } else {
       fetchCircles();
     }
@@ -466,6 +516,7 @@ export function Header() {
 
       if (data.circles) {
         setCircles(data.circles);
+        setCirclesLoaded(true);
 
         localStorage.setItem("circlesCache", JSON.stringify(data.circles));
 
@@ -475,6 +526,24 @@ export function Header() {
       console.error(e);
     } finally {
       setCirclesLoading(false);
+    }
+  };
+
+  const handleCirclesToggle = () => {
+    const nextOpen = !isCirclesOpen;
+    setIsCirclesOpen(nextOpen);
+
+    if (nextOpen) {
+      loadCircles();
+    }
+  };
+
+  const handleTopStudentsToggle = () => {
+    const nextOpen = !isTopStudentsOpen;
+    setIsTopStudentsOpen(nextOpen);
+
+    if (nextOpen) {
+      loadCircles();
     }
   };
 
@@ -499,7 +568,7 @@ export function Header() {
         return;
       }
       setSidebarStudentPoints(Number(student.points) || 0);
-      const planRes = await fetch(`/api/student-plans?student_id=${student.id}`);
+      const planRes = await fetch(`/api/student-plans?student_id=${student.id}`, { headers: getClientAuthHeaders() });
       const planData = await planRes.json();
       if (planData.plan) {
         setSidebarPlanProgress(planData.progressPercent ?? 0);
@@ -621,15 +690,17 @@ export function Header() {
 
   return (
     <>
+      {isLoggedIn && userRole === "student" && <StudentDailyExecutionDialog />}
+
       {isLoggingOut && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center">
           <div className="bg-white rounded-3xl px-10 py-8 flex flex-col items-center shadow-2xl min-w-[260px]">
-            <SiteLoader size="md" color="#D4AF37" />
+            <SiteLoader size="md" color="#003f55" />
           </div>
         </div>
       )}
 
-      <header className="text-white sticky top-0 z-50 shadow-lg relative" style={{ background: "linear-gradient(to right, #0f5c5c -80%, #032424 100%)" }}>
+      <header className="text-white sticky top-0 z-50 shadow-lg relative" style={{ backgroundColor: "#243870" }}>
         <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center gap-2">
           <button
             className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/10 transition-colors"
@@ -639,106 +710,115 @@ export function Header() {
             <Menu size={26} />
           </button>
           {isLoggedIn && userRole === "student" && (
-            <DropdownMenu onOpenChange={async (open) => {
-              if (!open) return;
-              const accNumStr = localStorage.getItem("accountNumber");
-              if (!accNumStr) return;
-              setNotifLoading(true);
-              try {
-                const supabase = createClient();
-                const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
-                let query = supabase
-                  .from("notifications")
-                  .select("id,message,is_read,created_at")
-                  .eq("user_account_number", accNumStr)
-                  .order("created_at", { ascending: false })
-                  .limit(20);
-                if (createdAt) {
-                  query = query.gte("created_at", createdAt);
-                }
-                const { data } = await query;
-                setNotifications(data || []);
-                const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
-                if (unreadIds.length > 0) {
-                  await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
-                  setUnreadCount(0);
-                }
-              } catch {}
-              setNotifLoading(false);
-            }}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
-                  aria-label="الإشعارات"
-                >
-                  <Bell size={22} className="text-white" />
-                  {unreadCount > 0 && (
-                    <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                      {unreadCount > 9 ? "9+" : unreadCount}
-                    </span>
-                  )}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
-                <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-[#d8a355]/15 flex items-center justify-center">
-                      <Bell size={13} className="text-[#d8a355]" />
-                    </div>
-                    <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
-                  </div>
-                  {notifications.length > 0 && (
-                    <span className="text-[11px] bg-[#d8a355]/15 text-[#c99347] px-2 py-0.5 rounded-full font-semibold">
-                      {notifications.length}
-                    </span>
-                  )}
-                </div>
-                <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d8a35540_transparent] bg-white" dir="rtl">
-                  {notifLoading ? (
-                    <div className="flex items-center justify-center py-14">
-                      <SiteLoader size="sm" color="#d8a355" />
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <div className="py-14 flex flex-col items-center gap-3 text-center">
-                      <div className="w-14 h-14 rounded-full bg-[#d8a355]/10 flex items-center justify-center">
-                        <Bell size={24} className="text-[#d8a355]/60" />
+            <div className="flex items-center gap-2">
+              <button
+                className="h-10 rounded-full border border-white/15 bg-white/10 px-4 text-sm font-black text-white transition-colors hover:bg-white/15"
+                onClick={openDailyExecution}
+              >
+                التنفيذ
+              </button>
+              <DropdownMenu onOpenChange={async (open) => {
+                if (!open) return;
+                const accNumStr = localStorage.getItem("accountNumber");
+                if (!accNumStr) return;
+                setNotifLoading(true);
+                try {
+                  const supabase = createClient();
+                  const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
+                  let query = supabase
+                    .from("notifications")
+                    .select("id,message,is_read,created_at")
+                    .eq("user_account_number", accNumStr)
+                    .order("created_at", { ascending: false })
+                    .limit(20);
+                  if (createdAt) {
+                    query = query.gte("created_at", createdAt);
+                  }
+                  const { data } = await query;
+                  setNotifications(data || []);
+                  localStorage.setItem(`unreadCount_${accNumStr}`, "0");
+                  const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
+                  if (unreadIds.length > 0) {
+                    await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+                    setUnreadCount(0);
+                  }
+                } catch {}
+                setNotifLoading(false);
+              }}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
+                    aria-label="الإشعارات"
+                  >
+                    <Bell size={22} className="text-white" />
+                    {unreadCount > 0 && (
+                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
+                  <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
+                        <Bell size={13} className="text-[#003f55]" />
                       </div>
-                      <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                      <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
                     </div>
-                  ) : (
-                    <div>
-                      {notifications.map((n, i) => (
-                        <div
-                          key={n.id}
-                          className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
-                        >
-                          <div className="flex-shrink-0 mt-2">
-                            {!n.is_read
-                              ? <div className="w-2 h-2 rounded-full bg-[#d8a355] shadow-sm" />
-                              : <div className="w-2 h-2 rounded-full border border-gray-300" />
-                            }
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
-                              {n.message}
-                            </p>
-                            <p className="text-[11px] text-gray-400 mt-1.5">
-                              {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                            </p>
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                            className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                    {notifications.length > 0 && (
+                      <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
+                        {notifications.length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3453a740_transparent] bg-white" dir="rtl">
+                    {notifLoading ? (
+                      <div className="flex items-center justify-center py-14">
+                        <SiteLoader size="sm" color="#003f55" />
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="py-14 flex flex-col items-center gap-3 text-center">
+                        <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
+                          <Bell size={24} className="text-[#003f55]/60" />
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                        <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                      </div>
+                    ) : (
+                      <div>
+                        {notifications.map((n, i) => (
+                          <div
+                            key={n.id}
+                            className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
+                          >
+                            <div className="flex-shrink-0 mt-2">
+                              {!n.is_read
+                                ? <div className="w-2 h-2 rounded-full bg-[#3453a7] shadow-sm" />
+                                : <div className="w-2 h-2 rounded-full border border-gray-300" />
+                              }
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
+                                {n.message}
+                              </p>
+                              <p className="text-[11px] text-gray-400 mt-1.5">
+                                {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                              className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         {isStudentHeaderStatsReady && (() => {
@@ -770,7 +850,7 @@ export function Header() {
                       <span 
                         className="relative z-10 text-[18px] sm:text-[20px] font-black pb-[1px]"
                         style={{
-                          color: "#c99347",
+                          color: "#3453a7",
                           filter: "drop-shadow(0px -1px 0px rgba(255,255,255,1)) drop-shadow(0px 2px 2px rgba(0,0,0,0.2))"
                         }}
                       >
@@ -801,7 +881,7 @@ export function Header() {
                       className="absolute top-0 left-0 bottom-0 z-10 transition-all duration-1000"
                       style={{ 
                         width: displayProgress > 0 ? `min(100%, calc(${displayProgress}% + 24px))` : "0%",
-                        background: "linear-gradient(to right, #D4AF37, #C9A961)",
+                        background: "linear-gradient(to right, #3453a7, #4a67b7)",
                         borderRadius: "0 100px 100px 0"
                       }}
                     >
@@ -813,48 +893,48 @@ export function Header() {
 
               <div className="relative z-30 group">
                 <div
-                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#D4AF37]/50"
+                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#3453a7]/35"
                   style={{
-                    background: "linear-gradient(135deg, rgba(58,36,8,0.96), rgba(140,91,18,0.9))",
-                    boxShadow: "inset 0 1px 0 rgba(255,245,214,0.18), 0 4px 10px rgba(0,0,0,0.18)",
+                    background: "linear-gradient(135deg, rgba(37,63,140,0.96), rgba(74,103,183,0.92))",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 10px rgba(0,0,0,0.18)",
                   }}
                   aria-label="الترتيب العام"
                   title="الترتيب العام"
                 >
                   <Trophy
-                    className="w-4 h-4 text-[#ffd36b] drop-shadow-[0_0_4px_rgba(255,211,107,0.35)]"
+                    className="w-4 h-4 text-[#dbe7ff] drop-shadow-[0_0_4px_rgba(219,231,255,0.35)]"
                     strokeWidth={1.9}
                   />
-                  <span className="text-[13px] font-black tabular-nums text-[#fff7df] leading-none tracking-wide">
+                  <span className="text-[13px] font-black tabular-nums text-white leading-none tracking-wide">
                     {globalRank ?? "-"}
                   </span>
                 </div>
 
-                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#D4AF37]/30 bg-[linear-gradient(135deg,rgba(58,36,8,0.98),rgba(140,91,18,0.95))] px-2 py-1 text-[10px] font-semibold text-[#fff7df] shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#3453a7]/25 bg-[linear-gradient(135deg,rgba(37,63,140,0.98),rgba(74,103,183,0.95))] px-2 py-1 text-[10px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                   الترتيب العام
                 </div>
               </div>
 
               <div className="relative z-30 group">
                 <div
-                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#D4AF37]/50"
+                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#3453a7]/35"
                   style={{
-                    background: "linear-gradient(135deg, rgba(3,36,36,0.92), rgba(15,92,92,0.88))",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.15), 0 4px 10px rgba(0,0,0,0.18)",
+                    background: "linear-gradient(135deg, rgba(37,63,140,0.98), rgba(64,98,188,0.94))",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 10px rgba(0,0,0,0.18)",
                   }}
                   aria-label="النقاط"
                   title="النقاط"
                 >
                   <Star
-                    className="w-4 h-4 text-[#f4d03f] fill-[#f4d03f] drop-shadow-[0_0_4px_rgba(244,208,63,0.35)]"
+                    className="w-4 h-4 text-[#dbe7ff] fill-[#dbe7ff] drop-shadow-[0_0_4px_rgba(219,231,255,0.28)]"
                     strokeWidth={1.8}
                   />
-                  <span className="text-[13px] font-black tabular-nums text-[#fff7df] leading-none tracking-wide">
+                  <span className="text-[13px] font-black tabular-nums text-white leading-none tracking-wide">
                     {sidebarStudentPoints}
                   </span>
                 </div>
 
-                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#D4AF37]/30 bg-[linear-gradient(135deg,rgba(3,36,36,0.98),rgba(15,92,92,0.95))] px-2 py-1 text-[10px] font-semibold text-[#fff7df] shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#3453a7]/25 bg-[linear-gradient(135deg,rgba(37,63,140,0.98),rgba(74,103,183,0.95))] px-2 py-1 text-[10px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                   النقاط
                 </div>
               </div>
@@ -866,8 +946,8 @@ export function Header() {
 
           <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
             <Image
-              src="/قبس.png"
-              alt="قبس"
+              src="/ربوة.png"
+              alt="ربوة"
               width={100}
               height={60}
               className="w-20 md:w-24 h-auto cursor-pointer"
@@ -896,6 +976,7 @@ export function Header() {
                   }
                   const { data } = await query;
                   setNotifications(data || []);
+                  localStorage.setItem(`unreadCount_${accNumStr}`, "0");
                   const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
                   if (unreadIds.length > 0) {
                     await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
@@ -906,7 +987,7 @@ export function Header() {
               }}>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#0b4b4b]/95 shadow-[0_12px_30px_rgba(3,36,36,0.28)] backdrop-blur-sm transition-colors hover:bg-[#0f5c5c]"
+                    className="relative flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#243870] shadow-[0_12px_30px_rgba(36,56,112,0.28)] backdrop-blur-sm transition-colors hover:bg-[#2c4488]"
                     aria-label="الإشعارات"
                   >
                     <Bell size={22} className="text-white" />
@@ -921,27 +1002,27 @@ export function Header() {
                   {/* Header */}
                   <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-[#d8a355]/15 flex items-center justify-center">
-                        <Bell size={13} className="text-[#d8a355]" />
+                      <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
+                        <Bell size={13} className="text-[#003f55]" />
                       </div>
                       <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
                     </div>
                     {notifications.length > 0 && (
-                      <span className="text-[11px] bg-[#d8a355]/15 text-[#c99347] px-2 py-0.5 rounded-full font-semibold">
+                      <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
                         {notifications.length}
                       </span>
                     )}
                   </div>
                   {/* Body */}
-                  <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#d8a35540_transparent] bg-white" dir="rtl">
+                  <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3453a740_transparent] bg-white" dir="rtl">
                     {notifLoading ? (
                       <div className="flex items-center justify-center py-14">
-                        <SiteLoader size="sm" color="#d8a355" />
+                        <SiteLoader size="sm" color="#003f55" />
                       </div>
                     ) : notifications.length === 0 ? (
                       <div className="py-14 flex flex-col items-center gap-3 text-center">
-                        <div className="w-14 h-14 rounded-full bg-[#d8a355]/10 flex items-center justify-center">
-                          <Bell size={24} className="text-[#d8a355]/60" />
+                        <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
+                          <Bell size={24} className="text-[#003f55]/60" />
                         </div>
                         <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
                       </div>
@@ -950,12 +1031,12 @@ export function Header() {
                         {notifications.map((n, i) => (
                           <div
                             key={n.id}
-                            className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-amber-50/60 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
+                            className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-[#3453a7]/5 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
                           >
                             {/* Unread indicator */}
                             <div className="flex-shrink-0 mt-2">
                               {!n.is_read
-                                ? <div className="w-2 h-2 rounded-full bg-[#d8a355] shadow-sm" />
+                                ? <div className="w-2 h-2 rounded-full bg-[#3453a7] shadow-sm" />
                                 : <div className="w-2 h-2 rounded-full border border-gray-300" />
                               }
                             </div>
@@ -986,7 +1067,7 @@ export function Header() {
             {authResolved && !isLoggedIn && (
               <Button
                 onClick={() => handleNav("/login")}
-                className="bg-[#d8a355] hover:bg-[#c99347] text-[#00312e] font-extrabold rounded-lg px-5 h-10 text-sm shadow-[0_12px_30px_rgba(3,36,36,0.28)]"
+                className="bg-[#3453a7] hover:bg-[#27428d] text-white font-extrabold rounded-lg px-5 h-10 text-sm shadow-[0_12px_30px_rgba(52,83,167,0.28)]"
               >
                 دخول
               </Button>
@@ -1011,12 +1092,12 @@ export function Header() {
       >
         {/* رأس الدرج */}
 
-        <div className="bg-[#00312e] px-4 pt-3 pb-4 flex-shrink-0">
+        <div className="bg-[#243870] px-4 pt-3 pb-4 flex-shrink-0">
           {/* الصف العلوي: اللوغو + إغلاق */}
           <div className="flex items-center justify-between mb-3">
             <Image
-              src="/قبس.png"
-              alt="قبس"
+              src="/ربوة.png"
+              alt="ربوة"
               width={120}
               height={70}
               className="h-12 w-auto cursor-pointer"
@@ -1038,8 +1119,8 @@ export function Header() {
                   onClick={() => { goToProfile(); setIsMobileMenuOpen(false); }}
                   className="w-full flex items-center gap-3 bg-white/[0.03] hover:bg-white/[0.08] transition-colors rounded-xl px-3 py-2.5"
                 >
-                  <div className="w-10 h-10 rounded-full bg-[#d8a355] flex items-center justify-center flex-shrink-0">
-                    <User size={18} className="text-[#00312e]" />
+                  <div className="w-10 h-10 rounded-full bg-[#3453a7] flex items-center justify-center flex-shrink-0">
+                    <User size={18} className="text-white" />
                   </div>
                   <div className="flex-1 text-right min-w-0">
                     <p className="text-white font-bold text-sm truncate">{userName || "المستخدم"}</p>
@@ -1105,48 +1186,41 @@ export function Header() {
 
             <NavItem
               icon={BookOpen}
-              label="جميع الحلقات"
+              label="أفضل الحلقات"
               onClick={() => handleNav("/halaqat/all")}
             />
 
             <CollapseSection
               icon={Star}
               label="أفضل الطلاب"
-              isOpen={isStudentsOpen}
-              onToggle={() => setIsStudentsOpen(!isStudentsOpen)}
+              isOpen={isTopStudentsOpen}
+              onToggle={handleTopStudentsToggle}
             >
-              <NavItem
-                icon={Users}
-                label="جميع الطلاب"
-                onClick={() => handleNav("/students/all")}
-                indent
-                strong
-              />
-
               {circlesLoading ? (
                 <div className="pr-10 pl-4 py-3 flex justify-start">
-                  <SiteLoader size="sm" color="#d8a355" />
+                  <SiteLoader size="sm" color="#003f55" />
                 </div>
               ) : (
-                circles.map((c) => (
+                <>
                   <NavItem
-                    key={c.name}
-                    icon={BookOpen}
-                    label={c.name}
-                    onClick={() => handleNav(`/halaqat/${c.name}`)}
+                    icon={Users}
+                    label="جميع الطلاب"
+                    onClick={() => handleNav("/students/all?scope=all")}
                     indent
                   />
-                ))
+                  {circles.map((c) => (
+                    <NavItem
+                      key={`top-${c.name}`}
+                      icon={Star}
+                      label={c.name}
+                      onClick={() => handleNav(`/students/all?circle=${encodeURIComponent(c.name)}`)}
+                      indent
+                    />
+                  ))}
+                </>
               )}
             </CollapseSection>
 
-            {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher" || isAdmin) && (
-              <NavItem
-                icon={Gamepad2}
-                label="المسابقات"
-                onClick={() => handleNav("/competitions")}
-              />
-            )}
           </div>
 
           {isLoggedIn && userRole === "student" && (
@@ -1171,32 +1245,17 @@ export function Header() {
                 <NavItem
                   icon={ClipboardCheck}
                   label="التنفيذ اليومي"
-                  onClick={() => { handleNav("/profile?tab=execution"); setIsMobileMenuOpen(false); }}
+                  onClick={openDailyExecution}
                 />
                 <NavItem
                   icon={BookMarked}
                   label="الخطة"
                   onClick={() => { handleNav("/profile?tab=plan"); setIsMobileMenuOpen(false); }}
                 />
-              </div>
-
-              <SectionHeader title="الأنشطة" />
-              <div className="px-2 mb-0">
                 <NavItem
                   icon={Map}
                   label="المسار"
                   onClick={() => handleNav("/pathways")}
-                />
-                <NavItem
-                  icon={Target}
-                  label="التحدي اليومي"
-                  onClick={() => handleNav("/daily-challenge")}
-                  gold={!dailyChallengePlayedToday}
-                />
-                <NavItem
-                  icon={Store}
-                  label="المتجر"
-                  onClick={() => handleNav("/store")}
                 />
               </div>
             </>
@@ -1372,7 +1431,7 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "السجل اليومي للطلاب",
+                      label: "متابعة التنفيذ",
 
                       path: "/admin/student-daily-attendance",
                     },
@@ -1383,14 +1442,6 @@ export function Header() {
                       label: "تقرير الحلقات المختصر",
 
                       path: "/admin/reports/circle-short-report",
-                    },
-
-                    {
-                      icon: Bell,
-
-                      label: "الغيابات",
-
-                      path: "/admin/absences",
                     },
 
                     {
@@ -1408,6 +1459,14 @@ export function Header() {
 
                       path: "/admin/reports",
                     },
+
+                    {
+                      icon: BarChart3,
+
+                      label: "الإحصائيات",
+
+                      path: "/admin/statistics",
+                    },
                   ].map(({ icon: Ic, label, path }) => (
                     <NavItem
                       key={label}
@@ -1422,7 +1481,7 @@ export function Header() {
 
               {/* فئة الإدارة العامة */}
 
-              {["الإشعارات", "إدارة المسار", "إنهاء الفصل", "إدارة المتجر", "الإرسال إلى أولياء الأمور", "الصلاحيات", "المالية", "الإحصائيات"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
+              {["الإشعارات", "إدارة المسار", "إنهاء الفصل", "الإرسال إلى أولياء الأمور", "الصلاحيات", "المالية"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={Settings}
                   label="الإدارة العامة"
@@ -1441,15 +1500,6 @@ export function Header() {
                     },
 
                     {
-                      icon: ShoppingBag,
-                      label: "إدارة المتجر",
-
-                      permKey: "إدارة المتجر",
-
-                      path: "/admin/store-management",
-                    },
-
-                    {
                       icon: Bell,
 
                       label: "الإشعارات",
@@ -1457,16 +1507,6 @@ export function Header() {
                       permKey: "الإشعارات",
 
                       path: "/admin/notifications",
-                    },
-
-                    {
-                      icon: BarChart3,
-
-                      label: "الإحصائيات",
-
-                      permKey: "الإحصائيات",
-
-                      path: "/admin/statistics",
                     },
 
                     {
@@ -1506,7 +1546,7 @@ export function Header() {
 
                       permKey: "إنهاء الفصل",
 
-                      path: "/admin/dashboard?action=end-semester",
+                      path: "?action=end-semester",
                     },
                   ].filter(({ permKey }) => hasPermission(permKey)).map(({ icon: Ic, label, path }) => (
                     <NavItem
@@ -1515,65 +1555,6 @@ export function Header() {
                       label={label}
                       onClick={() => handleNav(path)}
                       disabled={false}
-                      indent
-                    />
-                  ))}
-                </CollapseSection>
-              </div>}
-
-              {hasPermission("إدارة الألعاب") && <div className="px-2 mb-0.5">
-                <CollapseSection
-                  icon={Gamepad2}
-                  label="إدارة الألعاب"
-                  isOpen={isAdminGamesOpen}
-                  onToggle={() => setIsAdminGamesOpen(!isAdminGamesOpen)}
-                >
-                  {[
-                    {
-                      icon: Star,
-
-                      label: "إدارة صور خمن الصورة",
-
-                      path: "/admin/guess-images",
-                    },
-
-                    {
-                      icon: Zap,
-
-                      label: "إدارة أسئلة المزاد",
-
-                      path: "/admin/auction-questions",
-                    },
-
-                    {
-                      icon: Award,
-
-                      label: "إدارة من سيربح المليون",
-
-                      path: "/admin/millionaire-questions",
-                    },
-
-                    {
-                      icon: BookOpen,
-
-                      label: "إدارة خلية الحروف",
-
-                      path: "/admin/letter-hive-questions",
-                    },
-
-                    {
-                      icon: FileText,
-
-                      label: "إدارة أسئلة الفئات",
-
-                      path: "/admin/questions",
-                    },
-                  ].map(({ icon: Ic, label, path }) => (
-                    <NavItem
-                      key={label}
-                      icon={Ic}
-                      label={label}
-                      onClick={() => handleNav(path)}
                       indent
                     />
                   ))}

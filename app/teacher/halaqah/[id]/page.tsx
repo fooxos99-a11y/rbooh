@@ -12,9 +12,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { getClientAuthHeaders } from "@/lib/client-auth"
+import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
-import { type AttendanceStatus, type EvaluationLevelValue, type NumericEvaluationLevel, isEvaluatedAttendance, isNonEvaluatedAttendance } from "@/lib/student-attendance"
+import {
+	type AttendanceStatus,
+	type EvaluationLevelValue,
+	type NumericEvaluationLevel,
+	getMemorizationEvaluationTextLabel,
+	getMemorizationEvaluationOptions,
+	isEvaluatedAttendance,
+	isNonEvaluatedAttendance,
+} from "@/lib/student-attendance"
 
 type EvaluationLevel = EvaluationLevelValue
 type EvaluationType = "hafiz" | "tikrar" | "samaa" | "rabet"
@@ -39,10 +47,10 @@ interface EvaluationOption {
 	rabet?: EvaluationLevel
 }
 
-const REPORT_EVALUATION_OPTIONS = Array.from({ length: 11 }, (_, value) => ({
-	level: String(value) as NumericEvaluationLevel,
-	label: String(value),
-}))
+interface MemorizationEvaluationSelectOption {
+	level: NumericEvaluationLevel
+	label: string
+}
 
 const normalizeEvaluationLevel = (level: string | null | undefined): NumericEvaluationLevel => {
 	switch (level) {
@@ -59,6 +67,26 @@ const normalizeEvaluationLevel = (level: string | null | undefined): NumericEval
 		default:
 			return /^(10|[0-9])$/.test(level) ? (level as NumericEvaluationLevel) : "0"
 	}
+}
+
+const appendCurrentEvaluationOption = (
+	options: readonly MemorizationEvaluationSelectOption[],
+	level: string | null | undefined,
+) => {
+	if (!level || level === "null") return [...options]
+
+	const normalizedLevel = normalizeEvaluationLevel(level)
+	if (options.some((option) => option.level === normalizedLevel)) {
+		return [...options]
+	}
+
+	return [
+		{
+			level: normalizedLevel,
+			label: getMemorizationEvaluationTextLabel(level) || normalizedLevel,
+		},
+		...options,
+	]
 }
 
 interface StudentDailyReport {
@@ -157,15 +185,6 @@ interface SavedAttendanceRecord {
 	rabet_to_verse?: string | null
 }
 
-interface MissedDayRecord {
-	date: string
-	content: string
-	hafiz_from_surah?: string | null
-	hafiz_from_verse?: string | null
-	hafiz_to_surah?: string | null
-	hafiz_to_verse?: string | null
-}
-
 function getKsaDateString(baseDate = new Date()) {
 	const formatter = new Intl.DateTimeFormat("en-CA", {
 		timeZone: "Asia/Riyadh",
@@ -183,6 +202,7 @@ function getKsaDateString(baseDate = new Date()) {
 
 const formatReadingDetails = (content?: EvaluationContent | null) => {
 	if (!content) return ""
+	if (content.text?.includes("ما عدا")) return content.text.trim()
 
 	const fromSurah = content.fromSurah?.trim()
 	const toSurah = content.toSurah?.trim()
@@ -228,7 +248,7 @@ const getPlanReadingDetails = (
 	const hafiz = retryStartSessionNumber
 		? getPlanSessionContentRange(plan, retryStartSessionNumber, retryEndSessionNumber || retryStartSessionNumber)
 		: getPlanSessionContent(plan, activeSessionNumber)
-	const supportContent = getPlanSupportSessionContent(plan, progressedDays ?? completedDays) as {
+	const supportContent = getPlanSupportSessionContent(plan, progressedDays ?? completedDays, failedSessionNumbers) as {
 		review?: EvaluationContent | null
 		rabt?: EvaluationContent | null
 	}
@@ -253,6 +273,7 @@ const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendan
 					fromVerse: record.hafiz_from_verse || undefined,
 					toSurah: record.hafiz_to_surah || undefined,
 					toVerse: record.hafiz_to_verse || undefined,
+					text: student.planReadingDetails?.hafiz?.text,
 				},
 			}
 			: {}),
@@ -263,6 +284,7 @@ const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendan
 					fromVerse: record.samaa_from_verse || undefined,
 					toSurah: record.samaa_to_surah || undefined,
 					toVerse: record.samaa_to_verse || undefined,
+					text: student.planReadingDetails?.samaa?.text,
 				},
 			}
 			: {}),
@@ -273,6 +295,7 @@ const mergeSavedAttendance = (student: StudentAttendance, record?: SavedAttendan
 					fromVerse: record.rabet_from_verse || undefined,
 					toSurah: record.rabet_to_surah || undefined,
 					toVerse: record.rabet_to_verse || undefined,
+					text: student.planReadingDetails?.rabet?.text,
 				},
 			}
 			: {}),
@@ -377,6 +400,21 @@ const getDisplayReportSessionNumbersByDate = (student: StudentAttendance) => {
 	return normalizedSessionNumbersByDate
 }
 
+const isRetrySessionNumber = (student: StudentAttendance, sessionNumber?: number | null) => {
+	const normalizedSessionNumber = normalizePlanSessionNumber(sessionNumber)
+	if (!normalizedSessionNumber) {
+		return false
+	}
+
+	return (student.failedSessionNumbers || []).includes(normalizedSessionNumber)
+}
+
+const getReportEvaluationOptions = (student: StudentAttendance, reportDate: string, currentLevel?: string | null) => {
+	const sessionNumber = getDisplayReportSessionNumbersByDate(student)[reportDate]
+	const baseOptions = getMemorizationEvaluationOptions(isRetrySessionNumber(student, sessionNumber))
+	return appendCurrentEvaluationOption(baseOptions, currentLevel)
+}
+
 const getReportMemorizationContent = (student: StudentAttendance, reportDate: string): EvaluationContent | null => {
     if (isSaturdayReviewOnlyDate(reportDate)) {
 		return null
@@ -434,7 +472,7 @@ const getUnsavedSelfReports = (student: StudentAttendance) => {
 
 const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
 	const selectedLevel = student.reportEvaluations?.[reportDate]
-	return selectedLevel !== null && selectedLevel !== undefined
+	return selectedLevel !== null && selectedLevel !== undefined && selectedLevel !== UNSET_REPORT_EVALUATION
 }
 
 const getSelectedUnsavedSelfReports = (student: StudentAttendance) => {
@@ -458,8 +496,14 @@ export default function HalaqahManagement() {
 	const [isLoading, setIsLoading] = useState(true)
 	const router = useRouter()
 	const params = useParams()
+	const todayKsaDate = getKsaDateString()
+	const isAttendanceEntryAllowedToday = (() => {
+		const day = new Date(`${todayKsaDate}T12:00:00+03:00`).getUTCDay()
+		return day === 0 || day === 3
+	})()
 
 	const [teacherData, setTeacherData] = useState<any>(null)
+	const [teacherHalaqah, setTeacherHalaqah] = useState("")
 	const [students, setStudents] = useState<StudentAttendance[]>([])
 	const [hasCircle, setHasCircle] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
@@ -468,10 +512,6 @@ export default function HalaqahManagement() {
 	const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
 	const [notesText, setNotesText] = useState("")
 	const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false)
-        const [isCompDialogOpen, setIsCompDialogOpen] = useState(false)
-	const [compStudentId, setCompStudentId] = useState<string | null>(null)
-		const [missedDays, setMissedDays] = useState<MissedDayRecord[]>([])
-        const [isCompLoading, setIsCompLoading] = useState(false)
 		const [showReadingSegments, setShowReadingSegments] = useState(false)
 		const studentsRef = useRef<StudentAttendance[]>([])
 		const readingSegmentsStorageKey = teacherData?.id
@@ -483,21 +523,27 @@ export default function HalaqahManagement() {
 	useEffect(() => {
 		const loggedIn = localStorage.getItem("isLoggedIn") === "true"
 		const userRole = localStorage.getItem("userRole")
-		const accountNumber = localStorage.getItem("accountNumber")
+		const accountNumber = getClientAccountNumber()
+		const adminLikeRoles = ["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"]
 
-		const allowedRoles = ["teacher", "deputy_teacher", "admin", "supervisor"];
-		if (!loggedIn || !allowedRoles.includes(userRole || "")) {
+		if (!loggedIn || !userRole || !accountNumber) {
 			router.push("/login")
+		} else if (adminLikeRoles.includes(userRole)) {
+			router.replace("/")
+		} else if (!["teacher", "deputy_teacher"].includes(userRole)) {
+			router.push("/login")
+		} else if (!isAttendanceEntryAllowedToday) {
+			setIsLoading(false)
 		} else {
-			fetchTeacherData(accountNumber || "")
+			fetchTeacherData(accountNumber)
 		}
-	}, [router])
+	}, [isAttendanceEntryAllowedToday, router])
 
 	useEffect(() => {
-		if (!teacherData?.halaqah) return
+		if (!teacherHalaqah) return
 
 		const refreshStudentsState = () => {
-			void fetchStudents(teacherData.halaqah)
+			void fetchStudents(teacherHalaqah)
 		}
 
 		const handlePageShow = () => {
@@ -519,7 +565,7 @@ export default function HalaqahManagement() {
 			window.removeEventListener("pageshow", handlePageShow)
 			document.removeEventListener("visibilitychange", handleVisibilityChange)
 		}
-	}, [teacherData?.halaqah])
+	}, [teacherHalaqah])
 
 	useEffect(() => {
 		if (!readingSegmentsStorageKey) return
@@ -541,28 +587,33 @@ export default function HalaqahManagement() {
 
 	const fetchTeacherData = async (accountNumber: string) => {
 		try {
-			const response = await fetch(`/api/teachers?account_number=${accountNumber}`)
+			const response = await fetch(`/api/teachers?account_number=${accountNumber}`, { cache: "no-store" })
+			if (!response.ok) {
+				throw new Error(`Failed to load teacher: ${response.status}`)
+			}
 			const data = await response.json()
 
 			if (data.teachers && data.teachers.length > 0) {
 				const teacher = data.teachers[0]
+				const teacherHalaqah = (teacher.halaqah || teacher.circle_name || "").trim()
 				setTeacherData(teacher)
 
-				if (teacher.halaqah) {
+				if (teacherHalaqah) {
 					setHasCircle(true)
-					fetchStudents(teacher.halaqah)
+					setTeacherHalaqah(teacherHalaqah)
+					setTeacherData({ ...teacher, halaqah: teacherHalaqah })
+					fetchStudents(teacherHalaqah)
 				} else {
+					setTeacherHalaqah("")
 					setHasCircle(false)
 					setIsLoading(false)
 				}
 			} else {
-				setHasCircle(false)
-				setIsLoading(false)
+				router.push("/login")
 			}
 		} catch (error) {
 			console.error("Error fetching teacher data:", error)
-			setHasCircle(false)
-			setIsLoading(false)
+			router.push("/login")
 		}
 	}
 
@@ -614,7 +665,7 @@ export default function HalaqahManagement() {
 				if (studentIds.length > 0) {
 					try {
 						const reportsResponse = await fetch(
-							`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&days=3&exclude_today=true&skip_memorization_off_days=true`,
+							`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
 							{ cache: "no-store" },
 						)
 						const reportsData = await reportsResponse.json()
@@ -626,48 +677,8 @@ export default function HalaqahManagement() {
 					}
 				}
 
-				const uniqueReportDates = Array.from(
-					new Set(
-						Object.values(reportsByStudent)
-							.flat()
-							.map((report) => report.report_date)
-							.filter(Boolean),
-					),
-				)
 				const savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
 				const savedReportDatesMap: Record<string, string[]> = {}
-
-				if (uniqueReportDates.length > 0) {
-					await Promise.all(
-						uniqueReportDates.map(async (reportDate) => {
-							try {
-								const attendanceResponse = await fetch(
-									`/api/attendance-by-date?date=${reportDate}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
-									{ cache: "no-store" },
-								)
-								const attendanceData = await attendanceResponse.json()
-								const records: SavedAttendanceRecord[] = Array.isArray(attendanceData.records) ? attendanceData.records : []
-
-								records.forEach((record) => {
-									if (!savedReportEvaluationMap[record.student_id]) {
-										savedReportEvaluationMap[record.student_id] = {}
-									}
-									savedReportEvaluationMap[record.student_id][reportDate] = record.hafiz_level || null
-									if (record.hafiz_level !== null && record.hafiz_level !== undefined) {
-										if (!savedReportDatesMap[record.student_id]) {
-											savedReportDatesMap[record.student_id] = []
-										}
-										if (!savedReportDatesMap[record.student_id].includes(reportDate)) {
-											savedReportDatesMap[record.student_id].push(reportDate)
-										}
-									}
-								})
-							} catch (attendanceError) {
-								console.error("Error fetching saved attendance by date:", attendanceError)
-							}
-						}),
-					)
-				}
 
 				const localStudentsMap = new Map(studentsRef.current.map((student) => [student.id, student] as const))
 
@@ -728,7 +739,23 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	if (!hasCircle || !teacherData?.halaqah) {
+	if (!isAttendanceEntryAllowedToday) {
+		return (
+			<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+				<Header />
+				<main className="flex-1 py-4 px-4">
+					<div className="container mx-auto max-w-7xl">
+						<div className="flex flex-col items-center justify-center min-h-[400px] text-center">
+							<h1 className="text-3xl font-bold text-[#1a2332]">إدارة الحلقة متاحة يوم الأحد ويوم الأربعاء فقط</h1>
+						</div>
+					</div>
+				</main>
+				<Footer />
+			</div>
+		)
+	}
+
+	if (!hasCircle || !teacherHalaqah) {
 		return (
 			<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
 				<Header />
@@ -827,7 +854,7 @@ export default function HalaqahManagement() {
 	}
 
 	const handleSave = async () => {
-		const refreshedStudents = ((await loadSavedStudentsForToday(teacherData.halaqah, students)) ?? students).filter(
+		const refreshedStudents = ((await loadSavedStudentsForToday(teacherHalaqah, students)) ?? students).filter(
 			(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
 		)
 
@@ -876,7 +903,7 @@ export default function HalaqahManagement() {
 									body: JSON.stringify({
 										student_id: student.id,
 										teacher_id: teacherData.id,
-										halaqah: teacherData.halaqah,
+										halaqah: teacherHalaqah,
 										status: student.attendance,
 										report_date: report.report_date,
 										hafiz_level: student.reportEvaluations?.[report.report_date],
@@ -906,7 +933,7 @@ export default function HalaqahManagement() {
 					const requestBody: any = {
 						student_id: student.id,
 						teacher_id: teacherData.id,
-						halaqah: teacherData.halaqah,
+						halaqah: teacherHalaqah,
 						status: student.attendance,
 						hafiz_level: "0",
 						tikrar_level: "0",
@@ -968,7 +995,7 @@ export default function HalaqahManagement() {
 				throw new Error(blockingError.data?.error || "حدث خطأ أثناء حفظ البيانات")
 			}
 
-			await fetchStudents(teacherData.halaqah)
+			await fetchStudents(teacherHalaqah)
 
 			const successfulSavesCount = saveResults.filter((result) => result.ok).length
 			const duplicateSavesCount = saveResults.filter((result) => result.status === 409).length
@@ -1021,93 +1048,6 @@ export default function HalaqahManagement() {
 		)
 	}
 
-	const loadMissedDays = async (studentId: string) => {
-		setIsCompLoading(true)
-		try {
-			const res = await fetch(`/api/compensation/missed?student_id=${studentId}&t=${Date.now()}`, {
-				cache: "no-store",
-				headers: getClientAuthHeaders(),
-			})
-			const data = await res.json()
-			setMissedDays(data.missedDays || [])
-		} catch (e) {
-			console.error(e)
-			setMissedDays([])
-		} finally {
-			setIsCompLoading(false)
-		}
-	}
-
-	const refreshStudentPlanState = async (studentId: string) => {
-		try {
-			const planResponse = await fetch(`/api/student-plans?student_id=${studentId}&t=${Date.now()}`, {
-				cache: "no-store",
-				headers: getClientAuthHeaders(),
-			})
-			if (!planResponse.ok) return
-
-			const planData: PlanProgressResponse = await planResponse.json()
-			const nextReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0)
-
-			setStudents((prev) =>
-				prev.map((student) =>
-					student.id === studentId
-						? {
-								...student,
-								hasPlan: !!planData?.plan,
-								readingDetails: nextReadingDetails,
-								planReadingDetails: nextReadingDetails,
-							}
-						: student,
-				),
-			)
-		} catch (error) {
-			console.error("Error refreshing student plan after compensation:", error)
-		}
-	}
-
-	const openCompDialog = async (studentId: string) => {
-		setCompStudentId(studentId)
-		setMissedDays([])
-		setIsCompDialogOpen(true)
-		await loadMissedDays(studentId)
-	}
-
-	const handleCompensate = async (missedDay: MissedDayRecord) => {
-		if (!compStudentId) {
-			await showAlert("تعذر تحديد الطالب المطلوب تعويضه", "خطأ")
-			return
-		}
-
-		try {
-			const res = await fetch(`/api/compensation`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
-				body: JSON.stringify({
-					student_id: compStudentId,
-					teacher_id: teacherData.id,
-					halaqah: teacherData.halaqah,
-					date: missedDay.date,
-					hafiz_from_surah: missedDay.hafiz_from_surah || null,
-					hafiz_from_verse: missedDay.hafiz_from_verse || null,
-					hafiz_to_surah: missedDay.hafiz_to_surah || null,
-					hafiz_to_verse: missedDay.hafiz_to_verse || null,
-					compensated_content: missedDay.content,
-				}),
-			})
-			const data = await res.json()
-			if (data.success) {
-				await loadMissedDays(compStudentId)
-				await refreshStudentPlanState(compStudentId)
-				await showAlert("تم التعويض بنجاح.", "نجاح")
-			} else {
-				await showAlert(data.error || "خطأ في التعويض", "خطأ")
-			}
-		} catch (e) {
-			await showAlert("حدث خطأ في النظام", "خطأ")
-		}
-	}
-
 	const openNotesDialog = (studentId: string) => {
 		const student = students.find((s) => s.id === studentId)
 		if (student?.savedToday) return
@@ -1123,7 +1063,7 @@ export default function HalaqahManagement() {
 		setIsNotesDialogOpen(false)
 	}
 
-	const halaqahName = teacherData?.halaqah || "الحلقة"
+	const halaqahName = teacherHalaqah || teacherData?.halaqah || "الحلقة"
 	const savedStudentsCount = students.filter((student) => student.savedToday).length
 	const hasPendingStudents = students.some(isStudentReadyToSave)
 
@@ -1138,6 +1078,10 @@ export default function HalaqahManagement() {
 	}) => {
 		const student = students.find((s) => s.id === studentId)
 		const currentLevel = student?.evaluation?.[type] || null
+		const evaluationOptions = appendCurrentEvaluationOption(
+			getMemorizationEvaluationOptions(type === "hafiz" && !!student?.failedSessionNumbers?.length),
+			currentLevel,
+		)
 		const currentDetails =
 			type === "hafiz" || type === "samaa" || type === "rabet" ? student?.readingDetails?.[type] : null
 		const showsReadingFields = type === "hafiz" || type === "samaa" || type === "rabet"
@@ -1151,8 +1095,10 @@ export default function HalaqahManagement() {
 		const isSavedLocked = !!student?.savedToday
 		const isHafizLocked = type === "hafiz" && !student?.hasPlan
 		const isDisabled = isSavedLocked || isHafizLocked
-		const currentLevelValue = normalizeEvaluationLevel(currentLevel)
-		const currentLevelLabel = REPORT_EVALUATION_OPTIONS.find((option) => option.level === currentLevelValue)?.label || "0"
+		const currentLevelValue = currentLevel ? normalizeEvaluationLevel(currentLevel) : undefined
+		const currentLevelLabel = currentLevelValue
+			? evaluationOptions.find((option) => option.level === currentLevelValue)?.label || "اختر التقييم"
+			: "اختر التقييم"
 		const scoreSelector = (
 			<div className="w-full sm:max-w-[148px] shrink-0">
 				<Select
@@ -1164,7 +1110,7 @@ export default function HalaqahManagement() {
 						<SelectValue>{currentLevelLabel}</SelectValue>
 					</SelectTrigger>
 					<SelectContent dir="rtl">
-						{REPORT_EVALUATION_OPTIONS.map((option) => (
+						{evaluationOptions.map((option) => (
 							<SelectItem key={`${studentId}-${type}-${option.level}`} value={option.level} className="text-right text-sm">
 								{option.label}
 							</SelectItem>
@@ -1229,7 +1175,7 @@ export default function HalaqahManagement() {
 
 					{students.length === 0 ? (
 						<div className="rounded-[28px] border border-[#D4AF37]/20 bg-white/90 px-6 py-12 text-center shadow-sm">
-							<p className="text-lg font-bold text-[#1a2332]">لا يوجد طلاب لديهم تنفيذ فعلي في آخر 3 أيام بعد اعتماد حضورهم اليوم</p>
+							<p className="text-lg font-bold text-[#1a2332]">لا توجد تقارير تنفيذ معلقة للتسميع بعد اعتماد حضورهم اليوم</p>
 						</div>
 					) : (
 						<>
@@ -1264,15 +1210,6 @@ export default function HalaqahManagement() {
 														<div className="flex items-center gap-2">
 															<Button
 																variant="outline"
-																onClick={() => openCompDialog(student.id)}
-																title="تعويض الحفظ"
-																disabled={student.savedToday}
-																className="h-8 w-8 rounded-full border-[#D4AF37]/70 bg-white text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800"
-															>
-																<RotateCcw className="h-3.5 w-3.5" />
-															</Button>
-															<Button
-																variant="outline"
 																onClick={() => openNotesDialog(student.id)}
 																title="الملاحظات"
 																disabled={student.savedToday}
@@ -1303,34 +1240,41 @@ export default function HalaqahManagement() {
 																	.map((report) => (
 																	<div key={report.id} className="grid gap-3 rounded-[22px] bg-white px-3 py-3 shadow-sm ring-1 ring-[#D4AF37]/10 md:grid-cols-[minmax(0,1fr)_128px] md:items-center">
 																		<div className="min-w-0 text-right">
-																			<p className="text-sm font-black text-[#1a2332]">{formatExecutionDay(report.report_date)}</p>
+																			{isRetrySessionNumber(student, getDisplayReportSessionNumbersByDate(student)[report.report_date]) && (
+																				<p className="text-xs font-extrabold text-[#b06f00]">إعادة حفظ</p>
+																			)}
 																			{showReadingSegments && (
-																				<p className={`mt-1 text-sm font-semibold ${report.memorization_done ? "text-emerald-700" : "text-[#8b6b3f]"}`}>
+																				<p className={`${isRetrySessionNumber(student, getDisplayReportSessionNumbersByDate(student)[report.report_date]) ? "mt-1" : ""} text-sm font-semibold ${report.memorization_done ? "text-emerald-700" : "text-[#8b6b3f]"}`}>
 																					{getReportMemorizationSegment(student, report.report_date)}
 																				</p>
 																			)}
 																		</div>
 																		<div className="rounded-[20px] border border-[#D4AF37]/18 bg-[#fffaf0] px-3 py-2">
 																			<p className="mb-2 text-right text-[11px] font-extrabold tracking-[0.08em] text-[#a8842d]">التقييم</p>
+																			{(() => {
+																				const reportEvaluationOptions = getReportEvaluationOptions(student, report.report_date, student.reportEvaluations?.[report.report_date])
+																				return (
 																			<Select
-																				value={student.reportEvaluations?.[report.report_date]}
+																				value={student.reportEvaluations?.[report.report_date] ?? UNSET_REPORT_EVALUATION}
 																				onValueChange={(value) => setReportEvaluation(student.id, report.report_date, value === UNSET_REPORT_EVALUATION ? undefined : value as EvaluationLevel)}
 																				disabled={(student.savedReportDates || []).includes(report.report_date)}
 																			>
 																				<SelectTrigger className="h-11 w-full rounded-2xl border-[#D4AF37]/45 bg-white px-3 text-base font-black text-[#1a2332] shadow-none focus:ring-[#D4AF37]/20" dir="rtl">
-																					<SelectValue placeholder="-" />
+																					<SelectValue />
 																				</SelectTrigger>
 																				<SelectContent dir="rtl">
 																					<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
-																						-
+																						لم يقيم
 																					</SelectItem>
-																					{REPORT_EVALUATION_OPTIONS.map((option) => (
+																						{reportEvaluationOptions.map((option) => (
 																						<SelectItem key={`${report.id}-${option.level}`} value={option.level} className="text-right text-sm">
 																							{option.label}
 																						</SelectItem>
 																					))}
 																				</SelectContent>
 																			</Select>
+																				)
+																			})()}
 																		</div>
 																	</div>
 																	))}
@@ -1358,7 +1302,7 @@ export default function HalaqahManagement() {
 								<Button
 									onClick={handleSave}
 									variant="outline"
-									className="text-base h-12 px-8 rounded-lg transition-all border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] hover:text-neutral-800"
+									className="text-base h-12 px-8 rounded-lg bg-[#3453a7] hover:bg-[#27428d] border-[#3453a7] text-white"
 									disabled={isSaving || !hasPendingStudents}
 								>
 									{saveStatus === "saving"
@@ -1376,38 +1320,7 @@ export default function HalaqahManagement() {
 			<Footer />
 
 			{/* Notes Dialog */}
-			
-                        <Dialog open={isCompDialogOpen} onOpenChange={setIsCompDialogOpen}>
-                                <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto" dir="rtl">
-                                        <DialogTitle className="text-xl font-bold text-center text-[#1a2332] mb-4">تعويض الحفظ السابق</DialogTitle>
-                                        <div className="space-y-4">
-                                                {isCompLoading ? (
-													<div className="flex justify-center items-center py-6"><SiteLoader size="sm" /></div>
-                                                ) : missedDays.length === 0 ? (
-                                                        <div className="text-center text-[#D4AF37] font-bold py-6">لا يوجد أيام تم التفريط فيها</div>
-                                                ) : (
-                                                        <div className="space-y-3">
-																{missedDays.map((md, idx) => (
-                                                                        <div key={idx} className="flex items-center justify-between bg-neutral-50 p-3 rounded-lg border border-neutral-200">
-                                                                                <div>
-                                                                                        <p className="font-semibold text-sm text-[#1a2332] mb-1">{md.content}</p>
-                                                                                </div>
-                                                                                <Button 
-                                                                                        size="sm" 
-																			onClick={() => handleCompensate(md)}
-																					className="rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 px-3 py-1 h-8 text-xs font-medium text-[#C9A961] transition-colors hover:bg-[#D4AF37]/20 shrink-0"
-                                                                                >
-																					تعويض
-                                                                                </Button>
-                                                                        </div>
-                                                                ))}
-                                                        </div>
-                                                )}
-                                        </div>
-                                </DialogContent>
-                        </Dialog>
-
-                        <Dialog open={isNotesDialogOpen} onOpenChange={setIsNotesDialogOpen}>
+			<Dialog open={isNotesDialogOpen} onOpenChange={setIsNotesDialogOpen}>
 				<DialogContent className="max-w-md" dir="rtl">
 					<DialogTitle className="sr-only">الملاحظات</DialogTitle>
 					<div className="space-y-4 pt-4">
@@ -1428,7 +1341,7 @@ export default function HalaqahManagement() {
 							<Button
 								variant="outline"
 								onClick={saveNotes}
-								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600 hover:bg-[#D4AF37]/20 hover:border-[#D4AF37] hover:text-neutral-800"
+								className="text-sm h-9 rounded-lg bg-[#3453a7] hover:bg-[#27428d] border-[#3453a7] text-white"
 							>
 								حفظ الملاحظة
 							</Button>

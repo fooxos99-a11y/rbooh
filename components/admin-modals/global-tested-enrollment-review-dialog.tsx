@@ -169,7 +169,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
         <DialogHeader className="px-5 py-4 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent text-right shrink-0">
           <DialogTitle className="flex w-full justify-start pr-8 text-right text-lg font-bold text-[#1a2332]">
             <span className="inline-flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
+              <span className="w-8 h-8 rounded-lg bg-[#003f55]/10 border border-[#003f55]/20 flex items-center justify-center text-[#003f55]">
                 <Eye className="w-4 h-4" />
               </span>
               <span>العرض</span>
@@ -255,9 +255,9 @@ export function GlobalTestedEnrollmentReviewDialog() {
                             <SelectValue placeholder="اختر النتيجة" />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="needs_mastery">إتقان</SelectItem>
                             <SelectItem value="pass">ناجح</SelectItem>
                             <SelectItem value="fail">راسب</SelectItem>
-                            <SelectItem value="needs_mastery">اتقان</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -276,7 +276,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
                         يحتاج إلى إتقان: {getNeedsMasteryJuzNumbers(selectedRequest.juz_test_results, reviewResults).length}
                       </span>
                     </div>
-                    <Button onClick={handleSave} disabled={isSaving} className="bg-[#D4AF37] hover:bg-[#c39a2e] text-white">
+                    <Button onClick={handleSave} disabled={isSaving} className="bg-[#3453a7] hover:bg-[#27428d] text-white">
                       <Save className="w-4 h-4 ml-2" />
                       {isSaving ? "جارٍ الحفظ..." : "حفظ العرض"}
                     </Button>

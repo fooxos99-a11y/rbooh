@@ -3,6 +3,9 @@ import { NextResponse } from "next/server"
 import { ensureStudentPathwayLevels } from "@/lib/pathway-levels"
 import { createAdminClient } from "@/lib/supabase/admin"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 function getSupabaseErrorMessage(error: unknown) {
   if (!error) return "حدث خطأ غير معروف";
 

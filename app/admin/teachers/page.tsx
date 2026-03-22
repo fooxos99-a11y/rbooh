@@ -234,13 +234,13 @@ export default function TeacherManagement() {
           <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.push("/admin/dashboard")}
+                onClick={() => router.push("/")}
                 className="w-9 h-9 rounded-lg border border-[#D4AF37]/40 flex items-center justify-center text-[#C9A961] hover:bg-[#D4AF37]/10 transition-colors"
               >
                 <ArrowRight className="w-4 h-4" />
               </button>
-              <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/40 flex items-center justify-center">
-                <Settings className="w-5 h-5 text-[#D4AF37]" />
+              <div className="w-10 h-10 flex items-center justify-center">
+                <Settings className="w-5 h-5 text-[#003f55]" />
               </div>
               <h1 className="text-2xl font-bold text-[#1a2332]">إدارة المعلمين</h1>
             </div>
@@ -248,7 +248,7 @@ export default function TeacherManagement() {
             {/* Add Teacher Dialog */}
             <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
               <DialogTrigger asChild>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors">
+                <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#3453a7] hover:bg-[#27428d] text-white text-sm font-semibold transition-colors">
                   <UserPlus className="w-4 h-4" />
                   إضافة
                 </button>
@@ -294,8 +294,8 @@ export default function TeacherManagement() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-                  <Button onClick={handleAddTeacher} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">حفظ</Button>
+                  <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+                  <Button onClick={handleAddTeacher} className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white">حفظ</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -326,8 +326,8 @@ export default function TeacherManagement() {
                   </div>
                 </div>
                 <div className="flex justify-end gap-3">
-                  <Button variant="outline" onClick={() => { setIsEditDialogOpen(false); setEditingTeacher(null) }} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-                  <Button onClick={handleSaveEdit} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">حفظ التعديلات</Button>
+                  <Button variant="outline" onClick={() => { setIsEditDialogOpen(false); setEditingTeacher(null) }} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+                  <Button onClick={handleSaveEdit} className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white">حفظ التعديلات</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -340,8 +340,8 @@ export default function TeacherManagement() {
             </div>
           ) : teachers.length === 0 ? (
             <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-16 text-center">
-              <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center mx-auto mb-4">
-                <Settings className="w-7 h-7 text-[#D4AF37]" />
+              <div className="w-14 h-14 flex items-center justify-center mx-auto mb-4">
+                <Settings className="w-7 h-7 text-[#003f55]" />
               </div>
               <p className="text-lg font-semibold text-neutral-500">لا يوجد معلمون حالياً</p>
               <p className="text-sm text-neutral-400 mt-1">قم بإضافة معلم جديد للبدء</p>
@@ -349,8 +349,8 @@ export default function TeacherManagement() {
           ) : (
             <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
               <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-[#D4AF37]" />
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-base font-bold text-[#1a2332]">قائمة المعلمين</h2>
               </div>
@@ -360,8 +360,8 @@ export default function TeacherManagement() {
                     <div className="flex items-center justify-between gap-4">
                       {/* Avatar + Name */}
                       <div className="flex items-center gap-4 min-w-0">
-                        <div className="w-11 h-11 rounded-full bg-[#D4AF37]/15 border border-[#D4AF37]/40 flex items-center justify-center shrink-0">
-                          <User className="w-5 h-5 text-[#D4AF37]" />
+                        <div className="w-11 h-11 flex items-center justify-center shrink-0">
+                          <User className="w-5 h-5 text-[#003f55]" />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">

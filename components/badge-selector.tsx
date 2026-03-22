@@ -48,11 +48,9 @@ const BADGES = [
 export function BadgeSelector({ studentId }: BadgeSelectorProps) {
   const [activeBadge, setActiveBadge] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [purchases, setPurchases] = useState<string[]>([])
 
   useEffect(() => {
     fetchActiveBadge()
-    fetchPurchases()
   }, [studentId])
 
   const fetchActiveBadge = async () => {
@@ -68,26 +66,7 @@ export function BadgeSelector({ studentId }: BadgeSelectorProps) {
     }
   }
 
-  const fetchPurchases = async () => {
-    const cached: string[] = JSON.parse(localStorage.getItem(`purchases_${studentId}`) || '[]')
-    try {
-      const response = await fetch(`/api/purchases?student_id=${studentId}`)
-      const data = await response.json()
-      const dbPurchases: string[] = Array.isArray(data.purchases) ? data.purchases : []
-      const merged = [...new Set([...cached, ...dbPurchases])]
-      setPurchases(merged)
-      localStorage.setItem(`purchases_${studentId}`, JSON.stringify(merged))
-    } catch (error) {
-      console.error("Error fetching purchases:", error)
-      setPurchases(cached)
-    }
-  }
-
   const handleBadgeSelect = async (badgeId: string) => {
-    if (badgeId !== "badge_none" && !purchases.includes(badgeId)) {
-      return
-    }
-
     setIsLoading(true)
     try {
       console.log("[v0] Saving badge:", badgeId)
@@ -132,7 +111,7 @@ export function BadgeSelector({ studentId }: BadgeSelectorProps) {
       <p className="text-sm text-[#1a2332]/60 mb-4">اختر شارة تظهر بجانب اسمك في لائحة الترتيب</p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {BADGES.filter((badge) => badge.id === "badge_none" || purchases.includes(badge.id)).map((badge) => {
+        {BADGES.map((badge) => {
           const isActive = activeBadge === badge.id
           return (
             <button
@@ -166,7 +145,7 @@ export function BadgeSelector({ studentId }: BadgeSelectorProps) {
         })}
       </div>
 
-      {isLoading && <div className="mt-4 text-center text-sm text-[#d8a355]">جاري الحفظ...</div>}
+      {isLoading && <div className="mt-4 text-center text-sm text-[#003f55]">جاري الحفظ...</div>}
     </div>
   )
 }

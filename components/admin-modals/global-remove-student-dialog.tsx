@@ -114,7 +114,7 @@ export function GlobalRemoveStudentDialog() {
 			toast({
 				title: "✓ تم الحذف بنجاح",
 				description: `تم إزالة الطالب ${studentName} من ${selectedCircleToRemove} بنجاح`,
-				className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+				className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
 			})
 
 			setSelectedStudentToRemove("")
@@ -137,7 +137,7 @@ export function GlobalRemoveStudentDialog() {
 				<DialogHeader className="space-y-0 text-right">
 					<DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
 						<span className="inline-flex items-center gap-2">
-							<UserMinus className="w-5 h-5 text-[#C9A961]" />
+							<UserMinus className="w-5 h-5 text-[#003f55]" />
 							<span>إزالة طالب</span>
 						</span>
 					</DialogTitle>
@@ -185,13 +185,13 @@ export function GlobalRemoveStudentDialog() {
 					<Button
 						variant="outline"
 						onClick={() => handleClose(false)}
-						className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+						className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600"
 					>
 						إلغاء
 					</Button>
 					<Button
 						onClick={handleRemoveStudent}
-						className="text-sm h-9 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
+						className="text-sm h-9 rounded-lg bg-[#3453a7] hover:bg-[#27428d] text-white font-medium disabled:opacity-50"
 						disabled={!selectedStudentToRemove || !selectedCircleToRemove || isSubmitting}
 					>
 						{isSubmitting ? "جاري الإزالة..." : "إزالة"}

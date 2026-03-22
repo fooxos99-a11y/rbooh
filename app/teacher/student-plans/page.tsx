@@ -16,7 +16,7 @@ import { BookMarked, Plus, Trash2, Target, Users, ChevronDown, Check } from "luc
 import { SURAHS, calculateTotalDays, calculateTotalPages, getContiguousCompletedJuzRange, getJuzBounds, getJuzNumbersForPageRange, getNextAyahReference, hasScatteredCompletedJuzs, getPageFloatForAyah, getPlanMemorizedRange, getSurahJuzNumbers, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { formatJuzList } from "@/lib/enrollment-test-utils"
-import { getClientAuthHeaders } from "@/lib/client-auth"
+import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 
 interface Student {
   id: string
@@ -69,6 +69,7 @@ const RABT_OPTIONS = [
   { value: "10", label: "نصف جزء" },
   { value: "20", label: "جزء واحد" },
   { value: "40", label: "جزئين" },
+  { value: "60", label: "3 أجزاء" },
 ]
 
 const DAILY_OPTIONS = [
@@ -475,15 +476,27 @@ export default function TeacherStudentPlansPage() {
     const init = async () => {
       const loggedIn = localStorage.getItem("isLoggedIn") === "true"
       const role = localStorage.getItem("userRole")
-      const accNum = localStorage.getItem("accountNumber")
+      const accNum = getClientAccountNumber()
 
-      if (!loggedIn || role !== "teacher" || !accNum) {
+      const adminLikeRoles = ["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"]
+
+      if (!loggedIn || !role || !accNum) {
+        router.push("/login")
+        return
+      }
+
+      if (adminLikeRoles.includes(role)) {
+        router.replace("/admin/student-plans")
+        return
+      }
+
+      if (!["teacher", "deputy_teacher"].includes(role)) {
         router.push("/login")
         return
       }
 
       try {
-        const res = await fetch(`/api/teachers?account_number=${accNum}`)
+        const res = await fetch(`/api/teachers?account_number=${accNum}`, { cache: "no-store" })
         const data = await res.json()
         const teacher = data.teachers?.[0]
         if (!teacher) {
@@ -494,7 +507,7 @@ export default function TeacherStudentPlansPage() {
         const teacherHalaqah = (teacher.halaqah || teacher.circle_name || "").trim()
         setHalaqah(teacherHalaqah)
 
-        const studentsRes = await fetch(`/api/students?circle=${encodeURIComponent(teacherHalaqah)}`)
+        const studentsRes = await fetch(`/api/students?circle=${encodeURIComponent(teacherHalaqah)}`, { cache: "no-store" })
         const studentsData = await studentsRes.json()
         const circleStudents: Student[] = studentsData.students || []
         setStudents(circleStudents)
@@ -517,7 +530,16 @@ export default function TeacherStudentPlansPage() {
     await Promise.all(
       studentList.map(async (student) => {
         try {
-          const res = await fetch(`/api/student-plans?student_id=${student.id}`, { headers: getClientAuthHeaders() })
+          const res = await fetch(`/api/student-plans?student_id=${student.id}`, {
+            cache: "no-store",
+            headers: getClientAuthHeaders(),
+          })
+          if (!res.ok) {
+            plans[student.id] = null
+            progress[student.id] = 0
+            completedDays[student.id] = 0
+            return
+          }
           const data = await res.json()
           plans[student.id] = data.plan || null
           progress[student.id] = data.progressPercent || 0
@@ -1065,9 +1087,9 @@ export default function TeacherStudentPlansPage() {
       <Header />
       <main className="flex-1 py-10 px-4">
         <div className="container mx-auto max-w-3xl space-y-6">
-          <div className="border-b border-[#D4AF37]/40 pb-5 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-              <BookMarked className="w-5 h-5 text-[#D4AF37]" />
+          <div className="border-b border-[#3453a7]/20 pb-5 flex items-center gap-3">
+            <div className="w-10 h-10 flex items-center justify-center">
+              <BookMarked className="w-5 h-5 text-[#003f55]" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-[#1a2332]">خطط الطلاب</h1>
@@ -1087,8 +1109,8 @@ export default function TeacherStudentPlansPage() {
               <p className="font-medium">لا يوجد طلاب في حلقتك</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="divide-y divide-[#D4AF37]/15">
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="divide-y divide-[#3453a7]/10">
                 {students.map((student) => {
                   const plan = studentPlans[student.id]
                   const progress = studentProgress[student.id] || 0
@@ -1111,7 +1133,7 @@ export default function TeacherStudentPlansPage() {
                         {plan ? (
                           <div className="space-y-1.5">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] font-semibold bg-[#D4AF37]/10 text-[#C9A961] border border-[#D4AF37]/30 rounded-md px-1.5 py-0.5 shrink-0">
+                              <span className="text-[10px] font-semibold bg-[#3453a7]/8 text-[#3453a7] border border-[#3453a7]/20 rounded-md px-1.5 py-0.5 shrink-0">
                                 {dailyLabel(plan.daily_pages)}
                               </span>
                               <p className="text-xs text-neutral-500 truncate">
@@ -1148,7 +1170,7 @@ export default function TeacherStudentPlansPage() {
                         )}
                         <button
                           onClick={() => openAddDialog(student)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] border border-[#D4AF37]/30 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[#3453a7] hover:bg-[#27428d] text-white border border-[#3453a7] transition-colors"
                         >
                           <Plus className="w-3.5 h-3.5" />
                           {plan ? "تعديل الخطة" : "إضافة خطة"}
@@ -1165,9 +1187,9 @@ export default function TeacherStudentPlansPage() {
 
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent showCloseButton={false} className="max-w-md bg-white rounded-2xl p-0 overflow-hidden" dir="rtl">
-          <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
+          <DialogHeader className="px-6 py-5 border-b border-[#3453a7]/20 bg-gradient-to-r from-[#3453a7]/6 to-transparent">
             <DialogTitle className="flex w-full items-center justify-start gap-2 pl-1 text-left text-lg font-bold text-[#1a2332]">
-              <Target className="w-5 h-5 text-[#D4AF37]" />
+              <Target className="w-5 h-5 text-[#003f55]" />
               {isEditingPlan ? "تعديل خطة حفظ" : "إضافة خطة حفظ"}{selectedStudent ? ` — ${selectedStudent.name}` : ""}
             </DialogTitle>
           </DialogHeader>
@@ -1179,7 +1201,7 @@ export default function TeacherStudentPlansPage() {
               </div>
             )}
             {!isMasteryOnlyStudent && (
-            <div className="space-y-2 pt-2 pb-2 border-y border-[#D4AF37]/20">
+            <div className="space-y-2 pt-2 pb-2 border-y border-[#3453a7]/15">
               {!shouldHidePreviousToggle && (
                 <label
                   className="plan-history-checkbox text-sm font-semibold text-[#1a2332]"
@@ -1205,7 +1227,7 @@ export default function TeacherStudentPlansPage() {
               )}
 
               {hasPrevious && !(isEditingPlan && isPreviousLocked) && (
-                <div className="bg-[#D4AF37]/5 p-3 rounded-xl border border-[#D4AF37]/20 space-y-3 mt-2">
+                <div className="bg-[#3453a7]/4 p-3 rounded-xl border border-[#3453a7]/15 space-y-3 mt-2">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5 flex flex-col w-full">
                       <label className="text-xs font-semibold text-[#1a2332]">بداية الحفظ السابق</label>
@@ -1217,7 +1239,7 @@ export default function TeacherStudentPlansPage() {
                             <button
                               type="button"
                               disabled={isPreviousLocked}
-                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#3453a7]/25 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
                             >
                               <span className={prevStartSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevStartSurah
@@ -1228,7 +1250,7 @@ export default function TeacherStudentPlansPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-48 p-0" align="start" dir="rtl">
-                            <Command className="overflow-visible border-[#D4AF37]/20">
+                            <Command className="overflow-visible border-[#3453a7]/15">
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
@@ -1244,7 +1266,7 @@ export default function TeacherStudentPlansPage() {
                                     }}
                                   >
                                     {surah.name}
-                                    {prevStartSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#D4AF37]" />}
+                                    {prevStartSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
                                   </CommandItem>
                                 ))}
                               </CommandList>
@@ -1253,7 +1275,7 @@ export default function TeacherStudentPlansPage() {
                         </Popover>
 
                         <Select value={prevStartVerse} onValueChange={setPrevStartVerse} disabled={isPreviousLocked || !prevStartSurah || prevStartVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-9 border-[#3453a7]/25 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
@@ -1277,7 +1299,7 @@ export default function TeacherStudentPlansPage() {
                             <button
                               type="button"
                               disabled={isPreviousLocked}
-                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#D4AF37]/40 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#D4AF37]"}`}
+                              className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#3453a7]/25 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
                             >
                               <span className={prevEndSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                                 {prevEndSurah
@@ -1288,7 +1310,7 @@ export default function TeacherStudentPlansPage() {
                             </button>
                           </PopoverTrigger>
                           <PopoverContent className="w-48 p-0" align="start" dir="rtl">
-                            <Command className="overflow-visible border-[#D4AF37]/20">
+                            <Command className="overflow-visible border-[#3453a7]/15">
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
@@ -1304,7 +1326,7 @@ export default function TeacherStudentPlansPage() {
                                     }}
                                   >
                                     {surah.name}
-                                    {prevEndSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#D4AF37]" />}
+                                    {prevEndSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
                                   </CommandItem>
                                 ))}
                               </CommandList>
@@ -1313,7 +1335,7 @@ export default function TeacherStudentPlansPage() {
                         </Popover>
 
                         <Select value={prevEndVerse} onValueChange={setPrevEndVerse} disabled={isPreviousLocked || !prevEndSurah || prevEndVerseOptions.length === 0}>
-                          <SelectTrigger className="w-[80px] h-9 border-[#D4AF37]/40 text-xs bg-white px-2" dir="rtl">
+                          <SelectTrigger className="w-[80px] h-9 border-[#3453a7]/25 text-xs bg-white px-2" dir="rtl">
                             <SelectValue placeholder="الآية" />
                           </SelectTrigger>
                           <SelectContent dir="rtl" className="max-h-48">
@@ -1339,7 +1361,7 @@ export default function TeacherStudentPlansPage() {
                   <div className="flex-1">
                     <Popover open={startOpen} onOpenChange={setStartOpen}>
                       <PopoverTrigger asChild>
-                        <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#D4AF37]/40 text-sm bg-white text-right hover:border-[#D4AF37] transition-colors">
+                        <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#3453a7]/25 text-sm bg-white text-right hover:border-[#3453a7] transition-colors">
                           <span className={startSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                             {startSurah ? SURAHS.find((surah) => surah.number === parseInt(startSurah))?.name : "اختر السورة"}
                           </span>
@@ -1363,7 +1385,7 @@ export default function TeacherStudentPlansPage() {
                                 className="flex items-center justify-between"
                               >
                                 {surah.name}
-                                {startSurah === String(surah.number) && <Check className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                                {startSurah === String(surah.number) && <Check className="w-3.5 h-3.5 text-[#003f55]" />}
                               </CommandItem>
                             ))}
                           </CommandList>
@@ -1373,7 +1395,7 @@ export default function TeacherStudentPlansPage() {
                   </div>
 
                   <Select value={startVerse} onValueChange={setStartVerse} disabled={!startSurah || startVerseOptions.length === 0}>
-                    <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
+                    <SelectTrigger className="w-[80px] h-10 border-[#3453a7]/25 hover:border-[#3453a7] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                       <SelectValue placeholder="الآية" />
                     </SelectTrigger>
                     <SelectContent className="max-h-48" dir="rtl">
@@ -1393,7 +1415,7 @@ export default function TeacherStudentPlansPage() {
                   <div className="flex-1">
                     <Popover open={endOpen} onOpenChange={setEndOpen}>
                       <PopoverTrigger asChild>
-                        <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#D4AF37]/40 text-sm bg-white text-right hover:border-[#D4AF37] transition-colors">
+                        <button className="w-full flex items-center justify-between px-3 h-10 rounded-xl border border-[#3453a7]/25 text-sm bg-white text-right hover:border-[#3453a7] transition-colors">
                           <span className={isEndValid ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
                             {isEndValid ? SURAHS.find((surah) => surah.number === parseInt(endSurah))?.name : "اختر السورة"}
                           </span>
@@ -1417,7 +1439,7 @@ export default function TeacherStudentPlansPage() {
                                 className="flex items-center justify-between"
                               >
                                 {surah.name}
-                                {endSurah === String(surah.number) && <Check className="w-3.5 h-3.5 text-[#D4AF37]" />}
+                                {endSurah === String(surah.number) && <Check className="w-3.5 h-3.5 text-[#003f55]" />}
                               </CommandItem>
                             ))}
                           </CommandList>
@@ -1427,7 +1449,7 @@ export default function TeacherStudentPlansPage() {
                   </div>
 
                   <Select value={endVerse} onValueChange={setEndVerse} disabled={!endSurah || endVerseOptions.length === 0}>
-                    <SelectTrigger className="w-[80px] h-10 border-[#D4AF37]/40 hover:border-[#D4AF37] transition-colors rounded-xl bg-white text-sm" dir="rtl">
+                    <SelectTrigger className="w-[80px] h-10 border-[#3453a7]/25 hover:border-[#3453a7] transition-colors rounded-xl bg-white text-sm" dir="rtl">
                       <SelectValue placeholder="الآية" />
                     </SelectTrigger>
                     <SelectContent className="max-h-48" dir="rtl">
@@ -1447,7 +1469,7 @@ export default function TeacherStudentPlansPage() {
               <div className="space-y-1.5 flex min-w-0 flex-col w-full">
                 <label className="text-sm font-semibold text-[#1a2332]">المقدار اليومي</label>
                 <Select value={dailyPages} onValueChange={setDailyPages}>
-                  <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
+                  <SelectTrigger className="border-[#3453a7]/25 focus:border-[#3453a7] rounded-xl text-right bg-white" dir="rtl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent dir="rtl">
@@ -1463,7 +1485,7 @@ export default function TeacherStudentPlansPage() {
               <div className="space-y-1.5 min-w-0">
                 <label className="text-sm font-semibold text-[#1a2332]">طريقة المراجعة</label>
                 <Select value={muraajaaPages} onValueChange={setMuraajaaPages} dir="rtl">
-                  <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
+                  <SelectTrigger className="border-[#3453a7]/25 focus:border-[#3453a7] rounded-xl text-right bg-white" dir="rtl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent dir="rtl">
@@ -1479,7 +1501,7 @@ export default function TeacherStudentPlansPage() {
               <div className="space-y-1.5 min-w-0">
                 <label className="text-sm font-semibold text-[#1a2332]">مقدار الربط اليومي</label>
                 <Select value={rabtPages} onValueChange={setRabtPages} dir="rtl">
-                  <SelectTrigger className="border-[#D4AF37]/40 focus:border-[#D4AF37] rounded-xl text-right bg-white" dir="rtl">
+                  <SelectTrigger className="border-[#3453a7]/25 focus:border-[#3453a7] rounded-xl text-right bg-white" dir="rtl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent dir="rtl">
@@ -1514,7 +1536,7 @@ export default function TeacherStudentPlansPage() {
                 : SURAHS.find((surah) => surah.number === Math.min(parseInt(startSurah), parseInt(endSurah)))
 
               return (
-                <div className="rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/30 p-4 space-y-3">
+                <div className="rounded-xl bg-[#3453a7]/4 border border-[#3453a7]/18 p-4 space-y-3">
                   <p className="text-xs font-bold text-[#D4AF37]">معاينة الخطة</p>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-semibold text-xs">تبدأ من</span>
@@ -1555,19 +1577,19 @@ export default function TeacherStudentPlansPage() {
             )}
           </div>
 
-          <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
+          <div className="px-6 py-4 border-t border-[#3453a7]/15 flex gap-3">
             <Button
               variant="outline"
               onClick={handleSavePlan}
               disabled={isSaving || !startSurah || !endSurah}
-              className="flex-1 border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+              className="flex-1 border-[#3453a7]/25 text-neutral-600 rounded-xl h-10"
             >
               {isSaving ? "جاري الحفظ..." : "حفظ الخطة"}
             </Button>
             <Button
               variant="outline"
               onClick={() => setAddDialogOpen(false)}
-              className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+              className="border-[#003f55]/20 text-neutral-600 rounded-xl h-10 hover:bg-[#003f55]/8"
             >
               إلغاء
             </Button>
@@ -1611,7 +1633,7 @@ export default function TeacherStudentPlansPage() {
           </div>
 
           <div className="px-6 py-4 border-t border-neutral-200 flex justify-end">
-            <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-neutral-300">
+            <Button variant="outline" onClick={() => setResetDialogOpen(false)} className="rounded-xl border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8">
               إغلاق
             </Button>
           </div>

@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserPlus, UserMinus } from "lucide-react"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { getClientAccountNumber } from "@/lib/client-auth"
 
 export default function TeacherDashboard() {
   const [isLoading, setIsLoading] = useState(true)
@@ -45,7 +46,7 @@ export default function TeacherDashboard() {
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const userRole = localStorage.getItem("userRole")
-    const accountNumber = localStorage.getItem("accountNumber")
+    const accountNumber = getClientAccountNumber()
 
     if (!loggedIn || (userRole !== "teacher" && userRole !== "deputy_teacher")) {
       router.push("/login")
@@ -56,7 +57,7 @@ export default function TeacherDashboard() {
 
   const fetchTeacherData = async (accountNumber: string) => {
     try {
-      const response = await fetch(`/api/teachers?account_number=${accountNumber}`)
+      const response = await fetch(`/api/teachers?account_number=${accountNumber}`, { cache: "no-store" })
       const data = await response.json()
 
       if (data.teachers && data.teachers.length > 0) {

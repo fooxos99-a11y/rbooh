@@ -204,7 +204,7 @@ export function StudentRankCard({
             {showName ? (
               <div className="min-w-0 flex-1 text-right">
                 <div className="flex items-center gap-2">
-                  <h3 className={`truncate font-black tracking-tight text-[#173d3a] ${nameClass}`} style={{ fontFamily }}>
+                  <h3 className={`truncate font-black tracking-tight text-[#003f55] ${nameClass}`} style={{ fontFamily }}>
                     {name}
                   </h3>
                   {activeBadge ? (

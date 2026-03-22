@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getBuraidahAsrTime, getTeacherAttendanceTimingStatus } from "@/lib/prayer-times"
+import { getBuraidahIshaTime, getTeacherAttendanceTimingStatus } from "@/lib/prayer-times"
 import { getTeacherAttendanceDelayMinutes } from "@/lib/site-settings"
 import { getSaudiDateString } from "@/lib/saudi-time"
 
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const graceMinutes = await getTeacherAttendanceDelayMinutes()
     const saudiToday = getSaudiDateString()
-    const todayAsrTime = await getBuraidahAsrTime(saudiToday)
+    const todayIshaTime = await getBuraidahIshaTime(saudiToday)
 
     const { data, error } = await supabase
       .from("teacher_attendance")
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
           console.error("[teacher-attendance/all] Error enriching timing status:", timingError)
           return {
             ...record,
-            asrTime: null,
+            ishaTime: null,
             graceDeadline: null,
             checkInTimeLocal: null,
             isLate: null,
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       meta: {
         city: "بريدة",
         graceMinutes,
-        todayAsrTime,
+        todayIshaTime,
         todayDate: saudiToday,
       },
     })

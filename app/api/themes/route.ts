@@ -1,18 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = 'force-dynamic'
-
-const getSupabase = () =>
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-  )
 
 // GET: جلب المظاهر من Supabase
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabase()
+    const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
 
@@ -54,7 +48,7 @@ export async function GET(request: NextRequest) {
 // POST: حفظ مظهر طالب في Supabase
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabase()
+    const supabase = await createClient()
     const { studentId, theme } = await request.json()
 
     if (!studentId || !theme) {

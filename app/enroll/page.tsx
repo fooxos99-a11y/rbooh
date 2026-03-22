@@ -108,7 +108,7 @@ export default function EnrollPage() {
 
       if (error) throw error;
 
-      toast({ title: "تم إرسال طلب الالتحاق بنجاح!", variant: "default" });
+      toast({ title: "تم إرسال طلب التسجيل بنجاح!", variant: "default" });
       setFormData({
         fullName: "",
         guardianPhone: "",
@@ -135,10 +135,10 @@ export default function EnrollPage() {
       <main className="flex-grow flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full">
           <div className="text-center mb-6 md:mb-8">
-            <h1 className="text-2xl md:text-4xl font-bold text-[#023232] mb-2 md:mb-3">طلب الالتحاق بالمجمع</h1>
+            <h1 className="text-2xl md:text-4xl font-bold text-[#023232] mb-2 md:mb-3">طلب تسجيل</h1>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border-2 border-[#d8a355]/30 relative p-6 md:p-8">
+          <div className="bg-white rounded-2xl shadow-xl overflow-hidden border-2 border-[#3453a7]/20 relative p-6 md:p-8">
 
             {isLoadingStatus ? (
               <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-300">
@@ -171,7 +171,7 @@ export default function EnrollPage() {
                 <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
               <div className="space-y-2">
                 <label htmlFor="fullName" className="text-[#023232] font-semibold text-sm md:text-base flex items-center gap-2">
-                  <User className="w-4 h-4 text-[#d8a355]" />
+                  <User className="w-4 h-4 text-[#003f55]" />
                   الاسم الثلاثي للطالب <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -181,13 +181,13 @@ export default function EnrollPage() {
                   required
                   value={formData.fullName}
                   onChange={handleChange}
-                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#d8a355] outline-none transition-colors"
+                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#3453a7] outline-none transition-colors"
                 />
               </div>
 
               <div className="space-y-2">
                 <label htmlFor="guardianPhone" className="text-[#023232] font-semibold text-sm md:text-base flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-[#d8a355]" />
+                  <Phone className="w-4 h-4 text-[#003f55]" />
                   رقم ولي الأمر <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -198,15 +198,14 @@ export default function EnrollPage() {
                     required
                   value={formData.guardianPhone}
                   onChange={handleChange}
-                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#d8a355] outline-none transition-colors text-right"
-                  placeholder="05XXXXXXXX"
+                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#3453a7] outline-none transition-colors text-right"
                   dir="ltr"
                 />
               </div>
 
               <div className="space-y-2">
                 <label htmlFor="idNumber" className="text-[#023232] font-semibold text-sm md:text-base flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-[#d8a355]" />
+                  <Hash className="w-4 h-4 text-[#003f55]" />
                   رقم الهوية <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -217,16 +216,15 @@ export default function EnrollPage() {
                     required
                   value={formData.idNumber}
                   onChange={handleChange}
-                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#d8a355] outline-none transition-colors"
-                  placeholder="10XXXXXXXX"
+                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#3453a7] outline-none transition-colors"
                   dir="ltr"
                 />
               </div>
 
               <div className="space-y-2">
                 <label htmlFor="educationalStage" className="text-[#023232] font-semibold text-sm md:text-base flex items-center gap-2">
-                  <GraduationCap className="w-4 h-4 text-[#d8a355]" />
-                  المرحلة الدراسية <span className="text-red-500">*</span>
+                  <GraduationCap className="w-4 h-4 text-[#003f55]" />
+                  العمر <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -235,24 +233,23 @@ export default function EnrollPage() {
                   required
                   value={formData.educationalStage}
                   onChange={handleChange}
-                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#d8a355] outline-none transition-colors"
-                  placeholder="مثال: ثالث متوسط"
+                  className="w-full h-12 px-4 text-base border-2 border-gray-200 rounded-lg focus:ring-0 focus:border-[#3453a7] outline-none transition-colors"
                 />
               </div>
 
               <div className="space-y-2 md:col-span-2">
                 <label className="text-[#023232] font-semibold text-sm md:text-base flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-[#d8a355]" />
+                  <BookOpen className="w-4 h-4 text-[#003f55]" />
                   المحفوظ <span className="text-red-500">*</span>
                 </label>
                 <div className="space-y-3 rounded-xl border-2 border-gray-200 p-3">
                   <button
                     type="button"
                     onClick={() => setIsMemorizedDialogOpen(true)}
-                    className="flex h-12 w-full items-center justify-between rounded-lg border border-[#d8a355]/40 bg-[#fcfbf9] px-4 text-base text-[#023232] transition-colors hover:bg-[#f8f2e7]"
+                    className="flex h-12 w-full items-center justify-between rounded-lg border border-[#3453a7]/20 bg-[#fafcff] px-4 text-base text-[#023232] transition-colors hover:bg-[#f3f7ff]"
                   >
                     <span>{formData.selectedJuzs.length === 0 ? "لا يوجد حفظ سابق" : memorizedSummary}</span>
-                    <ChevronDown className="h-4 w-4 text-[#b88a2c]" />
+                    <ChevronDown className="h-4 w-4 text-[#3453a7]" />
                   </button>
                 </div>
               </div>
@@ -260,7 +257,7 @@ export default function EnrollPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full h-12 md:h-14 bg-white border border-[#D4AF37]/50 hover:bg-neutral-50 text-neutral-600 font-medium text-base md:text-lg rounded-lg transition-all duration-300 flex justify-center items-center gap-2 mt-4"
+                className="w-full h-12 md:h-14 bg-white border border-[#3453a7]/35 hover:bg-[#f7f9ff] text-neutral-600 font-medium text-base md:text-lg rounded-lg transition-all duration-300 flex justify-center items-center gap-2 mt-4"
               >
                 {isSubmitting ? (
                   <>
@@ -284,8 +281,8 @@ export default function EnrollPage() {
       <Footer />
 
       <Dialog open={isMemorizedDialogOpen} onOpenChange={setIsMemorizedDialogOpen}>
-        <DialogContent className="max-w-[92vw] sm:max-w-[620px] rounded-2xl border-[#d8a355]/30 p-0" dir="rtl">
-          <DialogHeader className="border-b border-[#d8a355]/20 bg-[#fffcf6] px-5 py-4 text-right">
+        <DialogContent className="max-w-[92vw] sm:max-w-[620px] rounded-2xl border-[#3453a7]/20 p-0" dir="rtl">
+          <DialogHeader className="border-b border-[#3453a7]/15 bg-[#fafcff] px-5 py-4 text-right">
             <DialogTitle className="text-right text-lg font-bold text-[#023232]">اختيار المحفوظ</DialogTitle>
             <DialogDescription className="text-right text-sm text-gray-500">
               اختر الأجزاء التي يحفظها الطالب، حتى لو كانت متفرقة.
@@ -315,7 +312,7 @@ export default function EnrollPage() {
                 return (
                   <label
                     key={juzNumber}
-                    className={`plan-history-checkbox w-full justify-between rounded-2xl border px-4 py-3 text-[#1a2332] transition-colors ${isSelected ? "border-[#d8a355] bg-[#fff7e7]" : "border-gray-200 bg-white hover:border-[#d8a355]/45"}`}
+                    className={`plan-history-checkbox w-full justify-between rounded-2xl border px-4 py-3 text-[#1a2332] transition-colors ${isSelected ? "border-[#3453a7] bg-[#f3f7ff]" : "border-gray-200 bg-white hover:border-[#3453a7]/35"}`}
                   >
                     <input
                       type="checkbox"
@@ -333,7 +330,7 @@ export default function EnrollPage() {
               <button
                 type="button"
                 onClick={() => setIsMemorizedDialogOpen(false)}
-                className="h-11 rounded-xl bg-[#d8a355] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#c99743]"
+                className="h-11 rounded-xl bg-[#3453a7] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#27428d]"
               >
                 تم
               </button>

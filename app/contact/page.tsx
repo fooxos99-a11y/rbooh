@@ -65,7 +65,7 @@ export default function ContactPage() {
           <h1 className="text-3xl md:text-5xl font-bold text-center mb-8 md:mb-16 text-[#1a2332]">تواصل معنا</h1>
 
           <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-2xl shadow-xl p-4 md:p-8 border-2 md:border-4 border-[#d8a355]">
+            <div className="bg-white rounded-2xl shadow-xl p-4 md:p-8 border-2 md:border-4 border-[#3453a7]/25">
               <h2 className="text-xl md:text-3xl font-bold text-center mb-6 md:mb-8 text-[#1a2332]">أرسل لنا رسالة</h2>
 
               <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
@@ -81,7 +81,7 @@ export default function ContactPage() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="أدخل اسمك"
-                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#d8a355] focus:outline-none text-[#1a2332] placeholder:text-gray-400"
+                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#3453a7] focus:outline-none text-[#1a2332] placeholder:text-gray-400"
                   />
                 </div>
 
@@ -95,7 +95,7 @@ export default function ContactPage() {
                     required
                     value={formData.subject}
                     onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
-                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#d8a355] focus:outline-none text-[#1a2332] bg-white"
+                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#3453a7] focus:outline-none text-[#1a2332] bg-white"
                   >
                     <option value="">اختر موضوع الرسالة</option>
                     <option value="inquiry">استفسار عام</option>
@@ -118,7 +118,7 @@ export default function ContactPage() {
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     placeholder="اكتب رسالتك هنا"
                     rows={4}
-                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#d8a355] focus:outline-none text-[#1a2332] placeholder:text-gray-400 resize-none md:min-h-[150px]"
+                    className="w-full px-4 py-2 md:py-3 border-2 border-gray-300 rounded-lg focus:border-[#3453a7] focus:outline-none text-[#1a2332] placeholder:text-gray-400 resize-none md:min-h-[150px]"
                   />
                 </div>
 
@@ -126,7 +126,7 @@ export default function ContactPage() {
                 <Button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full bg-[#d8a355] hover:bg-[#c99245] text-white font-bold py-3 md:py-4 text-base md:text-lg rounded-lg transition-colors disabled:opacity-50"
+                  className="w-full bg-[#3453a7] hover:bg-[#27428d] text-white font-bold py-3 md:py-4 text-base md:text-lg rounded-lg transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? "جاري الإرسال..." : "إرسال الرسالة"}
                 </Button>

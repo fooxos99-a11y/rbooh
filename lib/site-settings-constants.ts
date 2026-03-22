@@ -2,3 +2,4 @@ export const TEACHER_ATTENDANCE_DELAY_SETTING_ID = "teacher_attendance_delay"
 export const DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES = 50
 
 export const ABSENCE_ALERT_TEMPLATES_SETTING_ID = "student_absence_alert_templates"
+export const STUDENT_ISSUE_NOTIFICATION_TEMPLATES_SETTING_ID = "student_issue_notification_templates"

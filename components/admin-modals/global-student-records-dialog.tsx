@@ -10,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { FileText, Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { getEvaluationLevelLabel } from "@/lib/student-attendance"
+import { getEvaluationLevelLabel, isEvaluatedAttendance } from "@/lib/student-attendance"
+import { getClientAuthHeaders } from "@/lib/client-auth"
 
 export function GlobalStudentRecordsDialog() {
   const router = useRouter()
@@ -65,7 +66,7 @@ export function GlobalStudentRecordsDialog() {
   const fetchStudentRecords = async (studentId: string) => {
     setIsLoadingRecords(true)
     try {
-      const res = await fetch(`/api/attendance?student_id=${studentId}`)
+      const res = await fetch(`/api/attendance?student_id=${studentId}`, { headers: getClientAuthHeaders() })
       if (!res.ok) throw new Error("Failed to fetch")
       const data = await res.json()
       if (data && data.records && Array.isArray(data.records)) {
@@ -112,18 +113,75 @@ export function GlobalStudentRecordsDialog() {
       : <span className="text-gray-400">-</span>
   }
 
+  const getEvaluationText = (level: string | null) => {
+    return getEvaluationLevelLabel(level) || "—"
+  }
+
+  const formatHearingRecordDate = (date: string) => {
+    return new Date(`${date}T12:00:00+03:00`).toLocaleDateString("ar-SA", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  }
+
+  const getNextOfficialHearingDate = (date: string) => {
+    const currentDate = new Date(`${date}T12:00:00+03:00`)
+    currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+
+    while (currentDate.getUTCDay() !== 0 && currentDate.getUTCDay() !== 3) {
+      currentDate.setUTCDate(currentDate.getUTCDate() + 1)
+    }
+
+    return currentDate.toISOString().slice(0, 10)
+  }
+
+  const getHearingSegmentLabel = (index: number) => {
+    const labels = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس"]
+    return labels[index] || `${index + 1}`
+  }
+
   const formatReadingRange = (fromSurah?: string | null, fromVerse?: string | null, toSurah?: string | null, toVerse?: string | null) => {
     if (!fromSurah || !fromVerse || !toSurah || !toVerse) return null
-    return `${fromSurah} ${fromVerse} - ${toSurah} ${toVerse}`
+
+    if (fromSurah === toSurah) {
+      return `من ${fromSurah} آية ${fromVerse} إلى آية ${toVerse}`
+    }
+
+    return `من ${fromSurah} آية ${fromVerse} إلى ${toSurah} آية ${toVerse}`
   }
+
+  const hearingSessions = Array.from(
+    records.reduce<Map<string, any[]>>((acc, record) => {
+      if (!isEvaluatedAttendance(record.status)) {
+        return acc
+      }
+
+      if (!record.hafiz_level && !formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)) {
+        return acc
+      }
+
+      const hearingDate = getNextOfficialHearingDate(record.date)
+      const existing = acc.get(hearingDate) || []
+      existing.push(record)
+      acc.set(hearingDate, existing)
+      return acc
+    }, new Map()).entries(),
+  )
+    .map(([hearingDate, hearingRecords]) => ({
+      hearingDate,
+      records: [...hearingRecords].sort((left, right) => left.date.localeCompare(right.date)).slice(0, 3),
+    }))
+    .sort((left, right) => right.hearingDate.localeCompare(left.hearingDate))
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-[92vw] md:max-w-[980px] w-full min-h-[60vh] max-h-[88vh] flex flex-col bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto [&::-webkit-scrollbar]:hidden" dir="rtl">
-        <DialogHeader className="px-5 py-4 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent text-right shrink-0">
+        <DialogHeader className="px-5 py-4 border-b border-[#3453a7]/20 bg-gradient-to-r from-[#3453a7]/6 to-transparent text-right shrink-0">
           <DialogTitle className="flex w-full justify-start pr-8 text-right text-lg font-bold text-[#1a2332]">
             <span className="inline-flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
+              <span className="w-8 h-8 rounded-lg bg-[#003f55]/10 border border-[#003f55]/20 flex items-center justify-center text-[#003f55]">
                 <FileText className="w-4 h-4" />
               </span>
               <span>سجلات الطلاب</span>
@@ -138,7 +196,7 @@ export function GlobalStudentRecordsDialog() {
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-neutral-600">الحلقة</Label>
               <Select value={selectedCircle} onValueChange={(val) => { setSelectedCircle(val); setSelectedStudent(""); setRecords([]); }}>
-                <SelectTrigger className="w-full text-sm rounded-xl border-[#D4AF37]/40 h-10">
+                <SelectTrigger className="w-full text-sm rounded-xl border-[#3453a7]/25 h-10">
                   <SelectValue placeholder="اختر الحلقة" />
                 </SelectTrigger>
                 <SelectContent>
@@ -152,7 +210,7 @@ export function GlobalStudentRecordsDialog() {
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-neutral-600">الطالب</Label>
               <Select value={selectedStudent} onValueChange={setSelectedStudent} disabled={!selectedCircle}>
-                <SelectTrigger className="w-full text-sm rounded-xl border-[#D4AF37]/40 h-10">
+                <SelectTrigger className="w-full text-sm rounded-xl border-[#3453a7]/25 h-10">
                   <SelectValue placeholder={!selectedCircle ? "اختر الحلقة أولا" : "اختر الطالب"} />
                 </SelectTrigger>
                 <SelectContent>
@@ -165,10 +223,10 @@ export function GlobalStudentRecordsDialog() {
           </div>
 
           {selectedStudent && (
-            <div className="border border-[#D4AF37]/20 rounded-xl overflow-hidden shadow-sm bg-white">
-              <div className="bg-[#fcfbf9] px-4 py-2.5 border-b border-[#D4AF37]/10 flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-[#D4AF37]" />
-                <h3 className="font-semibold text-sm text-[#1a2332]">سجل التقييمات والحضور</h3>
+            <div className="border border-[#3453a7]/15 rounded-xl overflow-hidden shadow-sm bg-white">
+              <div className="bg-[#f8faff] px-4 py-2.5 border-b border-[#3453a7]/10 flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-[#003f55]" />
+                  <h3 className="font-semibold text-sm text-[#1a2332]">سجل جلسات التسميع</h3>
               </div>
               
               <div className="max-h-[56vh] overflow-y-auto overflow-x-auto [&::-webkit-scrollbar]:hidden px-3 py-2">
@@ -176,56 +234,50 @@ export function GlobalStudentRecordsDialog() {
                   <div className="flex justify-center items-center py-10">
                     <SiteLoader size="sm" />
                   </div>
-                ) : records.length === 0 ? (
+                  ) : hearingSessions.length === 0 ? (
                   <div className="text-center py-10 text-neutral-500 text-sm">
-                    لا توجد سجلات سابقة لهذا الطالب
+                      لا توجد جلسات تسميع سابقة لهذا الطالب
                   </div>
                 ) : (
-                  <table className="w-fit min-w-full mx-auto table-auto text-right text-sm">
-                    <thead className="bg-[#faf9f6]/80 text-[#1a2332] sticky top-0 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.05)] border-b border-[#D4AF37]/20">
-                      <tr>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap">التاريخ</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap text-center">الحالة</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap text-center">حفظ</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap text-center">تكرار</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap text-center">مراجعة</th>
-                        <th className="px-3 py-2 font-medium whitespace-nowrap text-center">ربط</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#D4AF37]/10 text-neutral-600">
-                      {records.map((record) => (
-                        <tr key={record.id} className="hover:bg-[#fcfbf9] transition-colors">
-                          <td className="px-3 py-2.5 whitespace-nowrap text-xs tabular-nums text-neutral-800">{new Date(record.date).toLocaleDateString("en-GB")}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-center">{getStatusBadge(record.status)}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs">
-                            <div className="flex flex-col items-center gap-0.5">
-                              {getLevelLabel(record.hafiz_level)}
-                              {formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse) && (
-                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse)}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs">{getLevelLabel(record.tikrar_level)}</td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs">
-                            <div className="flex flex-col items-center gap-0.5">
-                              {getLevelLabel(record.samaa_level)}
-                              {formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse) && (
-                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.samaa_from_surah, record.samaa_from_verse, record.samaa_to_surah, record.samaa_to_verse)}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2.5 whitespace-nowrap text-center text-xs">
-                            <div className="flex flex-col items-center gap-0.5">
-                              {getLevelLabel(record.rabet_level)}
-                              {formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse) && (
-                                <span className="text-[10px] leading-4 text-neutral-500">{formatReadingRange(record.rabet_from_surah, record.rabet_from_verse, record.rabet_to_surah, record.rabet_to_verse)}</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                    <div className="flex flex-col gap-4 py-1">
+                      {hearingSessions.map((session) => (
+                        <div
+                          key={session.hearingDate}
+                          className="rounded-2xl border border-[#3453a7]/15 bg-white p-4 shadow-sm"
+                        >
+                          <div className="mb-4 border-b border-[#3453a7]/10 pb-3 text-right">
+                            <p className="text-base font-extrabold text-[#1a2332]">
+                              {formatHearingRecordDate(session.hearingDate)}
+                            </p>
+                          </div>
+
+                          <div className="space-y-3">
+                            {session.records.map((record, index) => (
+                              <div
+                                key={record.id}
+                                className="rounded-xl bg-[#f8faff] p-4 text-right ring-1 ring-[#3453a7]/10"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <span className="text-sm font-bold text-[#1a2332]">
+                                    المقطع {getHearingSegmentLabel(index)}
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {getStatusBadge(record.status)}
+                                    <span className="rounded-full bg-white px-3 py-1 text-sm font-bold text-[#3453a7] ring-1 ring-[#3453a7]/15">
+                                      تقييمه: {getEvaluationText(record.hafiz_level)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <p className="mt-3 text-sm leading-6 text-neutral-600">
+                                  {formatReadingRange(record.hafiz_from_surah, record.hafiz_from_verse, record.hafiz_to_surah, record.hafiz_to_verse) || "—"}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
                 )}
               </div>
             </div>

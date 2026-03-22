@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { getSiteSetting } from "@/lib/site-settings"
+import { getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
   DEFAULT_ABSENCE_ALERT_TEMPLATES,
   calculateEffectiveAbsenceCount,
@@ -14,7 +15,7 @@ type AdminAttendanceStatus = "present" | "late" | "absent" | "excused"
 const VALID_STATUSES = new Set<AdminAttendanceStatus>(["present", "late", "absent", "excused"])
 
 function isAllowedAttendanceDate(date: string) {
-  const day = new Date(`${date}T00:00:00+03:00`).getDay()
+  const day = getSaudiWeekday(date)
   return day === 0 || day === 3
 }
 
@@ -24,7 +25,7 @@ function normalizeCircleName(value: string | null | undefined) {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const searchParams = request.nextUrl.searchParams
     const date = searchParams.get("date")
     const circle = searchParams.get("circle")
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     const { data: students, error: studentsError } = await studentsQuery.order("account_number", { ascending: true })
 
     if (studentsError) {
-      return NextResponse.json({ error: "فشل في جلب الطلاب" }, { status: 500 })
+      console.error("[admin-student-attendance] students query error:", studentsError)
+      return NextResponse.json({ error: studentsError.message || "فشل في جلب الطلاب" }, { status: 500 })
     }
 
     let attendanceQuery = supabase
@@ -59,7 +61,8 @@ export async function GET(request: NextRequest) {
     const { data: attendanceRecords, error: attendanceError } = await attendanceQuery
 
     if (attendanceError) {
-      return NextResponse.json({ error: "فشل في جلب سجلات التحضير" }, { status: 500 })
+      console.error("[admin-student-attendance] attendance query error:", attendanceError)
+      return NextResponse.json({ error: attendanceError.message || "فشل في جلب سجلات التحضير" }, { status: 500 })
     }
 
     const attendanceIds = (attendanceRecords || []).map((record) => record.id)
@@ -72,7 +75,8 @@ export async function GET(request: NextRequest) {
         .in("attendance_record_id", attendanceIds)
 
       if (evaluationsError) {
-        return NextResponse.json({ error: "فشل في جلب التقييمات المرتبطة" }, { status: 500 })
+        console.error("[admin-student-attendance] evaluations query error:", evaluationsError)
+        return NextResponse.json({ error: evaluationsError.message || "فشل في جلب التقييمات المرتبطة" }, { status: 500 })
       }
 
       evaluatedSet = new Set((evaluations || []).map((evaluation) => evaluation.attendance_record_id))
@@ -112,7 +116,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const date = typeof body?.date === "string" ? body.date.trim() : ""
     const updates = Array.isArray(body?.updates) ? body.updates : []
@@ -121,8 +125,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 })
     }
 
-    if (!isAllowedAttendanceDate(date)) {
-      return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء" }, { status: 400 })
+    if (!isAllowedAttendanceDate(date) || !isSaudiAttendanceWindowOpen()) {
+      return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 11:59 مساءً بتوقيت السعودية" }, { status: 400 })
     }
 
     if (updates.length === 0) {
@@ -142,7 +146,8 @@ export async function POST(request: NextRequest) {
       .in("id", studentIds)
 
     if (studentsError) {
-      return NextResponse.json({ error: "فشل في جلب بيانات الطلاب" }, { status: 500 })
+      console.error("[admin-student-attendance] student lookup error:", studentsError)
+      return NextResponse.json({ error: studentsError.message || "فشل في جلب بيانات الطلاب" }, { status: 500 })
     }
 
     const studentsMap = new Map((students || []).map((student) => [student.id, student] as const))
@@ -160,7 +165,8 @@ export async function POST(request: NextRequest) {
       .in("role", ["teacher", "deputy_teacher"])
 
     if (teachersError) {
-      return NextResponse.json({ error: "فشل في جلب المعلمين المرتبطين بالحلقات" }, { status: 500 })
+      console.error("[admin-student-attendance] teachers lookup error:", teachersError)
+      return NextResponse.json({ error: teachersError.message || "فشل في جلب المعلمين المرتبطين بالحلقات" }, { status: 500 })
     }
 
     const teacherMap = new Map<string, string>()
@@ -183,7 +189,8 @@ export async function POST(request: NextRequest) {
       .in("student_id", studentIds)
 
     if (existingError) {
-      return NextResponse.json({ error: "فشل في قراءة سجلات التحضير الحالية" }, { status: 500 })
+      console.error("[admin-student-attendance] existing attendance error:", existingError)
+      return NextResponse.json({ error: existingError.message || "فشل في قراءة سجلات التحضير الحالية" }, { status: 500 })
     }
 
     const existingMap = new Map((existingRecords || []).map((record) => [record.student_id, record] as const))
@@ -197,7 +204,8 @@ export async function POST(request: NextRequest) {
         .in("attendance_record_id", existingIds)
 
       if (evaluationsError) {
-        return NextResponse.json({ error: "فشل في التحقق من التقييمات الحالية" }, { status: 500 })
+        console.error("[admin-student-attendance] existing evaluations error:", evaluationsError)
+        return NextResponse.json({ error: evaluationsError.message || "فشل في التحقق من التقييمات الحالية" }, { status: 500 })
       }
 
       ;(evaluations || []).forEach((evaluation) => {
@@ -212,7 +220,8 @@ export async function POST(request: NextRequest) {
     .in("status", ["absent", "excused"])
 
     if (absenceRecordsError) {
-    return NextResponse.json({ error: "فشل في قراءة سجل الغيابات الحالي" }, { status: 500 })
+    console.error("[admin-student-attendance] absence records error:", absenceRecordsError)
+    return NextResponse.json({ error: absenceRecordsError.message || "فشل في قراءة سجل الغيابات الحالي" }, { status: 500 })
   }
 
     const absenceCountByStudent = new Map<string, number>()

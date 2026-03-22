@@ -173,7 +173,7 @@ export function ColorDifferenceChallenge({ onSuccess, onFailure, timeLimit = 60 
     <div className="w-full h-full flex flex-col items-center justify-center p-2 sm:p-8">
       <div className="absolute top-4 right-4">
         <div className="flex items-center gap-2 bg-white/80 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-white/50">
-          <Clock className="w-5 h-5 text-[#D4AF37]" />
+          <Clock className="w-5 h-5 text-[#003f55]" />
           <span className={`text-2xl font-bold ${timeLeft <= 10 ? "text-red-500 animate-pulse" : "text-[#1a2332]"}`}>
             {timeLeft}s
           </span>

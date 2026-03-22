@@ -76,13 +76,12 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
   const [currentTheme, setCurrentTheme] = useState("beige_default")
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState("")
-  const [ownedThemes, setOwnedThemes] = useState<string[]>([])
+  const [ownedThemes, setOwnedThemes] = useState<string[]>(Object.keys(THEMES))
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (studentId) {
       loadActiveTheme()
-      loadOwnedThemes()
     }
   }, [studentId])
 
@@ -111,37 +110,7 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
     }
   }
 
-  const loadOwnedThemes = async () => {
-    if (!studentId) return
-
-    // Always start from localStorage cache
-    const cached: string[] = JSON.parse(localStorage.getItem(`purchases_${studentId}`) || '[]')
-    try {
-      const response = await fetch(`/api/purchases?student_id=${studentId}`)
-      const data = await response.json()
-      const dbPurchases: string[] = Array.isArray(data.purchases) ? data.purchases : []
-      // Merge DB + cache so neither erases the other
-      const merged = [...new Set([...cached, ...dbPurchases])]
-      localStorage.setItem(`purchases_${studentId}`, JSON.stringify(merged))
-      const themes = merged
-        .filter((id: string) => id.startsWith("theme_"))
-        .map((id: string) => id.replace("theme_", ""))
-      setOwnedThemes([...new Set(["beige_default", ...themes])] as string[])
-    } catch (error) {
-      console.error("[v0] Error loading purchases from API, falling back to cache:", error)
-      const themes = cached
-        .filter((id: string) => id.startsWith("theme_"))
-        .map((id: string) => id.replace("theme_", ""))
-      setOwnedThemes([...new Set(["beige_default", ...themes])])
-    }
-  }
-
   const handleThemeChange = async (themeName: string) => {
-    if (!ownedThemes.includes(themeName)) {
-      console.log("[v0] Theme not owned:", themeName)
-      return
-    }
-
     if (!studentId) {
       setSaveMessage("خطأ: معرف الطالب غير موجود")
       return
@@ -193,7 +162,7 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-2 mb-4">
-          <Palette className="w-5 h-5 md:w-6 md:h-6 text-[#d8a355]" />
+          <Palette className="w-5 h-5 md:w-6 md:h-6 text-[#003f55]" />
           <h3 className="text-lg md:text-xl font-bold text-[#1a2332]">اختر المظهر</h3>
         </div>
         <div className="flex justify-center py-4">
@@ -207,7 +176,7 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4 md:mb-6">
         <div className="flex items-center gap-2 md:gap-3">
-          <Palette className="w-5 h-5 md:w-6 md:h-6 text-[#d8a355]" />
+          <Palette className="w-5 h-5 md:w-6 md:h-6 text-[#003f55]" />
           <h3 className="text-lg md:text-xl font-bold text-[#1a2332]">اختر المظهر</h3>
         </div>
       </div>
@@ -299,15 +268,6 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
               {/* Theme preview */}
               <div className="p-4">{renderThemePreview(key)}</div>
 
-              {/* Locked overlay for unowned themes */}
-              {!isOwned && (
-                <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm rounded-xl z-10">
-                  <div className="text-center">
-                    <div className="text-3xl mb-2">🔒</div>
-                    <span className="text-sm text-gray-600 font-semibold">مقفل</span>
-                  </div>
-                </div>
-              )}
             </button>
           )
         })}
@@ -319,12 +279,6 @@ export function ThemeSwitcher({ studentId }: ThemeSwitcherProps) {
         >
           {saveMessage}
         </p>
-      )}
-
-      {ownedThemes.length === 1 && (
-        <div className="bg-[#faf9f6] rounded-xl p-4 md:p-6 border-2 border-[#d8a355]/20 mt-4">
-          <p className="text-sm md:text-base text-center text-gray-600">قريباً يمكنك شراء مظاهر جديدة</p>
-        </div>
       )}
     </div>
   )

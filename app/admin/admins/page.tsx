@@ -229,11 +229,11 @@ export default function AdminsManagement() {
       <main className="flex-1 py-10 px-4">
         <div className="container mx-auto max-w-4xl space-y-8">
 
-          <div className="flex items-center justify-between border-b border-[#D4AF37]/40 pb-6">
+          <div className="flex items-center justify-between border-b border-[#3453a7]/20 pb-6">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => router.push("/admin/dashboard")}
-                className="w-10 h-10 rounded-full bg-white border border-[#D4AF37]/30 flex items-center justify-center text-neutral-600 hover:bg-[#D4AF37]/10 hover:text-[#D4AF37] transition-all"
+                onClick={() => router.push("/")}
+                className="w-10 h-10 rounded-full bg-white border border-[#3453a7]/20 flex items-center justify-center text-neutral-600 hover:bg-[#3453a7]/8 hover:text-[#3453a7] transition-all"
               >
                 <ArrowRight className="w-5 h-5 rotate-180" />
               </button>
@@ -242,14 +242,14 @@ export default function AdminsManagement() {
             <div className="flex gap-2">
               <Button
                 onClick={() => setIsAddRoleMode(true)}
-                className="bg-white text-[#D4AF37] border border-[#D4AF37]/50 hover:bg-[#D4AF37]/10 flex items-center gap-2 rounded-xl shadow-none"
+                className="bg-[#3453a7] hover:bg-[#27428d] text-white border-none flex items-center gap-2 rounded-xl shadow-none"
               >
                 <PlusCircle className="w-4 h-4" />
                 <span className="hidden sm:inline">اضافة وإزالة مسمى وظيفي</span>
               </Button>
               <Button
                 onClick={() => setIsAddMode(true)}
-                className="bg-gradient-to-l from-[#C9A961] to-[#D4AF37] hover:opacity-90 text-white flex items-center gap-2 rounded-xl shadow-md border-none"
+                className="bg-[#3453a7] hover:bg-[#27428d] text-white flex items-center gap-2 rounded-xl shadow-md border-none"
               >
                 <UserPlus className="w-4 h-4" />
                 <span className="hidden sm:inline">إضافة اداري</span>
@@ -259,7 +259,7 @@ export default function AdminsManagement() {
 
           {/* Dialog: Add Role */}
           <Dialog open={isAddRoleMode} onOpenChange={setIsAddRoleMode}>
-            <DialogContent className="sm:max-w-md bg-white border-[#D4AF37]/20 font-cairo" dir="rtl">
+            <DialogContent className="sm:max-w-md bg-white border-[#3453a7]/15 font-cairo" dir="rtl">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold text-[#1a2332]">إضافة مسمى وظيفي جديد</DialogTitle>
                 <DialogDescription>أدخل اسم المسمى ليتم استخدامه في التصنيفات</DialogDescription>
@@ -277,11 +277,11 @@ export default function AdminsManagement() {
                 <div className="flex flex-wrap gap-2 pt-1">
                   <p className="text-xs text-neutral-500 w-full">المسميات الحالية:</p>
                   {roles.map(r => (
-                    <span key={r} className="text-xs bg-[#D4AF37]/10 text-[#C9A961] border border-[#D4AF37]/30 rounded-full pl-3 pr-2 py-1 flex items-center gap-1">
+                    <span key={r} className="text-xs bg-[#3453a7]/10 text-[#3453a7] border border-[#3453a7]/25 rounded-full pl-3 pr-2 py-1 flex items-center gap-1">
                       {r}
                       <button
                         onClick={() => handleDeleteRole(r)}
-                        className="w-4 h-4 rounded-full bg-[#D4AF37]/20 hover:bg-red-100 hover:text-red-500 flex items-center justify-center text-[#C9A961] transition-colors text-[10px] font-bold leading-none"
+                        className="w-4 h-4 rounded-full bg-[#3453a7]/15 hover:bg-red-100 hover:text-red-500 flex items-center justify-center text-[#3453a7] transition-colors text-[10px] font-bold leading-none"
                         title="حذف المسمى"
                       >×</button>
                     </span>
@@ -290,7 +290,7 @@ export default function AdminsManagement() {
               </div>
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setIsAddRoleMode(false)}>إلغاء</Button>
-                <Button onClick={handleAddRole} disabled={isSubmitting} className="bg-[#D4AF37] text-white border-none">
+                <Button onClick={handleAddRole} disabled={isSubmitting} className="bg-[#3453a7] hover:bg-[#27428d] text-white border-none">
                   {isSubmitting ? "جاري الحفظ..." : "حفظ المسمى"}
                 </Button>
               </div>
@@ -299,7 +299,7 @@ export default function AdminsManagement() {
 
           {/* Dialog: Add User */}
           <Dialog open={isAddMode} onOpenChange={setIsAddMode}>
-            <DialogContent className="sm:max-w-md bg-white border-[#D4AF37]/20 font-cairo" dir="rtl">
+            <DialogContent className="sm:max-w-md bg-white border-[#3453a7]/15 font-cairo" dir="rtl">
               <DialogHeader>
                 <DialogTitle className="text-xl font-bold text-[#1a2332]">إضافة اداري جديد</DialogTitle>
                 <DialogDescription>أدخل بيانات الإداري والمسمى الوظيفي</DialogDescription>
@@ -339,7 +339,7 @@ export default function AdminsManagement() {
               </div>
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setIsAddMode(false)}>إلغاء</Button>
-                <Button onClick={handleAddAdmin} disabled={isSubmitting} className="bg-[#D4AF37] text-white border-none">
+                <Button onClick={handleAddAdmin} disabled={isSubmitting} className="bg-[#3453a7] hover:bg-[#27428d] text-white border-none">
                   {isSubmitting ? "جاري الحفظ..." : "حفظ"}
                 </Button>
               </div>
@@ -348,24 +348,24 @@ export default function AdminsManagement() {
 
           {/* Users List */}
           {users.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm p-16 text-center">
-              <Shield className="w-10 h-10 text-[#D4AF37] mx-auto mb-4" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm p-16 text-center">
+              <Shield className="w-10 h-10 text-[#003f55] mx-auto mb-4" />
               <p className="text-lg font-semibold text-neutral-500">لا يوجد مستخدمين لعرضهم</p>
             </div>
           ) : (
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-5 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center">
-                  <Shield className="w-4 h-4 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="px-6 py-5 border-b border-[#3453a7]/20 flex items-center gap-3">
+                <div className="w-9 h-9 flex items-center justify-center">
+                  <Shield className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-base font-bold text-[#1a2332]">قائمة الإداريين</h2>
               </div>
-              <div className="divide-y divide-[#D4AF37]/20">
+              <div className="divide-y divide-[#3453a7]/12">
                 {users.map((user) => (
-                  <div key={user.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-4 hover:bg-[#D4AF37]/5 transition-colors gap-4">
+                  <div key={user.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-4 hover:bg-[#3453a7]/5 transition-colors gap-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/30 flex items-center justify-center shrink-0">
-                        <Shield className="w-4 h-4 text-[#D4AF37]" />
+                      <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                        <Shield className="w-4 h-4 text-[#003f55]" />
                       </div>
                       <div>
                         <p className="text-sm font-bold text-[#1a2332]">{user.name}</p>
@@ -375,7 +375,7 @@ export default function AdminsManagement() {
                     <div className="flex items-center gap-2">
                       <div className="w-[160px]">
                         <Select value={user.role} onValueChange={(val) => handleChangeRole(user.id, val)}>
-                          <SelectTrigger className="h-9 border-[#D4AF37]/30 text-sm w-full">
+                          <SelectTrigger className="h-9 border-[#3453a7]/25 text-sm w-full">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent dir="rtl">

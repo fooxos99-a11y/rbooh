@@ -1,15 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const getSupabase = () =>
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!
-  )
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabase()
+    const supabase = await createClient()
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
 
@@ -51,7 +45,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabase()
+    const supabase = await createClient()
     const { student_id, font_id } = await request.json()
 
     if (!student_id || !font_id) {
@@ -80,7 +74,7 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = getSupabase()
+    const supabase = await createClient()
     const { student_id } = await request.json()
 
     if (!student_id) {

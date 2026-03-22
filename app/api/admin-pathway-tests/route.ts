@@ -3,11 +3,21 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ensureStudentPathwayLevels } from "@/lib/pathway-levels"
+import { getSiteSetting } from "@/lib/site-settings"
 import {
   applyPathwayJuzTestResult,
   getAvailablePathwayJuzNumbers,
   type PathwayJuzTestStatus,
 } from "@/lib/pathway-juz-tests"
+import {
+  calculatePathwayTestScore,
+  DEFAULT_PATHWAY_TEST_SCORING_SETTINGS,
+  normalizePathwayTestScoringSettings,
+  parsePathwayTestNotes,
+  PATHWAY_TEST_SCORING_SETTING_ID,
+  stringifyPathwayTestNotes,
+  type PathwayTestScoreDetails,
+} from "@/lib/pathway-test-scoring"
 
 type ActivePlanSnapshot = {
   id?: string
@@ -100,15 +110,19 @@ type SerializedPathwayJuzResult = {
   testedAt: string | null
   testedByName: string | null
   notes: string | null
+  scoreDetails: PathwayTestScoreDetails | null
 }
 
 function serializePathwayJuzResult(row: PathwayJuzTestRow): SerializedPathwayJuzResult {
+  const parsedNotes = parsePathwayTestNotes(row.notes)
+
   return {
     status: row.status,
     levelNumber: row.level_number,
     testedAt: row.tested_at ?? null,
     testedByName: row.tested_by_name ?? null,
-    notes: row.notes ?? null,
+    notes: parsedNotes.noteText,
+    scoreDetails: parsedNotes.scoreDetails,
   }
 }
 
@@ -123,6 +137,7 @@ function buildResultsMap(rows: PathwayJuzTestRow[]) {
     testedAt: string | null
     testedByName: string | null
     notes: string | null
+    scoreDetails: PathwayTestScoreDetails | null
     levelResults: SerializedPathwayJuzResult[]
   }>>((accumulator, row) => {
     const key = String(row.juz_number)
@@ -149,6 +164,7 @@ function buildResultsMap(rows: PathwayJuzTestRow[]) {
       testedAt: latestResult.testedAt,
       testedByName: latestResult.testedByName,
       notes: latestResult.notes,
+        scoreDetails: latestResult.scoreDetails,
       levelResults: nextLevelResults,
     }
 
@@ -218,6 +234,7 @@ export async function GET(request: Request) {
               testedAt: resultsByJuz[String(juzNumber)].testedAt,
               testedByName: resultsByJuz[String(juzNumber)].testedByName,
               notes: resultsByJuz[String(juzNumber)].notes,
+              scoreDetails: resultsByJuz[String(juzNumber)].scoreDetails,
             }
           : null,
         levelResults: resultsByJuz[String(juzNumber)]?.levelResults || [],
@@ -239,9 +256,15 @@ export async function POST(request: Request) {
     const status = body?.status as PathwayJuzTestStatus
     const testedByName = typeof body?.tested_by_name === "string" ? body.tested_by_name.trim() : null
     const notes = typeof body?.notes === "string" ? body.notes.trim() : null
+    const warningCount = Number.parseInt(String(body?.warning_count ?? "0"), 10)
+    const mistakeCount = Number.parseInt(String(body?.mistake_count ?? "0"), 10)
 
     if (!studentId || Number.isNaN(levelNumber) || Number.isNaN(juzNumber) || !["pass", "fail"].includes(status)) {
       return NextResponse.json({ error: "البيانات المطلوبة غير مكتملة" }, { status: 400 })
+    }
+
+    if (status === "pass" && (Number.isNaN(warningCount) || warningCount < 0 || Number.isNaN(mistakeCount) || mistakeCount < 0)) {
+      return NextResponse.json({ error: "عدد الأخطاء والتنبيهات يجب أن يكون رقمًا صحيحًا موجبًا أو صفرًا" }, { status: 400 })
     }
 
     const { student, error: studentError } = await getStudentSnapshot(adminSupabase, studentId)
@@ -381,6 +404,16 @@ export async function POST(request: Request) {
       prev_end_verse: nextMemorizationState.memorized_end_verse ?? null,
     }
     const levelAwardPoints = Math.max(0, Number(targetLevel.points) || 100)
+    const scoringSettings = normalizePathwayTestScoringSettings(
+      await getSiteSetting(PATHWAY_TEST_SCORING_SETTING_ID, DEFAULT_PATHWAY_TEST_SCORING_SETTINGS),
+    )
+    const scoreDetails = status === "pass"
+      ? calculatePathwayTestScore({
+          settings: scoringSettings,
+          warningCount,
+          mistakeCount,
+        })
+      : null
 
     let studentMemorizationUpdated = false
     let activePlanUpdated = false
@@ -535,7 +568,7 @@ export async function POST(request: Request) {
       status,
       halaqah: effectiveStudent.halaqah,
       tested_by_name: testedByName,
-      notes: notes || null,
+      notes: stringifyPathwayTestNotes({ noteText: notes || null, scoreDetails }),
       tested_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -599,6 +632,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       status,
+      scoreDetails,
       updatedStudentMemorization: memorizationStateChanged ? nextMemorizationState : null,
     })
   } catch (error) {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "lucide-react"
@@ -8,16 +8,25 @@ import { useState } from "react"
 
 export function GlobalEndSemesterDialog() {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isOpen, setIsOpen] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  const buildCloseHref = () => {
+    const nextParams = new URLSearchParams(searchParams?.toString() || "")
+    nextParams.delete("action")
+    const query = nextParams.toString()
+    return query ? `${pathname}?${query}` : pathname
+  }
 
   const handleOpenChange = (open: boolean) => {
     if (isSubmitting) return
     setIsOpen(open)
     if (!open) {
       setTimeout(() => {
-        router.push("/admin/dashboard")
+        router.push(buildCloseHref())
       }, 200)
     }
   }
@@ -52,7 +61,7 @@ export function GlobalEndSemesterDialog() {
         <DialogHeader>
           <DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
             <span className="inline-flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-[#D4AF37]" />
+              <Calendar className="h-5 w-5 text-[#003f55]" />
               <span>إنهاء الفصل</span>
             </span>
           </DialogTitle>
@@ -60,10 +69,10 @@ export function GlobalEndSemesterDialog() {
             هل تريد إنهاء الفصل؟ سيُصفّر هذا الإجراء نقاط الطلاب ويحفظ الخطط الحالية كمحفوظ سابق ثم يحذف الخطط النشطة.
           </DialogDescription>
         </DialogHeader>
-        <div className="rounded-xl border border-[#D4AF37]/30 bg-[#faf7f0] px-4 py-3 text-sm leading-7 text-[#1a2332]">
+        <div className="rounded-xl border border-[#8fb1ff] bg-[#f7faff] px-4 py-3 text-sm leading-7 text-[#1a2332]">
           سيتم تنفيذ الإجراءات التالية:
           <br />
-          1. تصفير نقاط الطلاب ونقاط المتجر إلى 0.
+          1. تصفير نقاط الطلاب إلى 0.
           <br />
           2. نقل حدود كل خطة حالية إلى محفوظ الطالب الدائم.
           <br />
@@ -78,7 +87,7 @@ export function GlobalEndSemesterDialog() {
           <Button
             onClick={handleEndSemester}
             disabled={isSubmitting}
-            className="bg-[#D4AF37] text-[#1a2332] hover:bg-[#C9A961]"
+            className="bg-[#3453a7] hover:bg-[#27428d] text-white"
           >
             {isSubmitting ? "جاري إنهاء الفصل..." : "نعم، إنهاء الفصل"}
           </Button>
@@ -86,7 +95,7 @@ export function GlobalEndSemesterDialog() {
             variant="outline"
             onClick={() => handleOpenChange(false)}
             disabled={isSubmitting}
-            className="border-[#D4AF37]/60 text-neutral-700"
+            className="border-[#8fb1ff] text-neutral-700 hover:bg-[#eaf1ff] hover:text-[#27428d]"
           >
             إغلاق
           </Button>

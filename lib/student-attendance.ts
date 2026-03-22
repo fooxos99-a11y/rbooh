@@ -15,6 +15,24 @@ export type EvaluationLevelValue = NumericEvaluationLevel | LegacyEvaluationLeve
 
 export const LATE_ATTENDANCE_PENALTY = 2
 
+export const PRIMARY_MEMORIZATION_EVALUATION_OPTIONS = [
+  { level: "10" as NumericEvaluationLevel, label: "متقن" },
+  { level: "9" as NumericEvaluationLevel, label: "تنبيه واحد" },
+  { level: "8" as NumericEvaluationLevel, label: "تنبيهان" },
+  { level: "0" as NumericEvaluationLevel, label: "راسب" },
+] as const
+
+export const RETRY_MEMORIZATION_EVALUATION_OPTIONS = [
+  { level: "6" as NumericEvaluationLevel, label: "متقن" },
+  { level: "5" as NumericEvaluationLevel, label: "تنبيه واحد" },
+  { level: "4" as NumericEvaluationLevel, label: "تنبيهان" },
+  { level: "0" as NumericEvaluationLevel, label: "راسب" },
+] as const
+
+export function getMemorizationEvaluationOptions(isRetry: boolean) {
+  return isRetry ? RETRY_MEMORIZATION_EVALUATION_OPTIONS : PRIMARY_MEMORIZATION_EVALUATION_OPTIONS
+}
+
 export function translateAttendanceStatus(status: string | null | undefined) {
   if (!status) return null
   return ATTENDANCE_STATUS_LABELS[status as AttendanceStatus] ?? status
@@ -51,14 +69,50 @@ export function isPassingMemorizationLevel(level: EvaluationLevelValue) {
   return calculateEvaluationLevelPoints(level) > 0
 }
 
+export function getMemorizationEvaluationTextLabel(level: string | null | undefined) {
+  if (!level || level === "null") return null
+
+  switch (level) {
+    case "10":
+    case "6":
+      return "متقن"
+    case "9":
+    case "5":
+      return "تنبيه واحد"
+    case "8":
+    case "4":
+      return "تنبيهان"
+    case "0":
+      return "راسب"
+    case "excellent":
+      return "متقن"
+    case "very_good":
+      return "تنبيهان"
+    case "good":
+      return "متقن"
+    case "not_completed":
+      return "راسب"
+    default:
+      return /^(10|[0-9])$/.test(level) ? level : level
+  }
+}
+
 export function getEvaluationLevelLabel(level: string | null | undefined) {
   if (!level || level === "null") return null
 
-  if (/^(10|[0-9])$/.test(level)) {
-    return level
-  }
-
   switch (level) {
+    case "10":
+    case "9":
+    case "8":
+    case "7":
+    case "6":
+    case "5":
+    case "4":
+    case "3":
+    case "2":
+    case "1":
+    case "0":
+      return level
     case "excellent":
       return "10"
     case "very_good":
@@ -72,7 +126,7 @@ export function getEvaluationLevelLabel(level: string | null | undefined) {
     case "weak":
       return "2"
     default:
-      return level
+      return /^(10|[0-9])$/.test(level) ? level : level
   }
 }
 

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { ArrowRight, BarChart3, ChevronLeft, Users } from "lucide-react"
+import { BarChart3, Users } from "lucide-react"
 
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
@@ -20,7 +19,6 @@ export default function AdminWeeklyReportsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [circles, setCircles] = useState<Circle[]>([])
   const [error, setError] = useState("")
-  const router = useRouter()
 
   useEffect(() => {
     async function fetchCircles() {
@@ -62,15 +60,7 @@ export default function AdminWeeklyReportsPage() {
       <Header />
       <main className="px-4 py-10">
         <div className="container mx-auto max-w-6xl space-y-8">
-          <div className="flex items-center justify-between gap-3 border-b border-[#e8dfcc] pb-6">
-            <button
-              type="button"
-              onClick={() => router.push("/admin/dashboard")}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#dccba0] bg-white text-[#1a2332] shadow-sm transition hover:border-[#d8a355]"
-              aria-label="العودة"
-            >
-              <ArrowRight className="h-4.5 w-4.5" />
-            </button>
+          <div className="border-b border-[#e8dfcc] pb-6">
             <div className="text-right">
               <h1 className="text-3xl font-black text-[#1f2937]">تقارير الأسبوع</h1>
               <p className="mt-2 text-sm font-semibold text-[#6b7280]">اختر الحلقة لعرض تقريرها الأسبوعي الكامل.</p>
@@ -108,9 +98,8 @@ export default function AdminWeeklyReportsPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 flex items-center justify-between border-t border-dashed border-[#e5e7eb] pt-4 text-sm font-black text-[#1f2937]">
+                  <div className="mt-6 border-t border-dashed border-[#e5e7eb] pt-4 text-sm font-black text-[#1f2937]">
                     <span>فتح التقرير</span>
-                    <ChevronLeft className="h-4 w-4 text-[#94a3b8] transition group-hover:-translate-x-1 group-hover:text-[#d8a355]" />
                   </div>
                 </Link>
               ))}

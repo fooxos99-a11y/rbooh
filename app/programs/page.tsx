@@ -60,7 +60,7 @@ export default function ProgramsPage() {
           </div>
 
           {downloadMessage && (
-            <div className="mb-6 bg-[#d8a355] text-white px-6 py-4 rounded-lg flex justify-center shadow-lg">
+            <div className="mb-6 bg-[#3453a7] text-white px-6 py-4 rounded-lg flex justify-center shadow-lg">
               <SiteLoader size="sm" color="#ffffff" />
             </div>
           )}
@@ -74,7 +74,7 @@ export default function ProgramsPage() {
                   key={program.id}
                   className={`rounded-xl p-6 transition-all duration-300 relative ${
                     program.is_active
-                      ? "bg-white border-2 border-[#d8a355] shadow-md hover:shadow-xl"
+                      ? "bg-white border-2 border-[#3453a7]/25 shadow-md hover:shadow-xl"
                       : "bg-gray-50 border-2 border-gray-300 opacity-60"
                   }`}
                 >
@@ -92,7 +92,7 @@ export default function ProgramsPage() {
                     <div className="absolute top-4 left-4">
                       <button
                         onClick={() => handleDownload(program.name)}
-                        className="flex items-center gap-2 bg-[#d8a355] text-white px-4 py-2 rounded-lg hover:bg-[#c99245] transition-colors shadow-lg"
+                        className="flex items-center gap-2 bg-[#3453a7] text-white px-4 py-2 rounded-lg hover:bg-[#27428d] transition-colors shadow-lg"
                       >
                         <Download className="w-4 h-4" />
                         <span className="text-sm font-semibold">تنزيل</span>
@@ -124,7 +124,7 @@ export default function ProgramsPage() {
                       <div
                         className={`rounded-lg px-6 py-3 text-center min-w-[140px] ${
                           program.is_active
-                            ? "bg-[#d8a355]/10 border border-[#d8a355]"
+                            ? "bg-[#3453a7]/10 border border-[#3453a7]/25"
                             : "bg-gray-200 border border-gray-300"
                         }`}
                       >
@@ -137,7 +137,7 @@ export default function ProgramsPage() {
                       <div
                         className={`rounded-lg px-6 py-3 text-center min-w-[140px] ${
                           program.is_active
-                            ? "bg-[#d8a355]/10 border border-[#d8a355]"
+                            ? "bg-[#3453a7]/10 border border-[#3453a7]/25"
                             : "bg-gray-200 border border-gray-300"
                         }`}
                       >

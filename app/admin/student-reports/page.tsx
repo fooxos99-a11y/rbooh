@@ -63,7 +63,7 @@ export default function StudentReportsPage() {
   }
 
   const getLevelDisplay = (level: string | null): string => {
-    return getEvaluationLevelLabel(level) || "0"
+    return getEvaluationLevelLabel(level) || "—"
   }
 
   const fetchStudentReports = async (date: string, circle: string) => {
@@ -158,7 +158,7 @@ export default function StudentReportsPage() {
         <div className="container mx-auto px-4">
           <div className="mb-8 flex items-center gap-4">
             <Button
-              onClick={() => router.push("/admin/dashboard")}
+              onClick={() => router.push("/")}
               variant="outline"
               className="border-2 border-[#d8a355]"
             >
@@ -181,7 +181,7 @@ export default function StudentReportsPage() {
                     <CardContent className="pt-6 p-6">
                       <div className="space-y-4">
                         <div className="flex items-center gap-3">
-                          <BookOpen className="w-6 h-6 text-[#d8a355]" />
+                          <BookOpen className="w-6 h-6 text-[#003f55]" />
                           <h3 className="text-xl font-bold text-[#1a2332]">{circle.name}</h3>
                         </div>
                         <p className="text-sm text-[#1a2332]/70">
@@ -230,7 +230,7 @@ export default function StudentReportsPage() {
                     <div className="flex-1">
                       <label className="block text-sm font-semibold mb-2 text-[#1a2332]">التاريخ</label>
                       <div className="relative flex items-center">
-                        <Calendar className="absolute right-3 w-5 h-5 text-[#d8a355] pointer-events-none" />
+                        <Calendar className="absolute right-3 w-5 h-5 text-[#003f55] pointer-events-none" />
                         <input
                           type="date"
                           value={selectedDate}

@@ -26,7 +26,7 @@ interface AttendanceRecord {
   check_in_time: string
   status: string
   created_at: string
-  asrTime: string | null
+  ishaTime: string | null
   graceDeadline: string | null
   checkInTimeLocal: string | null
   isLate: boolean | null
@@ -46,7 +46,7 @@ export default function TeacherAttendancePage() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
   const [graceMinutes, setGraceMinutes] = useState(50)
-  const [todayAsrTime, setTodayAsrTime] = useState<string | null>(null)
+  const [todayIshaTime, setTodayIshaTime] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
   const [isDelayDialogOpen, setIsDelayDialogOpen] = useState(false)
   const [delayMinutes, setDelayMinutes] = useState(String(DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES))
@@ -110,7 +110,7 @@ export default function TeacherAttendancePage() {
         setDelayMinutes(String(data.meta.graceMinutes))
       }
 
-      setTodayAsrTime(typeof data.meta?.todayAsrTime === "string" ? data.meta.todayAsrTime : null)
+      setTodayIshaTime(typeof data.meta?.todayIshaTime === "string" ? data.meta.todayIshaTime : null)
     } catch (error) {
       console.error("[v0] Error fetching attendance:", error)
     } finally {
@@ -157,7 +157,7 @@ export default function TeacherAttendancePage() {
       setDelayMinutes(String(parsedMinutes))
       setIsDelayDialogOpen(false)
       await fetchAttendanceRecords()
-      await showAlert(`تم ضبط مدة التأخير إلى ${parsedMinutes} دقيقة بعد أذان العصر في بريدة`, "نجاح")
+      await showAlert(`تم ضبط مدة التأخير إلى ${parsedMinutes} دقيقة بعد أذان العشاء في بريدة`, "نجاح")
     } catch (error) {
       console.error("[teacher-attendance] Error saving teacher delay setting:", error)
       await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ مدة التأخير", "خطأ")
@@ -228,13 +228,13 @@ export default function TeacherAttendancePage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332] mb-2">تحضير المعلمين</h1>
-                <p className="text-gray-600">يحتسب التأخر بعد {graceMinutes} دقيقة من أذان العصر</p>
-                <p className="text-sm text-[#8E6B16] mt-2">أذان العصر اليوم: {todayAsrTime ? formatSaudiTimeWithPeriod(todayAsrTime) : "-"}</p>
+                <p className="text-gray-600">يحتسب التأخر بعد {graceMinutes} دقيقة من أذان العشاء</p>
+                <p className="mt-2 text-sm text-[#3453a7]">أذان العشاء اليوم: {todayIshaTime ? formatSaudiTimeWithPeriod(todayIshaTime) : "-"}</p>
               </div>
               <Button
                 variant="outline"
                 onClick={() => setIsDelayDialogOpen(true)}
-                className="self-start border-[#D4AF37]/50 bg-white text-[#C9A961] hover:bg-[#D4AF37]/10 hover:text-[#D4AF37]"
+                className="self-start border-[#8fb1ff] bg-white text-[#3453a7] hover:bg-[#eaf1ff] hover:text-[#27428d]"
               >
                 مدة التأخير
               </Button>
@@ -332,11 +332,11 @@ export default function TeacherAttendancePage() {
         <DialogContent className="sm:max-w-[420px]" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl text-[#1a2332] text-right">مدة التأخير</DialogTitle>
-            <DialogDescription className="text-sm text-neutral-500 text-right">يتم احتساب التأخير بعد أذان العصر في بريدة بهذه المدة</DialogDescription>
+            <DialogDescription className="text-sm text-neutral-500 text-right">يتم احتساب التأخير بعد أذان العشاء في بريدة بهذه المدة</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4 text-right">
             <div className="space-y-2">
-              <Label htmlFor="teacherDelayMinutes" className="text-sm font-semibold text-[#1a2332]">عدد الدقائق بعد أذان العصر</Label>
+              <Label htmlFor="teacherDelayMinutes" className="text-sm font-semibold text-[#1a2332]">عدد الدقائق بعد أذان العشاء</Label>
               <Input
                 id="teacherDelayMinutes"
                 value={delayMinutes}
@@ -349,8 +349,8 @@ export default function TeacherAttendancePage() {
             </div>
           </div>
           <div className="flex justify-end gap-3" dir="rtl">
-            <Button variant="outline" onClick={() => setIsDelayDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-            <Button onClick={handleSaveDelaySetting} disabled={isSavingDelay} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] disabled:opacity-60 disabled:cursor-not-allowed">
+            <Button variant="outline" onClick={() => setIsDelayDialogOpen(false)} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+            <Button onClick={handleSaveDelaySetting} disabled={isSavingDelay} className="bg-[#3453a7] hover:bg-[#27428d] text-white disabled:opacity-60 disabled:cursor-not-allowed">
               {isSavingDelay ? "جاري الحفظ..." : "حفظ"}
             </Button>
           </div>

@@ -7,7 +7,73 @@ import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { createClient } from "@/lib/supabase/client"
 import { LogIn, CheckCircle2 } from 'lucide-react'
+
+function normalizeAccountNumber(value: string) {
+  const normalized = value.replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632)).trim()
+  return /^[0-9]+$/.test(normalized) ? Number.parseInt(normalized, 10) : null
+}
+
+function serializeLookupError(error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null) {
+  if (!error) {
+    return null
+  }
+
+  return {
+    code: error.code || null,
+    message: error.message || null,
+    details: error.details || null,
+    hint: error.hint || null,
+  }
+}
+
+function isTransientLookupError(error: { code?: string | null; message?: string | null } | null) {
+  if (!error) return false
+
+  const message = (error.message || "").toLowerCase()
+
+  return error.code === "PGRST002" || error.code === "TIMEOUT" || message.includes("schema cache") || message.includes("failed to fetch")
+}
+
+function wait(delayMs: number) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs))
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error("Lookup timed out")), timeoutMs)
+    }),
+  ])
+}
+
+async function retryLookup<T>(lookup: () => Promise<{ data: T | null; error: { code?: string | null; message?: string | null } | null }>) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let result: { data: T | null; error: { code?: string | null; message?: string | null } | null }
+
+    try {
+      result = await withTimeout(lookup(), 4000)
+    } catch {
+      result = {
+        data: null,
+        error: {
+          code: "TIMEOUT",
+          message: "Lookup timed out",
+        },
+      }
+    }
+
+    if (!result.error || !isTransientLookupError(result.error) || attempt === 2) {
+      return result
+    }
+
+    await wait(500 * (attempt + 1))
+  }
+
+  return { data: null, error: null }
+}
 
 export function LoginForm() {
   const [accountNumber, setAccountNumber] = useState("")
@@ -15,80 +81,108 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const router = useRouter()
+  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isLoading) return
+
+    const parsedAccountNumber = normalizeAccountNumber(accountNumber)
+    if (!parsedAccountNumber) {
+      setError("رقم الحساب يجب أن يكون أرقام فقط")
+      return
+    }
+
     setError("")
     setIsLoading(true)
 
     try {
-      const response = await fetch("/api/auth", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          account_number: accountNumber,
-        }),
-      })
+      const { data: user, error: userError } = await retryLookup(() =>
+        supabase
+          .from("users")
+          .select("id, name, role, account_number, halaqah")
+          .eq("account_number", parsedAccountNumber)
+          .maybeSingle(),
+      )
 
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type")
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json()
-          setError(data.error || "رقم الحساب غير صحيح")
-        } else {
-          setError("حدث خطأ في الاتصال بالخادم")
-        }
+      if (userError) {
+        console.warn("[login] Users lookup failed:", serializeLookupError(userError))
+        setError("تعذر التحقق من الحساب الآن")
         setIsLoading(false)
         return
       }
 
-      const data = await response.json()
+      let resolvedUser = user
 
-      if (data.success && data.user) {
+      if (!resolvedUser) {
+        const { data: student, error: studentError } = await retryLookup(() =>
+          supabase
+            .from("students")
+            .select("id, name, account_number, halaqah")
+            .eq("account_number", parsedAccountNumber)
+            .maybeSingle(),
+        )
+
+        if (studentError) {
+          console.warn("[login] Students lookup failed:", serializeLookupError(studentError))
+          setError("تعذر التحقق من الحساب الآن")
+          setIsLoading(false)
+          return
+        }
+
+        if (student) {
+          resolvedUser = {
+            id: student.id,
+            name: student.name,
+            role: "student",
+            account_number: student.account_number,
+            halaqah: student.halaqah,
+          }
+        }
+      }
+
+      if (resolvedUser) {
         const currentUser = {
-          account_number: data.user.accountNumber,
-          role: data.user.role,
-          name: data.user.name,
-          halaqah: data.user.halaqah || "",
-          id: data.user.id // أضف uuid للطالب
+          account_number: resolvedUser.account_number,
+          role: resolvedUser.role,
+          name: resolvedUser.name,
+          halaqah: resolvedUser.halaqah || "",
+          id: resolvedUser.id,
         }
         localStorage.setItem("currentUser", JSON.stringify(currentUser))
 
-        localStorage.setItem("account_number", data.user.accountNumber.toString())
-        localStorage.setItem("accountNumber", data.user.accountNumber.toString())
-        localStorage.setItem("userRole", data.user.role)
-        localStorage.setItem("userName", data.user.name)
-        localStorage.setItem("studentName", data.user.name)
-        localStorage.setItem("userHalaqah", data.user.halaqah || "")
+        localStorage.setItem("account_number", resolvedUser.account_number.toString())
+        localStorage.setItem("accountNumber", resolvedUser.account_number.toString())
+        localStorage.setItem("userRole", resolvedUser.role)
+        localStorage.setItem("userName", resolvedUser.name)
+        localStorage.setItem("studentName", resolvedUser.name)
+        localStorage.setItem("userHalaqah", resolvedUser.halaqah || "")
         localStorage.setItem("isLoggedIn", "true")
 
-        // إذا كان الطالب، احفظ studentId (uuid) في localStorage
-        if (data.user.role === "student" && data.user.id) {
-          localStorage.setItem("studentId", data.user.id);
+        if (resolvedUser.role === "student" && resolvedUser.id) {
+          localStorage.setItem("studentId", resolvedUser.id)
         }
 
         setIsSuccess(true)
         setTimeout(() => {
-          router.push("/")
+          router.replace("/")
         }, 1500)
       } else {
-        setError(data.error || "رقم الحساب غير صحيح")
+        setError("رقم الحساب غير صحيح")
         setIsLoading(false)
       }
     } catch (error) {
-      console.error("[v0] Login error:", error)
+      console.warn("[login] Unexpected login failure:", error instanceof Error ? error.message : error)
       setError("حدث خطأ أثناء تسجيل الدخول")
       setIsLoading(false)
     }
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl p-4 md:p-8 border-2 border-[#d8a355]/30 relative">
+    <div className="bg-white rounded-2xl shadow-xl p-4 md:p-8 border-2 border-[#3453a7]/20 relative">
       {isSuccess && (
         <div className="absolute inset-0 bg-white rounded-2xl flex flex-col items-center justify-center z-10 animate-in fade-in duration-300">
-          <CheckCircle2 className="w-20 h-20 md:w-32 md:h-32 text-[#d8a355] animate-in zoom-in duration-500" />
+          <CheckCircle2 className="w-20 h-20 md:w-32 md:h-32 text-[#243870] animate-in zoom-in duration-500" />
         </div>
       )}
 
@@ -103,7 +197,7 @@ export function LoginForm() {
             placeholder="أدخل رقم الحساب"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
-            className="h-12 md:h-14 text-base md:text-lg text-center border-2 border-gray-200 focus:border-[#d8a355] transition-colors"
+            className="h-12 md:h-14 text-base md:text-lg text-center border-2 border-gray-200 focus:border-[#3453a7] transition-colors"
             required
             dir="ltr"
           />
@@ -116,7 +210,7 @@ export function LoginForm() {
         <Button
           type="submit"
           disabled={isLoading}
-          className="w-full h-12 md:h-14 bg-gradient-to-r from-[#d8a355] to-[#c99347] hover:from-[#d8a355]/90 hover:to-[#c99347]/90 text-[#023232] font-bold text-base md:text-lg shadow-lg hover:shadow-xl transition-all duration-300"
+          className="w-full h-12 md:h-14 bg-[#3453a7] text-white font-bold text-base md:text-lg shadow-lg hover:bg-[#27428d] hover:shadow-xl transition-all duration-300"
         >
           {isLoading ? (
             "جاري تسجيل الدخول..."

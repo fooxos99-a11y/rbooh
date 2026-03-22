@@ -20,6 +20,34 @@ export function getSaudiTimeString(date = new Date()) {
 	})
 }
 
+export function getSaudiTimeParts(date = new Date()) {
+	const formatter = new Intl.DateTimeFormat("en-GB", {
+		timeZone: RIYADH_TIME_ZONE,
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		hour12: false,
+	})
+
+	const parts = formatter.formatToParts(date)
+	return {
+		hour: Number(parts.find((part) => part.type === "hour")?.value || "0"),
+		minute: Number(parts.find((part) => part.type === "minute")?.value || "0"),
+		second: Number(parts.find((part) => part.type === "second")?.value || "0"),
+	}
+}
+
+export function getSaudiWeekday(dateString: string) {
+	return new Date(`${dateString}T12:00:00+03:00`).getUTCDay()
+}
+
+export function isSaudiAttendanceWindowOpen(date = new Date()) {
+	const saudiDate = getSaudiDateString(date)
+	const weekday = getSaudiWeekday(saudiDate)
+
+	return weekday === 0 || weekday === 3
+}
+
 export function formatSaudiTimeWithPeriod(timeValue: string) {
 	const normalized = timeValue.includes("T") ? new Date(timeValue) : null
 

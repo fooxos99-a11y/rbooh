@@ -1,11 +1,22 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
+function normalizeAccountNumber(rawValue: string | null) {
+  if (!rawValue) return null
+
+  const normalized = rawValue.replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632)).trim()
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 export async function GET(request: Request) {
   try {
     const supabase = await createClient()
     const { searchParams } = new URL(request.url)
-    const accountNumber = searchParams.get("account_number")
+    const accountNumber = normalizeAccountNumber(searchParams.get("account_number"))
 
     // If account_number is provided, fetch specific teacher
     if (accountNumber) {
@@ -30,10 +41,12 @@ export async function GET(request: Request) {
         teachers: [{
           id: teacher.id,
           name: teacher.name,
+          role: teacher.role || "teacher",
           account_number: teacher.account_number,
           accountNumber: teacher.account_number?.toString() || "",
           idNumber: teacher.id_number || "",
-          halaqah: teacher.halaqah || "",
+          circle_name: teacher.circle_name || "",
+          halaqah: teacher.halaqah || teacher.circle_name || "",
           phoneNumber: teacher.phone_number || "",
         }]
       }, { status: 200 })

@@ -123,7 +123,7 @@ export function GlobalEditStudentDialog() {
 			toast({
 				title: "✓ تم الحفظ بنجاح",
 				description: `تم تحديث معلومات الطالب ${editingStudent.name} بنجاح`,
-				className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+				className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
 			})
 
 			setEditingStudent(null)
@@ -151,7 +151,7 @@ export function GlobalEditStudentDialog() {
 				<DialogHeader>
 					<DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
 						<span className="inline-flex items-center gap-2">
-							<UserPen className="w-5 h-5 text-[#D4AF37]" />
+							<UserPen className="w-5 h-5 text-[#003f55]" />
 							<span>تعديل بيانات الطالب</span>
 						</span>
 					</DialogTitle>
@@ -228,13 +228,13 @@ export function GlobalEditStudentDialog() {
 					<Button
 						variant="outline"
 						onClick={() => handleClose(false)}
-						className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+						className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600"
 					>
 						إلغاء
 					</Button>
 					<Button
 						onClick={handleSaveStudentEdit}
-						className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
+						className="bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
 						disabled={!editingStudent || isSubmitting}
 					>
 						{isSubmitting ? "جاري الحفظ..." : "حفظ التعديلات"}

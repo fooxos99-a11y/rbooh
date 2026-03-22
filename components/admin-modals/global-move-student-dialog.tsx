@@ -107,7 +107,7 @@ export function GlobalMoveStudentDialog() {
 			toast({
 				title: "✓ تم النقل بنجاح",
 				description: `تم نقل الطالب ${studentName} إلى ${moveTargetCircle} بنجاح`,
-				className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+				className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
 			})
 
 			setMoveStudentId("")
@@ -133,7 +133,7 @@ export function GlobalMoveStudentDialog() {
 				<DialogHeader>
 					<DialogTitle className="flex w-full justify-start text-right text-xl text-[#1a2332]">
 						<span className="inline-flex items-center gap-2">
-							<ArrowRightLeft className="w-5 h-5 text-[#D4AF37]" />
+							<ArrowRightLeft className="w-5 h-5 text-[#003f55]" />
 							<span>نقل طالب</span>
 						</span>
 					</DialogTitle>
@@ -200,13 +200,13 @@ export function GlobalMoveStudentDialog() {
 					<Button
 						variant="outline"
 						onClick={() => handleClose(false)}
-						className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+						className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600"
 					>
 						إلغاء
 					</Button>
 					<Button
 						onClick={handleMoveStudent}
-						className="text-sm h-9 rounded-lg font-medium border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] transition-colors hover:bg-[#D4AF37]/20"
+						className="text-sm h-9 rounded-lg font-medium bg-[#3453a7] hover:bg-[#27428d] text-white"
 						disabled={!moveStudentId || !moveTargetCircle || isSubmitting}
 					>
 						{isSubmitting ? "جاري النقل..." : "حفظ"}

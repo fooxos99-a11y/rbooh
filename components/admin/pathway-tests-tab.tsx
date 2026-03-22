@@ -20,9 +20,18 @@ import {
   Pencil,
   Plus,
   Search,
+  SlidersHorizontal,
   Trash2,
   Unlock,
 } from "lucide-react"
+import {
+  calculatePathwayTestScore,
+  DEFAULT_PATHWAY_TEST_SCORING_SETTINGS,
+  normalizePathwayTestScoringSettings,
+  PATHWAY_TEST_SCORING_SETTING_ID,
+  type PathwayTestScoreDetails,
+  type PathwayTestScoringSettings,
+} from "@/lib/pathway-test-scoring"
 
 type Circle = { id: string; name: string }
 type StudentOption = { id: string; name: string }
@@ -44,6 +53,7 @@ type DisplayJuz = {
     testedAt: string | null
     testedByName: string | null
     notes: string | null
+    scoreDetails: PathwayTestScoreDetails | null
   } | null
   levelResults: Array<{
     status: "pass" | "fail"
@@ -51,6 +61,7 @@ type DisplayJuz = {
     testedAt: string | null
     testedByName: string | null
     notes: string | null
+    scoreDetails: PathwayTestScoreDetails | null
   }>
 }
 
@@ -125,9 +136,17 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
   const [showEditModal, setShowEditModal] = useState(false)
   const [editTitle, setEditTitle] = useState("")
   const [editDescription, setEditDescription] = useState("")
+  const [scoringSettings, setScoringSettings] = useState<PathwayTestScoringSettings>(DEFAULT_PATHWAY_TEST_SCORING_SETTINGS)
+  const [showScoringSettingsModal, setShowScoringSettingsModal] = useState(false)
+  const [scoringSettingsDraft, setScoringSettingsDraft] = useState<PathwayTestScoringSettings>(DEFAULT_PATHWAY_TEST_SCORING_SETTINGS)
+  const [isSavingScoringSettings, setIsSavingScoringSettings] = useState(false)
+  const [pendingPassJuzNumber, setPendingPassJuzNumber] = useState<number | null>(null)
+  const [warningCountInput, setWarningCountInput] = useState("0")
+  const [mistakeCountInput, setMistakeCountInput] = useState("0")
 
   useEffect(() => {
     void loadCircles()
+    void loadScoringSettings()
   }, [])
 
   useEffect(() => {
@@ -151,6 +170,19 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
       }
     } catch {
       toast({ title: "خطأ", description: "تعذر جلب الحلقات", variant: "destructive" })
+    }
+  }
+
+  async function loadScoringSettings() {
+    try {
+      const response = await fetch(`/api/site-settings?id=${PATHWAY_TEST_SCORING_SETTING_ID}`, { cache: "no-store" })
+      const data = await response.json()
+      const normalized = normalizePathwayTestScoringSettings(data.value)
+      setScoringSettings(normalized)
+      setScoringSettingsDraft(normalized)
+    } catch {
+      setScoringSettings(DEFAULT_PATHWAY_TEST_SCORING_SETTINGS)
+      setScoringSettingsDraft(DEFAULT_PATHWAY_TEST_SCORING_SETTINGS)
     }
   }
 
@@ -222,7 +254,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
     await loadStudentPathwayData(selectedStudentId, options)
   }
 
-  async function saveResult(juzNumber: number, status: "pass" | "fail") {
+  async function saveResult(juzNumber: number, status: "pass" | "fail", scoreCounts?: { warningCount: number; mistakeCount: number }) {
     if (!canManageTests || !selectedStudentId || !selectedLevelNumber || selectedLevel?.is_locked) return
 
     const currentLevelNumber = selectedLevelNumber
@@ -252,6 +284,8 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
           juz_number: juzNumber,
           status,
           tested_by_name: testedByName,
+          warning_count: status === "pass" ? (scoreCounts?.warningCount ?? 0) : 0,
+          mistake_count: status === "pass" ? (scoreCounts?.mistakeCount ?? 0) : 0,
         }),
       })
       const data = await response.json()
@@ -276,6 +310,55 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
     } finally {
       setSavingKey(null)
     }
+  }
+
+  async function handleSaveScoringSettings() {
+    try {
+      setIsSavingScoringSettings(true)
+      const normalized = normalizePathwayTestScoringSettings(scoringSettingsDraft)
+      const response = await fetch("/api/site-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: PATHWAY_TEST_SCORING_SETTING_ID,
+          value: normalized,
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "تعذر حفظ إعدادات الاختبار")
+      }
+
+      setScoringSettings(normalized)
+      setScoringSettingsDraft(normalized)
+      setShowScoringSettingsModal(false)
+      toast({ title: "تم الحفظ", description: "تم تحديث إعدادات خصم اختبار المسار" })
+    } catch (error) {
+      toast({
+        title: "خطأ",
+        description: error instanceof Error ? error.message : "تعذر حفظ إعدادات الاختبار",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingScoringSettings(false)
+    }
+  }
+
+  function openPassModal(juzNumber: number) {
+    setPendingPassJuzNumber(juzNumber)
+    setWarningCountInput("0")
+    setMistakeCountInput("0")
+  }
+
+  async function handleConfirmPassResult() {
+    if (!pendingPassJuzNumber) return
+
+    const warningCount = Math.max(0, Number.parseInt(warningCountInput || "0", 10) || 0)
+    const mistakeCount = Math.max(0, Number.parseInt(mistakeCountInput || "0", 10) || 0)
+
+    await saveResult(pendingPassJuzNumber, "pass", { warningCount, mistakeCount })
+    setPendingPassJuzNumber(null)
   }
 
   async function handleAddLevel() {
@@ -378,6 +461,11 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
   }
 
   const selectedLevel = levels.find((level) => level.level_number === selectedLevelNumber) || null
+  const pendingScorePreview = calculatePathwayTestScore({
+    settings: scoringSettings,
+    warningCount: Math.max(0, Number.parseInt(warningCountInput || "0", 10) || 0),
+    mistakeCount: Math.max(0, Number.parseInt(mistakeCountInput || "0", 10) || 0),
+  })
   const visibleDisplayJuzs = displayJuzs.filter((item) => {
     if (!selectedLevelNumber) {
       return false
@@ -406,20 +494,36 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[34px] bg-transparent shadow-none">
+      <section className="overflow-hidden rounded-[34px] border border-[#3453a7]/18 bg-white/95 shadow-[0_12px_28px_rgba(26,35,50,0.08)]">
         <div className="px-6 py-7 md:px-7">
           <div className="space-y-5">
-            <div className="ml-auto max-w-[860px] rounded-[28px] border border-[#D4AF37]/18 bg-white/95 p-4 shadow-[0_12px_28px_rgba(26,35,50,0.08)] md:p-4.5">
-              <div className="mb-3 border-b border-[#D4AF37]/12 pb-3 text-right">
-                <p className="text-lg font-black leading-8 text-[#1a2332]">إدارة المسار</p>
-                <p className="mt-1 text-sm font-medium text-neutral-500">اختر الطالب ثم اختبره في الأجزاء داخل المستوى المحدد.</p>
+            <div>
+              <div className="mb-3 flex items-start justify-between gap-3 border-b border-[#3453a7]/12 pb-3">
+                <div className="text-right">
+                  <p className="text-lg font-black leading-8 text-[#1a2332]">إدارة المسار</p>
+                  <p className="mt-1 text-sm font-medium text-neutral-500">اختر الطالب ثم اختبره في الأجزاء داخل المستوى المحدد.</p>
+                </div>
+
+                {canManageSetup ? (
+                  <button
+                    onClick={() => {
+                      setScoringSettingsDraft(scoringSettings)
+                      setShowScoringSettingsModal(true)
+                    }}
+                    className="inline-flex h-10 items-center gap-2 rounded-2xl border border-[#8fb1ff] bg-[#f7faff] px-4 text-[#3453a7] transition-all hover:-translate-y-0.5 hover:bg-[#eaf1ff]"
+                    title="إعدادات الاختبار"
+                  >
+                    <SlidersHorizontal className="h-4 w-4" />
+                    <span className="text-xs font-bold">إعدادات الاختبار</span>
+                  </button>
+                ) : <div />}
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="block space-y-2 text-right">
                   <span className="text-[11px] font-bold tracking-wide text-neutral-500">الحلقة</span>
                   <Select value={selectedCircle} onValueChange={setSelectedCircle}>
-                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#D4AF37]/25 bg-[#fffdfa] px-4 text-right text-sm font-semibold text-[#1a2332]">
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#8fb1ff] bg-white px-4 text-right text-sm font-semibold text-[#1a2332]">
                       <SelectValue placeholder="اختر الحلقة" />
                     </SelectTrigger>
                     <SelectContent>
@@ -437,7 +541,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                     onValueChange={setSelectedStudentId}
                     disabled={loadingStudents || students.length === 0}
                   >
-                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#D4AF37]/25 bg-[#fffdfa] px-4 text-right text-sm font-semibold text-[#1a2332] disabled:opacity-60">
+                    <SelectTrigger className="h-11 w-full rounded-2xl border-[#8fb1ff] bg-white px-4 text-right text-sm font-semibold text-[#1a2332] disabled:opacity-60">
                       <SelectValue placeholder="اختر الطالب" />
                     </SelectTrigger>
                     <SelectContent>
@@ -452,7 +556,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
           </div>
 
           {selectedStudentId && !loadingData && (
-            <div className="mt-6 rounded-[26px] border border-[#D4AF37]/12 bg-white/70 p-4">
+            <div className="mt-6 rounded-[26px] border border-[#D4AF37]/12 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center justify-end gap-3">
                 {levels.map((level) => (
@@ -461,8 +565,8 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                     onClick={() => setSelectedLevelNumber(level.level_number)}
                     className={`inline-flex min-h-11 items-center gap-2 rounded-[18px] border px-5 py-2.5 text-sm font-bold transition-all ${
                       selectedLevelNumber === level.level_number
-                        ? "border-[#D4AF37] bg-[#fff3cf] text-[#b88922] shadow-[0_10px_20px_rgba(212,175,55,0.16)]"
-                        : "border-[#E8D5A1] bg-white text-neutral-600 hover:-translate-y-0.5 hover:border-[#D4AF37]/55 hover:bg-[#fffaf0]"
+                        ? "border-[#D4AF37] bg-white text-[#b88922] shadow-[0_10px_20px_rgba(212,175,55,0.16)]"
+                        : "border-[#E8D5A1] bg-white text-neutral-600 hover:-translate-y-0.5 hover:border-[#D4AF37]/55"
                     }`}
                   >
                     <span>{level.title}</span>
@@ -475,7 +579,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleAddLevel}
-                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50 text-emerald-600 transition-all hover:-translate-y-0.5 hover:bg-emerald-100"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-white text-emerald-600 transition-all hover:-translate-y-0.5 hover:bg-white"
                       title="إضافة مستوى"
                     >
                       <Plus className="h-4 w-4" />
@@ -483,7 +587,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                     <button
                       onClick={handleDeleteLevel}
                       disabled={levels.length === 0}
-                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-red-200 bg-red-50 text-red-500 transition-all hover:-translate-y-0.5 hover:bg-red-100 disabled:opacity-40"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-red-200 bg-white text-red-500 transition-all hover:-translate-y-0.5 hover:bg-white disabled:opacity-40"
                       title="حذف آخر مستوى"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -491,7 +595,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                     <button
                       onClick={handleToggleLockLevel}
                       disabled={!selectedLevel}
-                      className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition-all disabled:opacity-40 ${selectedLevel?.is_locked ? "border-red-200 bg-red-50 text-red-400 hover:-translate-y-0.5 hover:bg-red-100" : "border-emerald-200 bg-emerald-50 text-emerald-500 hover:-translate-y-0.5 hover:bg-emerald-100"}`}
+                      className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition-all disabled:opacity-40 ${selectedLevel?.is_locked ? "border-red-200 bg-white text-red-400 hover:-translate-y-0.5 hover:bg-white" : "border-emerald-200 bg-white text-emerald-500 hover:-translate-y-0.5 hover:bg-white"}`}
                       title={selectedLevel?.is_locked ? "فتح المستوى" : "قفل المستوى"}
                     >
                       {selectedLevel?.is_locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
@@ -505,7 +609,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                         setShowEditModal(true)
                       }}
                       disabled={!selectedLevel}
-                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#D4AF37]/35 bg-[#fffaf0] text-[#C9A961] transition-all hover:-translate-y-0.5 hover:bg-[#f8f1dd] disabled:opacity-40"
+                      className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#D4AF37]/35 bg-white text-[#C9A961] transition-all hover:-translate-y-0.5 hover:bg-white disabled:opacity-40"
                       title="تعديل المستوى"
                     >
                       <Pencil className="h-4 w-4" />
@@ -521,9 +625,8 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
               )}
             </div>
           )}
-        </div>
 
-        <div className="bg-[#fffdf9] px-6 py-6 md:px-7">
+          <div className="mt-6 border-t border-[#D4AF37]/12 pt-6">
           {!selectedStudentId ? null : loadingData ? (
             <div className="flex items-center justify-center rounded-[26px] border border-[#D4AF37]/20 bg-white py-20 shadow-sm">
               <SiteLoader size="lg" />
@@ -560,9 +663,6 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                       <div className="flex items-start justify-between gap-3">
                         <div className="text-left">
                           <p className="text-xl font-black leading-none text-[#1a2332]">{getJuzLabel(item.juzNumber)}</p>
-                          <p className="mt-1.5 text-xs font-medium text-neutral-500">
-                            آخر تاريخ اختبار: {currentLevelResult?.testedAt ? new Date(currentLevelResult.testedAt).toLocaleDateString("ar-SA") : "-"}
-                          </p>
                         </div>
 
                         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -582,13 +682,19 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
                             : "border-red-200 bg-[linear-gradient(180deg,#fff1f1,#ffe8e8)] text-red-600"
                         }`}>
                           {isPassing ? "ناجح" : "راسب"}
+                          {isPassing && currentLevelResult?.scoreDetails && (
+                            <div className="mt-2 space-y-1 text-xs font-bold text-emerald-700/90">
+                              <p>الدرجة: {currentLevelResult.scoreDetails.finalScore} / {currentLevelResult.scoreDetails.basePoints}</p>
+                              <p>الأخطاء: {currentLevelResult.scoreDetails.mistakeCount} | التنبيهات: {currentLevelResult.scoreDetails.warningCount}</p>
+                            </div>
+                          )}
                         </div>
                       )}
 
                       {!hasExistingResult && (
                         <div className="mt-auto flex gap-2 pt-5">
                           <Button
-                            onClick={() => saveResult(item.juzNumber, "pass")}
+                            onClick={() => openPassModal(item.juzNumber)}
                             disabled={isDisabled}
                             className="h-10 flex-1 rounded-2xl bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50"
                           >
@@ -618,6 +724,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
               <p className="text-lg font-bold text-[#1a2332]">لا توجد أجزاء كاملة محفوظة</p>
             </div>
           )}
+          </div>
         </div>
       </section>
 
@@ -633,7 +740,74 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
             </div>
             <div className="flex justify-end gap-3">
               <button onClick={() => setShowEditModal(false)} className="px-4 py-2 rounded-lg border border-neutral-200 text-neutral-500 text-sm hover:bg-neutral-50 transition-colors">إلغاء</button>
-              <button onClick={() => void handleSaveLevelEdit()} className="px-4 py-2 rounded-lg border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm font-semibold transition-colors">حفظ</button>
+              <button onClick={() => void handleSaveLevelEdit()} className="px-4 py-2 rounded-lg border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white text-sm font-semibold transition-colors">حفظ</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showScoringSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" dir="rtl">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-[#D4AF37]/40 bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-bold text-[#1a2332]">إعدادات احتساب اختبار المسار</h2>
+            <div className="space-y-2 text-right">
+              <p className="text-sm font-semibold text-[#1a2332]">أصل النقاط</p>
+              <Input
+                type="number"
+                min={0}
+                value={scoringSettingsDraft.basePoints}
+                onChange={(event) => setScoringSettingsDraft((current) => ({ ...current, basePoints: Number(event.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-2 text-right">
+              <p className="text-sm font-semibold text-[#1a2332]">خصم كل تنبيه</p>
+              <Input
+                type="number"
+                min={0}
+                value={scoringSettingsDraft.warningDeduction}
+                onChange={(event) => setScoringSettingsDraft((current) => ({ ...current, warningDeduction: Number(event.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-2 text-right">
+              <p className="text-sm font-semibold text-[#1a2332]">خصم كل خطأ</p>
+              <Input
+                type="number"
+                min={0}
+                value={scoringSettingsDraft.mistakeDeduction}
+                onChange={(event) => setScoringSettingsDraft((current) => ({ ...current, mistakeDeduction: Number(event.target.value) || 0 }))}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setShowScoringSettingsModal(false)} className="rounded-lg border border-neutral-200 px-4 py-2 text-sm text-neutral-500 transition-colors hover:bg-neutral-50">إلغاء</button>
+              <button onClick={() => void handleSaveScoringSettings()} disabled={isSavingScoringSettings} className="rounded-lg border border-[#3453a7] bg-[#3453a7] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#27428d] disabled:opacity-60">{isSavingScoringSettings ? "جاري الحفظ..." : "حفظ"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingPassJuzNumber !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" dir="rtl">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-emerald-200 bg-white p-6 shadow-xl">
+            <h2 className="text-xl font-bold text-[#1a2332]">نتيجة اختبار {getJuzLabel(pendingPassJuzNumber)}</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 text-right">
+                <p className="text-sm font-semibold text-[#1a2332]">عدد الأخطاء</p>
+                <Input type="number" min={0} value={mistakeCountInput} onChange={(event) => setMistakeCountInput(event.target.value)} />
+              </div>
+              <div className="space-y-2 text-right">
+                <p className="text-sm font-semibold text-[#1a2332]">عدد التنبيهات</p>
+                <Input type="number" min={0} value={warningCountInput} onChange={(event) => setWarningCountInput(event.target.value)} />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#D4AF37]/20 bg-[#fffaf0] px-4 py-3 text-right text-sm text-[#1a2332]">
+              <p className="font-bold">أصل النقاط: {pendingScorePreview.basePoints}</p>
+              <p className="mt-1">خصم التنبيهات: {pendingScorePreview.warningCount} × {pendingScorePreview.warningDeduction}</p>
+              <p className="mt-1">خصم الأخطاء: {pendingScorePreview.mistakeCount} × {pendingScorePreview.mistakeDeduction}</p>
+              <p className="mt-2 text-base font-black text-emerald-700">النتيجة النهائية: {pendingScorePreview.finalScore} / {pendingScorePreview.basePoints}</p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setPendingPassJuzNumber(null)} className="rounded-lg border border-neutral-200 px-4 py-2 text-sm text-neutral-500 transition-colors hover:bg-neutral-50">إلغاء</button>
+              <button onClick={() => void handleConfirmPassResult()} disabled={savingKey === `${pendingPassJuzNumber}-pass`} className="rounded-lg bg-[#3453a7] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#27428d] disabled:opacity-60">{savingKey === `${pendingPassJuzNumber}-pass` ? "جاري الحفظ..." : "اعتماد النجاح"}</button>
             </div>
           </div>
         </div>

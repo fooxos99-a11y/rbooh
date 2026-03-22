@@ -251,14 +251,14 @@ export default function WhatsAppSendPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332] mb-2 flex items-center gap-3">
-                  <MessageCircle className="w-8 h-8 text-[#25D366]" />
+                  <MessageCircle className="w-8 h-8 text-[#3453a7]" />
                   الإرسال إلى أولياء الأمور
                 </h1>
               </div>
               <Button
                 variant="outline"
                 onClick={() => router.push("/admin/whatsapp-replies")}
-                className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                className="text-sm h-9 rounded-lg border-[#8fb1ff] text-neutral-600 hover:bg-[#eaf1ff] hover:text-[#27428d]"
               >
                 <MessageCircle className="w-4 h-4 ml-2" />
                 عرض الردود
@@ -274,7 +274,7 @@ export default function WhatsAppSendPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Message Composer */}
               <div className="lg:col-span-1">
-                <Card className="border-2 border-[#35A4C7]/20">
+                <Card className="border-2 border-[#8fb1ff]">
                   <CardHeader>
                     <CardTitle className="text-[#1a2332]">كتابة الرسالة</CardTitle>
                   </CardHeader>
@@ -284,7 +284,7 @@ export default function WhatsAppSendPage() {
                       <div className="flex gap-2 mb-2 items-center">
                         <Input
                           type="text"
-                          placeholder="اكتب نص لإضافته كرسالة جاهزة"
+                          placeholder=""
                           value={quickText}
                           onChange={e => setQuickText(e.target.value)}
                           className="text-xs w-2/3"
@@ -292,7 +292,7 @@ export default function WhatsAppSendPage() {
                         <Button
                           type="button"
                           variant="outline"
-                          className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                          className="text-sm h-9 rounded-lg border-[#8fb1ff] text-neutral-600 hover:bg-[#eaf1ff] hover:text-[#27428d]"
                           onClick={handleAddReadyMessage}
                         >
                           إضافة
@@ -309,7 +309,7 @@ export default function WhatsAppSendPage() {
                             <div key={msg.id} className="flex items-center gap-2 bg-gray-100 rounded px-2 py-1">
                               <span className="flex-1 text-xs text-gray-700">{msg.text}</span>
                               <div className="flex gap-2">
-                                <Button type="button" size="sm" variant="outline" className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600" onClick={()=>setMessage(prev=>prev?prev+"\n"+msg.text:msg.text)}>
+                                <Button type="button" size="sm" variant="outline" className="text-sm h-9 rounded-lg border-[#8fb1ff] text-neutral-600 hover:bg-[#eaf1ff] hover:text-[#27428d]" onClick={()=>setMessage(prev=>prev?prev+"\n"+msg.text:msg.text)}>
                                   إدراج
                                 </Button>
                                 <Button type="button" size="sm" variant="outline" className="text-sm h-9 rounded-lg border-red-300 text-red-500 hover:bg-red-50 hover:text-red-600" onClick={()=>handleDeleteReadyMessage(msg.id)}>
@@ -351,7 +351,7 @@ export default function WhatsAppSendPage() {
                       onClick={handleSendMessages}
                       disabled={isSending || selectedStudents.length === 0 || !message.trim()}
                       variant="outline"
-                      className="w-full text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                      className="w-full text-sm h-9 rounded-lg border-[#8fb1ff] text-neutral-600 hover:bg-[#eaf1ff] hover:text-[#27428d]"
                     >
                       {isSending ? (
                         <>
@@ -371,7 +371,7 @@ export default function WhatsAppSendPage() {
 
               {/* Students List */}
               <div className="lg:col-span-2">
-                <Card className="border-2 border-[#35A4C7]/20">
+                <Card className="border-2 border-[#8fb1ff]">
                   <CardHeader>
                     <CardTitle className="text-[#1a2332]">اختيار الطلاب</CardTitle>
                     <CardDescription>حدد أولياء الأمور الذين تريد إرسال الرسالة لهم</CardDescription>
@@ -390,7 +390,7 @@ export default function WhatsAppSendPage() {
                       <Button
                         onClick={handleSelectAll}
                         variant="outline"
-                        className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600 whitespace-nowrap"
+                        className="text-sm h-9 rounded-lg border-[#8fb1ff] text-neutral-600 whitespace-nowrap hover:bg-[#eaf1ff] hover:text-[#27428d]"
                       >
                         {selectedStudents.length === filteredStudents.length
                           ? "إلغاء تحديد الكل"
@@ -409,9 +409,9 @@ export default function WhatsAppSendPage() {
                         filteredStudents.map((student) => (
                           <label
                             key={student.id}
-                            className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-[#d8a355] ${
+                            className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all hover:border-[#8fb1ff] ${
                               selectedStudents.includes(student.id)
-                                ? "border-[#d8a355] bg-[#d8a355]/5"
+                                ? "border-[#3453a7] bg-[#eaf1ff]"
                                 : "border-gray-200"
                             }`}
                           >
@@ -419,7 +419,7 @@ export default function WhatsAppSendPage() {
                               type="checkbox"
                               checked={selectedStudents.includes(student.id)}
                               onChange={() => handleSelectStudent(student.id)}
-                              className="w-5 h-5 text-[#d8a355] rounded"
+                              className="w-5 h-5 rounded text-[#3453a7]"
                             />
                             <div className="flex-1">
                               <p className="font-semibold text-[#1a2332]">{student.name}</p>

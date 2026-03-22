@@ -212,7 +212,7 @@ export function EffectSelector({ studentId }: EffectSelectorProps) {
   const [currentEffect, setCurrentEffect] = useState("default")
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState("")
-  const [ownedEffects, setOwnedEffects] = useState<string[]>(["default"])
+  const [ownedEffects, setOwnedEffects] = useState<string[]>(Object.keys(EFFECTS))
 
   useEffect(() => {
     if (studentId) {
@@ -223,18 +223,6 @@ export function EffectSelector({ studentId }: EffectSelectorProps) {
   const loadFromDB = async () => {
     if (!studentId) return
     try {
-      // Load owned effects from purchases API (merge with cache)
-      const purchasesRes = await fetch(`/api/purchases?student_id=${studentId}`)
-      const purchasesData = await purchasesRes.json()
-      const cachedEffects: string[] = JSON.parse(localStorage.getItem(`effect_purchases_${studentId}`) || '[]')
-      const dbEffects: string[] = Array.isArray(purchasesData.purchases)
-        ? purchasesData.purchases.filter((id: string) => id.startsWith("effect_"))
-        : []
-      const mergedEffects = [...new Set([...cachedEffects, ...dbEffects])]
-      const effects = mergedEffects.map((id: string) => id.replace("effect_", ""))
-      setOwnedEffects(["default", ...effects])
-      localStorage.setItem(`effect_purchases_${studentId}`, JSON.stringify(mergedEffects))
-
       // Load active effect from effects API (synced across devices)
       const effectRes = await fetch(`/api/effects?studentId=${studentId}`)
       const effectData = await effectRes.json()
@@ -247,17 +235,6 @@ export function EffectSelector({ studentId }: EffectSelectorProps) {
       }
     } catch (error) {
       console.error("Error loading effect data:", error)
-      // Fallback to localStorage
-      const purchases = localStorage.getItem(`effect_purchases_${studentId}`)
-      if (purchases) {
-        try {
-          const purchaseList = JSON.parse(purchases)
-          const effects = purchaseList.map((id: string) => id.replace("effect_", ""))
-          setOwnedEffects(["default", ...effects])
-        } catch {
-          setOwnedEffects(["default"])
-        }
-      }
       const activeEffect = localStorage.getItem(`active_effect_${studentId}`)
       setCurrentEffect(activeEffect || "default")
     }
@@ -307,7 +284,7 @@ export function EffectSelector({ studentId }: EffectSelectorProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-4">
-        <Sparkles className="w-5 h-5 text-[#d8a355]" />
+        <Sparkles className="w-5 h-5 text-[#003f55]" />
         <h3 className="text-lg font-bold text-[#1a2332]">اختر التأثير</h3>
       </div>
 

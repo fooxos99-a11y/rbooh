@@ -54,6 +54,12 @@ function isMissingPlanSessionNumberColumn(error: { message?: string | null; deta
   return /plan_session_number|column .* does not exist/i.test(content)
 }
 
+function isDuplicateDailyReportError(error: { message?: string | null; details?: string | null; hint?: string | null; code?: string | null } | null) {
+  if (!error) return false
+  const content = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
+  return /PGRST116|multiple \(or no\) rows returned|more than 1 row|multiple rows/i.test(content)
+}
+
 async function resolvePlanSessionNumber(params: {
   supabase: Awaited<ReturnType<typeof createClient>>
   studentId: string
@@ -125,6 +131,7 @@ export async function GET(request: NextRequest) {
     const days = Number.isFinite(requestedDays) ? Math.min(Math.max(requestedDays, 1), 14) : 3
     const excludeToday = searchParams.get("exclude_today") === "true"
     const skipMemorizationOffDays = searchParams.get("skip_memorization_off_days") === "true"
+    const pendingOnly = searchParams.get("pending_only") === "true"
 
     if (!studentId && studentIds.length === 0) {
       return NextResponse.json({ error: "student_id أو student_ids مطلوب" }, { status: 400 })
@@ -139,9 +146,12 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("student_daily_reports")
       .select("id, student_id, report_date, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, notes, created_at, updated_at")
-      .gte("report_date", fromDate)
       .lte("report_date", queryEndDate)
       .order("report_date", { ascending: false })
+
+    if (!pendingOnly) {
+      query = query.gte("report_date", fromDate)
+    }
 
     if (studentId) {
       query = query.eq("student_id", studentId)
@@ -188,18 +198,67 @@ export async function GET(request: NextRequest) {
       return acc
     }, {})
 
-    const limitedReportsByStudent = Object.fromEntries(
-      Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
-        currentStudentId,
-        studentReports
-          .sort((left, right) => right.report_date.localeCompare(left.report_date))
-          .slice(0, days),
-      ]),
-    )
+    let finalReportsByStudent = reportsByStudent
 
-    const reports = Object.values(limitedReportsByStudent).flat()
+    if (pendingOnly) {
+      let attendanceQuery = supabase
+        .from("attendance_records")
+        .select("student_id, date, evaluations(hafiz_level)")
+        .lte("date", queryEndDate)
 
-    return NextResponse.json({ todayDate, reports, reportsByStudent: limitedReportsByStudent })
+      if (studentId) {
+        attendanceQuery = attendanceQuery.eq("student_id", studentId)
+      } else {
+        attendanceQuery = attendanceQuery.in("student_id", studentIds)
+      }
+
+      const { data: attendanceRecords, error: attendanceError } = await attendanceQuery
+
+      if (attendanceError) {
+        console.error("[student-daily-reports][GET][pending]", attendanceError)
+        return NextResponse.json({ error: "تعذر جلب سجلات التسميع الحالية" }, { status: 500 })
+      }
+
+      const savedReportDatesByStudent = (attendanceRecords || []).reduce<Record<string, Set<string>>>((acc, record) => {
+        const evaluations = Array.isArray(record.evaluations)
+          ? record.evaluations
+          : record.evaluations
+            ? [record.evaluations]
+            : []
+        const latestHafizLevel = evaluations.length > 0 ? evaluations[evaluations.length - 1]?.hafiz_level ?? null : null
+
+        if (latestHafizLevel === null || latestHafizLevel === undefined) {
+          return acc
+        }
+
+        if (!acc[record.student_id]) {
+          acc[record.student_id] = new Set<string>()
+        }
+
+        acc[record.student_id].add(record.date)
+        return acc
+      }, {})
+
+      finalReportsByStudent = Object.fromEntries(
+        Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
+          currentStudentId,
+          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(report.report_date)),
+        ]),
+      )
+    } else {
+      finalReportsByStudent = Object.fromEntries(
+        Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
+          currentStudentId,
+          studentReports
+            .sort((left, right) => right.report_date.localeCompare(left.report_date))
+            .slice(0, days),
+        ]),
+      )
+    }
+
+    const reports = Object.values(finalReportsByStudent).flat()
+
+    return NextResponse.json({ todayDate, reports, reportsByStudent: finalReportsByStudent })
   } catch (error) {
     console.error("[student-daily-reports][GET][fatal]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -250,6 +309,8 @@ export async function POST(request: NextRequest) {
             ? "يلزم تنفيذ ملف scripts/047_add_plan_session_number_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
             : isMissingRewardClaimedColumns(existingReportError)
             ? "يلزم تنفيذ ملف scripts/046_add_reward_claimed_flags_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
+            : isDuplicateDailyReportError(existingReportError)
+            ? "يوجد أكثر من تقرير تنفيذ يومي لهذا الطالب في نفس التاريخ داخل قاعدة البيانات، ويجب حذف التكرار والإبقاء على سجل واحد فقط."
             : "تعذر التحقق من تقرير التنفيذ اليومي الحالي",
           details: existingReportError.details ?? null,
           hint: existingReportError.hint ?? null,

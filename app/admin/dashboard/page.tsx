@@ -30,7 +30,6 @@ import {
   Settings,
   FileText,
   Award,
-  Upload,
   Map,
   Zap,
   UserCheck,
@@ -38,7 +37,6 @@ import {
   MessageSquare,
   Phone,
   Calendar,
-  ShoppingBag,
   ShieldCheck,
   Bell,
   ArrowRightLeft,
@@ -68,6 +66,55 @@ interface AllUser {
   id_number?: string
   halaqah?: string
   guardian_phone?: string
+}
+
+interface AttendanceEvaluationSnapshot {
+  hafiz_level?: string | null
+  tikrar_level?: string | null
+  samaa_level?: string | null
+  rabet_level?: string | null
+}
+
+interface AttendanceRecordWithEvaluations {
+  id: string
+  date: string
+  status?: string | null
+  evaluations?: AttendanceEvaluationSnapshot[] | AttendanceEvaluationSnapshot | null
+}
+
+interface DailyExecutionRecord {
+  id: string
+  report_date: string
+  memorization_done?: boolean | null
+  tikrar_done?: boolean | null
+  review_done?: boolean | null
+  linking_done?: boolean | null
+  notes?: string | null
+  updated_at?: string | null
+}
+
+interface StudentTimelineRecord {
+  id: string
+  date: string
+  attendanceStatus: string | null
+  heard: boolean | null
+  hafizLevel: string | null
+  tikrarLevel: string | null
+  samaaLevel: string | null
+  rabetLevel: string | null
+  dailyExecution: DailyExecutionRecord | null
+}
+
+function getLatestEvaluationSnapshot(evaluations?: AttendanceEvaluationSnapshot[] | AttendanceEvaluationSnapshot | null) {
+  if (!evaluations) {
+    return null
+  }
+
+  if (Array.isArray(evaluations)) {
+    return evaluations.length > 0 ? evaluations[evaluations.length - 1] : null
+  }
+
+  return evaluations
 }
 
 function AdminDashboard() {
@@ -112,7 +159,7 @@ function AdminDashboard() {
   const [isStudentRecordsDialogOpen, setIsStudentRecordsDialogOpen] = useState(false)
   const [selectedCircleForRecords, setSelectedCircleForRecords] = useState("")
   const [selectedStudentForRecords, setSelectedStudentForRecords] = useState("")
-  const [studentRecords, setStudentRecords] = useState<any[]>([])
+  const [studentRecords, setStudentRecords] = useState<StudentTimelineRecord[]>([])
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
   const [selectedStudentName, setSelectedStudentName] = useState("")
 
@@ -181,7 +228,6 @@ function AdminDashboard() {
 
   const [uploadingFile, setUploadingFile] = useState(false)
   const [uploadingAchievementImage, setUploadingAchievementImage] = useState(false)
-  const [isGamesManagementDialogOpen, setIsGamesManagementDialogOpen] = useState(false)
   const [userPermissions, setUserPermissions] = useState<string[]>([])
   const [isFullAccess, setIsFullAccess] = useState(false)
 
@@ -541,7 +587,7 @@ function AdminDashboard() {
           toast({
             title: "✓ تم الحفظ بنجاح",
             description: `تم إضافة الطالب ${newStudentName} إلى ${selectedCircleToAdd} بنجاح`,
-            className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+            className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
           })
           setNewStudentName("")
           setNewStudentIdNumber("")
@@ -725,7 +771,7 @@ function AdminDashboard() {
         toast({
           title: "✓ تم الحذف بنجاح",
           description: "تم حذف الإنجاز من القائمة",
-          className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+          className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
         })
         fetchAchievements()
       } else {
@@ -789,7 +835,7 @@ function AdminDashboard() {
           toast({
             title: "✓ تم النقل بنجاح",
             description: `تم نقل الطالب ${studentName} إلى ${moveTargetCircle} بنجاح`,
-            className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+            className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
           })
           setMoveStudentId("")
           setMoveSourceCircle("")
@@ -831,7 +877,7 @@ function AdminDashboard() {
           toast({
             title: "✓ تم الحذف بنجاح",
             description: `تم إزالة الطالب ${studentName} من ${selectedCircleToRemove} بنجاح`,
-            className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+            className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
           })
           setSelectedStudentToRemove("")
           fetchStudents()
@@ -889,7 +935,7 @@ function AdminDashboard() {
         toast({
           title: "✓ تم الحفظ بنجاح",
           description: `تم تحديث معلومات الطالب ${editingStudent.name} بنجاح`,
-          className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+          className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
         })
         setIsEditStudentDialogOpen(false)
         setEditingStudent(null)
@@ -941,7 +987,7 @@ function AdminDashboard() {
         toast({
           title: "✓ تم الحفظ بنجاح",
           description: `تم تحديث نقاط الطالب ${editingStudentPoints.name} إلى ${newPoints} نقطة`,
-          className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+          className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
         });
         setIsEditPointsDialogOpen(false);
         setEditingStudentPoints(null);
@@ -963,29 +1009,86 @@ function AdminDashboard() {
     try {
       const supabase = createClient()
 
-      const { data, error } = await supabase
-        .from("attendance_records")
-        .select(`
-          *,
-          evaluations (
-            hafiz_level,
-            tikrar_level,
-            samaa_level,
-            rabet_level
-          )
-        `)
-        .eq("student_id", studentId)
-        .order("date", { ascending: false })
+      const [attendanceResponse, dailyReportsResponse] = await Promise.all([
+        supabase
+          .from("attendance_records")
+          .select(`
+            id,
+            date,
+            status,
+            evaluations (
+              hafiz_level,
+              tikrar_level,
+              samaa_level,
+              rabet_level
+            )
+          `)
+          .eq("student_id", studentId)
+          .order("date", { ascending: false }),
+        supabase
+          .from("student_daily_reports")
+          .select("id, report_date, memorization_done, tikrar_done, review_done, linking_done, notes, updated_at")
+          .eq("student_id", studentId)
+          .order("report_date", { ascending: false }),
+      ])
 
-      if (error) {
-        console.error("[v0] Error fetching student records:", error)
+      if (attendanceResponse.error) {
+        console.error("[dashboard] Error fetching attendance records:", attendanceResponse.error)
         return
       }
 
-      console.log("[v0] Student records fetched:", data)
-      setStudentRecords(data || [])
+      if (dailyReportsResponse.error) {
+        console.error("[dashboard] Error fetching daily execution records:", dailyReportsResponse.error)
+        return
+      }
+
+      const attendanceRecords = (attendanceResponse.data || []) as AttendanceRecordWithEvaluations[]
+      const dailyReports = (dailyReportsResponse.data || []) as DailyExecutionRecord[]
+
+      const attendanceByDate = new Map<string, AttendanceRecordWithEvaluations>()
+      for (const record of attendanceRecords) {
+        if (!attendanceByDate.has(record.date)) {
+          attendanceByDate.set(record.date, record)
+        }
+      }
+
+      const dailyReportsByDate = new Map<string, DailyExecutionRecord>()
+      for (const report of dailyReports) {
+        if (!dailyReportsByDate.has(report.report_date)) {
+          dailyReportsByDate.set(report.report_date, report)
+        }
+      }
+
+      const allDates = Array.from(new Set([
+        ...attendanceByDate.keys(),
+        ...dailyReportsByDate.keys(),
+      ])).sort((left, right) => right.localeCompare(left))
+
+      const mergedTimeline = allDates.map<StudentTimelineRecord>((date) => {
+        const attendanceRecord = attendanceByDate.get(date) || null
+        const dailyExecution = dailyReportsByDate.get(date) || null
+        const latestEvaluation = getLatestEvaluationSnapshot(attendanceRecord?.evaluations)
+        const attendanceStatus = attendanceRecord?.status || null
+        const heard = attendanceStatus === "present" || attendanceStatus === "late"
+          ? Boolean(latestEvaluation?.hafiz_level)
+          : null
+
+        return {
+          id: attendanceRecord?.id || dailyExecution?.id || date,
+          date,
+          attendanceStatus,
+          heard,
+          hafizLevel: latestEvaluation?.hafiz_level || null,
+          tikrarLevel: latestEvaluation?.tikrar_level || null,
+          samaaLevel: latestEvaluation?.samaa_level || null,
+          rabetLevel: latestEvaluation?.rabet_level || null,
+          dailyExecution,
+        }
+      })
+
+      setStudentRecords(mergedTimeline)
     } catch (error) {
-      console.error("[v0] Error fetching student records:", error)
+      console.error("[dashboard] Error fetching student records timeline:", error)
     } finally {
       setIsLoadingRecords(false)
     }
@@ -1002,6 +1105,7 @@ function AdminDashboard() {
 
   const handleOpenRecordsDialog = () => {
     setIsStudentManagementDialogOpen(false)
+    setIsStudentRecordsDialogOpen(true)
   }
 
   if (!isMounted) {
@@ -1030,7 +1134,7 @@ function AdminDashboard() {
         <div className="container mx-auto max-w-5xl space-y-10">
 
           {/* Page Title */}
-          <div className="border-b border-[#D4AF37]/50 pb-6">
+          <div className="border-b border-[#3453a7]/20 pb-6">
             <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332]">لوحة التحكم</h1>
           </div>
 
@@ -1042,9 +1146,9 @@ function AdminDashboard() {
               { label: "الإداريون", value: totalAdmins, icon: ShieldCheck },
               { label: "الحلقات", value: totalCircles, icon: BookOpen },
             ].map(({ label, value, icon: Icon }) => (
-              <div key={label} className="bg-white rounded-2xl border border-[#D4AF37]/40 p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow duration-300">
-                <div className="w-11 h-11 rounded-xl bg-[#D4AF37]/8 border border-[#D4AF37]/40 flex items-center justify-center">
-                  <Icon className="w-4 h-4 text-[#D4AF37]" />
+              <div key={label} className="bg-white rounded-2xl border border-[#3453a7]/20 p-5 flex flex-col gap-3 shadow-sm hover:shadow-md transition-shadow duration-300">
+                <div className="w-11 h-11 flex items-center justify-center">
+                  <Icon className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <div>
                   <p className="text-3xl font-bold text-[#1a2332]">{value}</p>
@@ -1058,26 +1162,26 @@ function AdminDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
             {/* Student Management */}
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-6 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="px-6 py-6 border-b border-[#3453a7]/20 flex items-center gap-3">
+                <div className="w-10 h-10 flex items-center justify-center">
+                  <Users className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-lg font-bold text-[#1a2332]">إدارة المستخدمين</h2>
               </div>
-              <div className="divide-y divide-[#D4AF37]/25">
+              <div className="divide-y divide-[#3453a7]/12">
                 {canAccess("إدارة الطلاب") && (
                 <Dialog open={isStudentManagementDialogOpen} onOpenChange={setIsStudentManagementDialogOpen}>
                   <DialogTrigger asChild>
                     <button
                       onClick={(e) => { e.preventDefault(); setIsStudentManagementDialogOpen(true) }}
-                      className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group"
+                      className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#3453a7]/5 transition-colors duration-200 group"
                     >
                       <div className="flex items-center gap-3">
-                        <Users className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                        <Users className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                         <span className="text-base font-medium text-neutral-700">إدارة الطلاب</span>
                       </div>
-                      <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                      <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                     </button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[480px]">
@@ -1085,7 +1189,7 @@ function AdminDashboard() {
                       <DialogTitle className="text-xl text-[#1a2332]">إدارة الطلاب</DialogTitle>
                       <DialogDescription className="text-sm text-neutral-500">اختر العملية المطلوبة</DialogDescription>
                     </DialogHeader>
-                    <div className="divide-y divide-[#D4AF37]/25 rounded-xl border border-[#D4AF37]/40 overflow-hidden mt-4">
+                    <div className="divide-y divide-[#3453a7]/12 rounded-xl border border-[#3453a7]/20 overflow-hidden mt-4">
                       {[
                         { icon: UserPlus, label: "إضافة طالب", action: () => { setIsStudentManagementDialogOpen(false); setIsAddStudentDialogOpen(true) } },
                         { icon: Users, label: "إضافة جماعية", action: () => { setIsStudentManagementDialogOpen(false); setBulkCircle(""); setBulkRows(emptyRows()); setIsBulkAddStudentDialogOpen(true) } },
@@ -1097,17 +1201,17 @@ function AdminDashboard() {
                         { icon: Award, label: "إنجازات الطلاب", action: () => { setIsStudentManagementDialogOpen(false); router.push("/admin/students-achievements") } },
                         { icon: BookMarked, label: "خطط الطلاب", action: () => { setIsStudentManagementDialogOpen(false); router.push("/admin/student-plans") } },
                       ].map(({ icon: Ic, label, action }) => (
-                        <button key={label} onClick={action} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
+                        <button key={label} onClick={action} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#3453a7]/5 transition-colors duration-200 group">
                           <div className="flex items-center gap-3">
-                            <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                            <Ic className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                             <span className="text-base font-medium text-neutral-700">{label}</span>
                           </div>
-                          <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                          <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                         </button>
                       ))}
                     </div>
                     <div className="flex justify-end pt-2">
-                      <Button variant="outline" onClick={() => setIsStudentManagementDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">إغلاق</Button>
+                      <Button variant="outline" onClick={() => setIsStudentManagementDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600">إغلاق</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -1120,35 +1224,35 @@ function AdminDashboard() {
                   { icon: Zap, label: "الصلاحيات", action: () => router.push("/admin/permissions") },
                   { icon: UserPlus, label: "طلبات التسجيل", action: () => router.push("/admin/enrollment-requests") },
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, action }) => (
-                  <button key={label} onClick={action} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group border-t border-[#D4AF37]/10">
+                  <button key={label} onClick={action} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#3453a7]/5 transition-colors duration-200 group border-t border-[#3453a7]/10">
                     <div className="flex items-center gap-3">
-                      <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                      <Ic className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                       <span className="text-base font-medium text-neutral-700">{label}</span>
                     </div>
-                    <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                    <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                   </button>
                 ))}
               </div>
             </div>
 
             {/* Communication & Administration */}
-            <div className="bg-white rounded-2xl border border-[#D4AF37]/40 shadow-sm overflow-hidden">
-              <div className="px-6 py-6 border-b border-[#D4AF37]/40 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[#D4AF37]/10 flex items-center justify-center">
-                  <MessageSquare className="w-4 h-4 text-[#D4AF37]" />
+            <div className="bg-white rounded-2xl border border-[#3453a7]/20 shadow-sm overflow-hidden">
+              <div className="px-6 py-6 border-b border-[#3453a7]/20 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[#3453a7]/10 flex items-center justify-center">
+                  <MessageSquare className="w-4 h-4 text-[#003f55]" />
                 </div>
                 <h2 className="text-lg font-bold text-[#1a2332]">الإدارة العامة</h2>
               </div>
-              <div className="divide-y divide-[#D4AF37]/25">
+              <div className="divide-y divide-[#3453a7]/12">
                 {canAccess("التقارير") && (
                 <Dialog open={isReportsDialogOpen} onOpenChange={setIsReportsDialogOpen}>
                   <DialogTrigger asChild>
-                    <button onClick={(e) => { e.preventDefault(); setIsReportsDialogOpen(true) }} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
+                    <button onClick={(e) => { e.preventDefault(); setIsReportsDialogOpen(true) }} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#3453a7]/5 transition-colors duration-200 group">
                       <div className="flex items-center gap-3">
-                        <FileText className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                        <FileText className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                         <span className="text-base font-medium text-neutral-700">التقارير</span>
                       </div>
-                      <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                      <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                     </button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[480px]">
@@ -1156,25 +1260,25 @@ function AdminDashboard() {
                       <DialogTitle className="text-xl text-[#1a2332]">التقارير</DialogTitle>
                       <DialogDescription className="text-sm text-neutral-500">اختر نوع التقرير</DialogDescription>
                     </DialogHeader>
-                    <div className="divide-y divide-[#D4AF37]/25 rounded-xl border border-[#D4AF37]/40 overflow-hidden mt-4">
+                    <div className="divide-y divide-[#3453a7]/12 rounded-xl border border-[#3453a7]/20 overflow-hidden mt-4">
                       {[
                         { icon: UserCheck, label: "تقارير المعلمين", action: () => { setIsReportsDialogOpen(false); router.push("/admin/teacher-attendance") } },
                         { icon: ClipboardCheck, label: "التحضير", action: () => { setIsReportsDialogOpen(false); router.push("/admin/staff-attendance") } },
                         { icon: FileText, label: "تقرير الحلقات المختصر", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports/circle-short-report") } },
                         { icon: MessageSquare, label: "تقارير الرسائل", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports") } },
-                        { icon: BookOpen, label: "السجل اليومي للطلاب", action: () => { setIsReportsDialogOpen(false); router.push("/admin/student-daily-attendance") } },
+                        { icon: BookOpen, label: "متابعة التنفيذ", action: () => { setIsReportsDialogOpen(false); router.push("/admin/student-daily-attendance") } },
                       ].map(({ icon: Ic, label, action }) => (
                         <button key={label} onClick={action} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                           <div className="flex items-center gap-3">
-                            <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                            <Ic className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                             <span className="text-base font-medium text-neutral-700">{label}</span>
                           </div>
-                          <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                          <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                         </button>
                       ))}
                     </div>
                     <div className="flex justify-end pt-2">
-                      <Button variant="outline" onClick={() => setIsReportsDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">إغلاق</Button>
+                      <Button variant="outline" onClick={() => setIsReportsDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600">إغلاق</Button>
                     </div>
                   </DialogContent>
                 </Dialog>
@@ -1187,10 +1291,10 @@ function AdminDashboard() {
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, path }) => (
                   <button key={label} onClick={() => router.push(path)} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                     <div className="flex items-center gap-3">
-                      <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                      <Ic className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                       <span className="text-base font-medium text-neutral-700">{label}</span>
                     </div>
-                    <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                    <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                   </button>
                 ))}
 
@@ -1200,61 +1304,13 @@ function AdminDashboard() {
                     className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group"
                   >
                     <div className="flex items-center gap-3">
-                      <Calendar className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
+                      <Calendar className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
                       <span className="text-base font-medium text-neutral-700">إنهاء الفصل</span>
                     </div>
-                    <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
+                    <span className="text-neutral-300 group-hover:text-[#00506b] transition-colors text-xl leading-none">‹</span>
                   </button>
                 )}
 
-                {canAccess("إدارة الألعاب") && (
-                <Dialog open={isGamesManagementDialogOpen} onOpenChange={setIsGamesManagementDialogOpen}>
-                  <DialogTrigger asChild>
-                    <button onClick={(e) => { e.preventDefault(); setIsGamesManagementDialogOpen(true) }} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
-                      <div className="flex items-center gap-3">
-                        <Zap className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
-                        <span className="text-base font-medium text-neutral-700">إدارة الألعاب</span>
-                      </div>
-                      <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-[480px]">
-                    <DialogHeader>
-                      <DialogTitle className="text-xl text-[#1a2332]">إدارة الألعاب</DialogTitle>
-                      <DialogDescription className="text-sm text-neutral-500">اختر اللعبة التي تريد إدارتها</DialogDescription>
-                    </DialogHeader>
-                    <div className="divide-y divide-[#D4AF37]/25 rounded-xl border border-[#D4AF37]/40 overflow-hidden mt-4">
-                      {[
-                        { icon: BookOpen, label: "إدارة أسئلة الفئات", path: "/admin/questions" },
-                        { icon: BookOpen, label: "إدارة خلية الحروف", path: "/admin/letter-hive-questions" },
-                        { icon: BookOpen, label: "إدارة أسئلة المزاد", path: "/admin/auction-questions" },
-                        { icon: Award, label: "إدارة من سيربح المليون", path: "/admin/millionaire-questions" },
-                        { icon: Upload, label: "إدارة صور خمن الصورة", path: "/admin/guess-images" },
-                      ].map(({ icon: Ic, label, path }) => (
-                        <button key={label} onClick={() => { setIsGamesManagementDialogOpen(false); router.push(path) }} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
-                          <div className="flex items-center gap-3">
-                            <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
-                            <span className="text-base font-medium text-neutral-700">{label}</span>
-                          </div>
-                          <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
-                        </button>
-                      ))}
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                )}
-
-                {[
-                  { icon: ShoppingBag, label: "إدارة المتجر", path: "/admin/store-management" },
-                ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, path }) => (
-                  <button key={label} onClick={() => router.push(path)} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
-                    <div className="flex items-center gap-3">
-                      <Ic className="w-5 h-5 text-[#C9A961] group-hover:text-[#D4AF37] transition-colors" />
-                      <span className="text-base font-medium text-neutral-700">{label}</span>
-                    </div>
-                    <span className="text-neutral-300 group-hover:text-[#D4AF37] transition-colors text-xl leading-none">‹</span>
-                  </button>
-                ))}
               </div>
             </div>
 
@@ -1338,13 +1394,13 @@ function AdminDashboard() {
                   )}
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => { setIsEditPointsDialogOpen(false); setEditingStudentPoints(null); setNewPoints("") }} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">
+                  <Button variant="outline" onClick={() => { setIsEditPointsDialogOpen(false); setEditingStudentPoints(null); setNewPoints("") }} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8">
                     إلغاء
                   </Button>
                   <Button
                     onClick={handleSavePoints}
                     variant="outline"
-                    className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                    className="text-sm h-9 rounded-lg border-[#3453a7]/35 text-neutral-600 hover:bg-[#3453a7]/8"
                     disabled={!editingStudentPoints || !newPoints || isSubmitting}
                   >
                     {isSubmitting ? "جاري الحفظ..." : "حفظ النقاط"}
@@ -1408,7 +1464,7 @@ function AdminDashboard() {
                 <button
                   type="button"
                   onClick={() => setBulkRows(prev => [...prev, { name: "", account: "" }])}
-                  className="flex items-center gap-1.5 text-sm text-[#C9A961] hover:text-[#D4AF37] font-medium transition-colors"
+                  className="flex items-center gap-1.5 text-sm text-[#3453a7] hover:text-[#27428d] font-medium transition-colors"
                 >
                   <span className="w-5 h-5 rounded-full border-2 border-current flex items-center justify-center text-base leading-none">+</span>
                   إضافة سطر
@@ -1416,11 +1472,11 @@ function AdminDashboard() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setIsBulkAddStudentDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
+                <Button variant="outline" onClick={() => setIsBulkAddStudentDialogOpen(false)} className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600">إلغاء</Button>
                 <Button
                   onClick={handleBulkAddStudents}
                   disabled={!bulkCircle || bulkRows.every(r => !r.name.trim() || !r.account.trim()) || isBulkSubmitting}
-                  className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
+                  className="bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
                 >
                   {isBulkSubmitting ? "جاري الحفظ..." : "حفظ"}
                 </Button>
@@ -1430,9 +1486,9 @@ function AdminDashboard() {
 
           <Dialog open={isAddStudentDialogOpen} onOpenChange={setIsAddStudentDialogOpen}>
             <DialogContent className="max-w-md bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto" dir="rtl">
-              <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
+              <DialogHeader className="px-6 py-5 border-b border-[#003f55]/15 bg-gradient-to-r from-[#003f55]/6 to-transparent">
                 <DialogTitle className="text-lg font-bold text-[#1a2332] flex items-center gap-2 pr-8">
-                  <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37] text-base">＋</span>
+                  <span className="w-8 h-8 rounded-lg bg-[#003f55]/10 border border-[#003f55]/20 flex items-center justify-center text-[#003f55] text-base">＋</span>
                   إضافة طالب جديد
                 </DialogTitle>
               </DialogHeader>
@@ -1446,7 +1502,7 @@ function AdminDashboard() {
                       value={newStudentName}
                       onChange={(e) => setNewStudentName(e.target.value)}
                       placeholder="الاسم الكامل"
-                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -1455,7 +1511,7 @@ function AdminDashboard() {
                       value={newStudentAccountNumber}
                       onChange={(e) => setNewStudentAccountNumber(e.target.value)}
                       placeholder="00000"
-                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                       dir="ltr"
                       type="number"
                     />
@@ -1470,7 +1526,7 @@ function AdminDashboard() {
                       value={newStudentIdNumber}
                       onChange={(e) => setNewStudentIdNumber(e.target.value)}
                       placeholder="1xxxxxxxxx"
-                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -1479,7 +1535,7 @@ function AdminDashboard() {
                       value={newGuardianPhone}
                       onChange={(e) => setNewGuardianPhone(e.target.value)}
                       placeholder="966501234567"
-                      className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                      className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                       dir="ltr"
                       type="tel"
                     />
@@ -1490,7 +1546,7 @@ function AdminDashboard() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-[#1a2332]">الحلقة</label>
                   <Select value={selectedCircleToAdd} onValueChange={setSelectedCircleToAdd}>
-                    <SelectTrigger className="rounded-xl border-[#D4AF37]/40 focus:border-[#D4AF37] h-10 text-sm">
+                    <SelectTrigger className="rounded-xl border-[#003f55]/20 focus:border-[#003f55] h-10 text-sm">
                       <SelectValue placeholder="اختر الحلقة" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1504,16 +1560,16 @@ function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
+              <div className="px-6 py-4 border-t border-[#003f55]/15 flex gap-3">
                 <Button
                   onClick={handleAddStudent}
                   disabled={!newStudentName.trim() || !newStudentIdNumber.trim() || !newStudentAccountNumber.trim() || isSubmitting}
-                  className="flex-1 h-10 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
+                  className="flex-1 h-10 rounded-lg bg-[#3453a7] hover:bg-[#27428d] text-white font-medium transition-colors disabled:opacity-50"
                 >
                   {isSubmitting ? "جاري الحفظ..." : "حفظ"}
                 </Button>
                 <Button variant="outline" onClick={() => setIsAddStudentDialogOpen(false)}
-                  className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10">
+                  className="border-[#003f55]/20 text-neutral-600 rounded-xl h-10 hover:bg-[#003f55]/8">
                   إلغاء
                 </Button>
               </div>
@@ -1524,7 +1580,7 @@ function AdminDashboard() {
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader className="space-y-0">
                 <DialogTitle className="pr-6 -mt-1 text-xl text-[#1a2332] flex items-center gap-2">
-                  <UserMinus className="w-5 h-5 text-[#C9A961]" />
+                  <UserMinus className="w-5 h-5 text-[#003f55]" />
                   إزالة طالب
                 </DialogTitle>
               </DialogHeader>
@@ -1578,13 +1634,13 @@ function AdminDashboard() {
                 <Button
                   variant="outline"
                   onClick={() => { setIsRemoveStudentDialogOpen(false); setSelectedCircleToRemove(""); setSelectedStudentToRemove("") }}
-                  className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                  className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8"
                 >
                   إلغاء
                 </Button>
                 <Button
                   onClick={handleRemoveStudent}
-                  className="text-sm h-9 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
+                  className="text-sm h-9 rounded-lg bg-[#3453a7] hover:bg-[#27428d] text-white font-medium transition-colors disabled:opacity-50"
                   disabled={!selectedStudentToRemove || !selectedCircleToRemove || isSubmitting}
                 >
                   {isSubmitting ? "جاري الإزالة..." : "إزالة"}
@@ -1669,13 +1725,13 @@ function AdminDashboard() {
                 <Button
                   variant="outline"
                   onClick={() => { setIsMoveStudentDialogOpen(false); setMoveSourceCircle(""); setMoveStudentId(""); setMoveTargetCircle("") }}
-                  className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                  className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8"
                 >
                   إلغاء
                 </Button>
                 <Button
                   onClick={handleMoveStudent}
-                  className="bg-[#D4AF37] hover:bg-[#C9A961] text-white text-sm h-9 rounded-lg font-medium"
+                  className="bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
                   disabled={!moveStudentId || !moveTargetCircle || isSubmitting}
                 >
                   {isSubmitting ? "جاري النقل..." : "حفظ"}
@@ -1772,13 +1828,13 @@ function AdminDashboard() {
                 <Button
                   variant="outline"
                   onClick={() => { setIsEditStudentDialogOpen(false); setEditingStudent(null) }}
-                  className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                  className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8"
                 >
                   إلغاء
                 </Button>
                 <Button
                   onClick={handleSaveStudentEdit}
-                  className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] text-sm h-9 rounded-lg font-medium"
+                  className="bg-[#3453a7] hover:bg-[#27428d] text-white text-sm h-9 rounded-lg font-medium"
                   disabled={!editingStudent || isSubmitting}
                 >
                   {isSubmitting ? "جاري الحفظ..." : "حفظ التعديلات"}
@@ -1845,61 +1901,97 @@ function AdminDashboard() {
 
                 {selectedStudentForRecords && (
                   <div className="mt-6">
-                    <h3 className="text-sm font-medium text-neutral-600 mb-4">سجلات الطالب: {selectedStudentName}</h3>
+                    <h3 className="text-sm font-medium text-neutral-600 mb-4">السجل الكامل للطالب: {selectedStudentName}</h3>
                     {isLoadingRecords ? (
                       <div className="flex justify-center py-8">
                         <SiteLoader size="sm" />
                       </div>
                     ) : studentRecords.length === 0 ? (
-                      <div className="text-center py-8 text-neutral-400 text-sm">لا توجد سجلات حضور لهذا الطالب</div>
+                      <div className="text-center py-8 text-neutral-400 text-sm">لا توجد سجلات لهذا الطالب بعد</div>
                     ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-right">التاريخ</TableHead>
-                            <TableHead className="text-right">الحالة</TableHead>
-                            <TableHead className="text-right">الحفظ</TableHead>
-                            <TableHead className="text-right">التكرار</TableHead>
-                            <TableHead className="text-right">المراجعة</TableHead>
-                            <TableHead className="text-right">الربط</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {studentRecords.map((record) => {
-                            const lastEval = Array.isArray(record.evaluations) && record.evaluations.length > 0
-                              ? record.evaluations[record.evaluations.length - 1]
-                              : null;
-                            console.log('[DEBUG][Dashboard] آخر تقييم:', lastEval);
+                      <div className="overflow-x-auto rounded-xl border border-[#3453a7]/15">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-right min-w-[110px]">التاريخ</TableHead>
+                              <TableHead className="text-right min-w-[110px]">الحضور</TableHead>
+                              <TableHead className="text-right min-w-[90px]">سمع</TableHead>
+                              <TableHead className="text-right min-w-[110px]">درجة التسميع</TableHead>
+                              <TableHead className="text-right min-w-[100px]">التكرار</TableHead>
+                              <TableHead className="text-right min-w-[100px]">المراجعة</TableHead>
+                              <TableHead className="text-right min-w-[100px]">الربط</TableHead>
+                              <TableHead className="text-right min-w-[220px]">التنفيذ اليومي</TableHead>
+                              <TableHead className="text-right min-w-[150px]">آخر تحديث</TableHead>
+                              <TableHead className="text-right min-w-[220px]">ملاحظات</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {studentRecords.map((record) => {
+                              const executionItems = [
+                                record.dailyExecution?.memorization_done ? "حفظ" : null,
+                                record.dailyExecution?.tikrar_done ? "تكرار" : null,
+                                record.dailyExecution?.review_done ? "مراجعة" : null,
+                                record.dailyExecution?.linking_done ? "ربط" : null,
+                              ].filter(Boolean) as string[]
 
-                            return (
-                              <TableRow key={record.id}>
-                                <TableCell className="font-medium">
-                                  {new Date(record.date).toLocaleDateString("ar-SA")}
-                                </TableCell>
-                                <TableCell>
-                                  <span
-                                    className={`px-2 py-1 rounded-full text-sm ${
-                                      record.status === "present"
-                                        ? "bg-green-100 text-green-800"
-                                        : record.status === "late"
-                                          ? "bg-orange-100 text-orange-800"
-                                        : record.status === "absent"
-                                          ? "bg-red-100 text-red-800"
-                                          : "bg-yellow-100 text-yellow-800"
-                                    }`}
-                                  >
-                                    {translateStatus(record.status)}
-                                  </span>
-                                </TableCell>
-                                <TableCell>{translateLevel(lastEval?.hafiz_level) || "-"}</TableCell>
-                                <TableCell>{translateLevel(lastEval?.tikrar_level) || "-"}</TableCell>
-                                <TableCell>{translateLevel(lastEval?.samaa_level) || "-"}</TableCell>
-                                <TableCell>{translateLevel(lastEval?.rabet_level) || "-"}</TableCell>
-                              </TableRow>
-                            );
-                          })}
-                        </TableBody>
-                      </Table>
+                              return (
+                                <TableRow key={record.id}>
+                                  <TableCell className="font-medium">
+                                    {new Date(record.date).toLocaleDateString("ar-SA")}
+                                  </TableCell>
+                                  <TableCell>
+                                    {record.attendanceStatus ? (
+                                      <span
+                                        className={`px-2 py-1 rounded-full text-sm ${
+                                          record.attendanceStatus === "present"
+                                            ? "bg-green-100 text-green-800"
+                                            : record.attendanceStatus === "late"
+                                              ? "bg-orange-100 text-orange-800"
+                                              : record.attendanceStatus === "absent"
+                                                ? "bg-red-100 text-red-800"
+                                                : "bg-yellow-100 text-yellow-800"
+                                        }`}
+                                      >
+                                        {translateStatus(record.attendanceStatus)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-neutral-400">-</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {record.heard === null ? "-" : record.heard ? "نعم" : "لا"}
+                                  </TableCell>
+                                  <TableCell>{record.hafizLevel ? translateLevel(record.hafizLevel) : "-"}</TableCell>
+                                  <TableCell>{record.tikrarLevel ? translateLevel(record.tikrarLevel) : "-"}</TableCell>
+                                  <TableCell>{record.samaaLevel ? translateLevel(record.samaaLevel) : "-"}</TableCell>
+                                  <TableCell>{record.rabetLevel ? translateLevel(record.rabetLevel) : "-"}</TableCell>
+                                  <TableCell>
+                                    {executionItems.length > 0 ? (
+                                      <div className="flex flex-wrap gap-1">
+                                        {executionItems.map((item) => (
+                                          <span key={`${record.id}-${item}`} className="rounded-full bg-[#D4AF37]/10 px-2 py-1 text-xs font-semibold text-[#8b6b3f]">
+                                            {item}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-neutral-400">-</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {record.dailyExecution?.updated_at
+                                      ? new Date(record.dailyExecution.updated_at).toLocaleString("ar-SA")
+                                      : "-"}
+                                  </TableCell>
+                                  <TableCell className="max-w-[220px] whitespace-normal break-words">
+                                    {record.dailyExecution?.notes?.trim() || "-"}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1908,7 +2000,7 @@ function AdminDashboard() {
                 <Button
                   variant="outline"
                   onClick={() => { setIsStudentRecordsDialogOpen(false); setSelectedCircleForRecords(""); setSelectedStudentForRecords(""); setStudentRecords([]) }}
-                  className="text-sm h-9 rounded-lg border-[#D4AF37]/50 text-neutral-600"
+                  className="text-sm h-9 rounded-lg border-[#003f55]/20 text-neutral-600 hover:bg-[#003f55]/8"
                 >
                   إغلاق
                 </Button>
@@ -1925,9 +2017,17 @@ function AdminDashboard() {
 }
 
 export default function AdminDashboardPage() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const action = searchParams.get("action")
+    router.replace(action ? `/?action=${encodeURIComponent(action)}` : "/")
+  }, [router, searchParams])
+
   return (
-    <Suspense fallback={null}>
-      <AdminDashboard />
-    </Suspense>
+    <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+      <SiteLoader size="md" />
+    </div>
   )
 }

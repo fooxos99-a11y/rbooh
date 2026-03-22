@@ -3,11 +3,21 @@ export function getClientAuthHeaders() {
     return {} as Record<string, string>
   }
 
-  const accountNumber = localStorage.getItem("accountNumber") || localStorage.getItem("account_number") || ""
-  const userRole = localStorage.getItem("userRole") || ""
+  const accountNumber = getClientAccountNumber()
 
   return {
     ...(accountNumber ? { "x-account-number": accountNumber } : {}),
-    ...(userRole ? { "x-user-role": userRole } : {}),
   }
+}
+
+export function getClientAccountNumber() {
+  if (typeof window === "undefined") {
+    return ""
+  }
+
+  const rawAccountNumber = localStorage.getItem("accountNumber") || localStorage.getItem("account_number") || ""
+
+  return rawAccountNumber
+    .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 1632))
+    .trim()
 }

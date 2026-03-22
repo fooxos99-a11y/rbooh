@@ -53,7 +53,7 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
   const [currentFrame, setCurrentFrame] = useState("none")
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState("")
-  const [ownedFrames, setOwnedFrames] = useState<string[]>(["none"])
+  const [ownedFrames, setOwnedFrames] = useState<string[]>(Object.keys(FRAMES))
 
   useEffect(() => {
     if (studentId) {
@@ -64,17 +64,6 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
   const loadFromDB = async () => {
     if (!studentId) return
     try {
-      // Load owned frames from purchases API (synced across devices)
-      const purchasesRes = await fetch(`/api/purchases?student_id=${studentId}`)
-      const purchasesData = await purchasesRes.json()
-      if (purchasesData.purchases) {
-        const frames = (purchasesData.purchases as string[])
-          .filter((id) => id.startsWith("frame_"))
-          .map((id) => id.replace("frame_", ""))
-        setOwnedFrames(["none", ...frames])
-        localStorage.setItem(`frame_purchases_${studentId}`, JSON.stringify(purchasesData.purchases.filter((id: string) => id.startsWith("frame_"))))
-      }
-
       // Load active frame from frames API (synced across devices)
       const frameRes = await fetch(`/api/frames?studentId=${studentId}`)
       const frameData = await frameRes.json()
@@ -87,17 +76,6 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
       }
     } catch (error) {
       console.error("Error loading frame data:", error)
-      // Fallback to localStorage
-      const purchases = localStorage.getItem(`frame_purchases_${studentId}`)
-      if (purchases) {
-        try {
-          const purchaseList = JSON.parse(purchases)
-          const frames = purchaseList.map((id: string) => id.replace("frame_", ""))
-          setOwnedFrames(["none", ...frames])
-        } catch {
-          setOwnedFrames(["none"])
-        }
-      }
       const activeFrame = localStorage.getItem(`active_frame_${studentId}`)
       if (activeFrame) setCurrentFrame(activeFrame)
     }
@@ -148,7 +126,7 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 mb-4">
-        <Square className="w-5 h-5 text-[#d8a355]" />
+        <Square className="w-5 h-5 text-[#003f55]" />
         <h3 className="text-lg font-bold text-[#1a2332]">اختر الإطار</h3>
       </div>
 
@@ -179,7 +157,6 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
                 <div className="flex justify-center">{frame.preview}</div>
                 <div className="text-center">
                   <span className="font-semibold text-sm text-[#1a2332]">{frame.name}</span>
-                  {!isOwned && <span className="block text-xs text-gray-500 mt-1">🔒 مقفل</span>}
                 </div>
               </div>
             </button>
@@ -192,7 +169,7 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
           <Button
             onClick={handleSaveFrame}
             disabled={saving || !ownedFrames.includes(currentFrame)}
-            className="w-full bg-[#d8a355] hover:bg-[#c99347] text-white font-bold py-3 disabled:bg-gray-300"
+            className="w-full bg-[#3453a7] hover:bg-[#27428d] text-white font-bold py-3 disabled:bg-gray-300"
           >
             {saving ? "جاري الحفظ..." : "حفظ الإطار"}
           </Button>
@@ -203,8 +180,6 @@ export function FrameSelector({ studentId }: FrameSelectorProps) {
           )}
         </div>
       )}
-
-      <p className="text-sm text-center mt-4 text-gray-500">اشتر إطارات من المتجر لفتحها هنا</p>
     </div>
   )
 }

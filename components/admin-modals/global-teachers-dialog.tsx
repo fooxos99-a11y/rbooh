@@ -275,17 +275,13 @@ export function GlobalTeachersDialog() {
     <>
       <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-3xl bg-white rounded-2xl p-0 overflow-hidden [&>button]:top-4 [&>button]:right-4 [&>button]:left-auto" dir="rtl">
-          <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent text-right">
-            <DialogTitle className="flex w-full justify-start pr-8 text-right text-lg font-bold text-[#1a2332]">
-              <span className="inline-flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-[#D4AF37]/15 border border-[#D4AF37]/30 flex items-center justify-center text-[#D4AF37]">
-                  <Settings className="w-4 h-4" />
-                </span>
-                <span>إدارة المعلمين</span>
-              </span>
+          <DialogHeader className="flex-row items-center justify-between px-6 py-5 border-b border-[#3453a7]/20 bg-gradient-to-r from-[#3453a7]/8 to-transparent text-right">
+            <DialogTitle className="flex flex-1 items-center justify-start gap-2 text-right text-lg font-bold text-[#1a2332]">
+              <Settings className="h-4 w-4 shrink-0 text-[#003f55]" />
+              <span>إدارة المعلمين</span>
             </DialogTitle>
-            <div className="absolute left-6 top-5 flex items-center gap-2">
-              <Button onClick={() => setIsAddDialogOpen(true)} className="bg-[#D4AF37] hover:bg-[#B4952F] text-white gap-2">
+            <div className="flex items-center gap-2 shrink-0">
+              <Button onClick={() => setIsAddDialogOpen(true)} className="bg-[#3453a7] hover:bg-[#27428d] text-white gap-2">
                 <UserPlus className="w-4 h-4" />
                 إضافة
               </Button>
@@ -300,7 +296,7 @@ export function GlobalTeachersDialog() {
             ) : (
               <div className="space-y-3">
                 {teachers.map((teacher) => (
-                  <div key={teacher.id} className="flex items-center justify-between p-4 bg-white border border-[#D4AF37]/20 rounded-xl hover:border-[#D4AF37]/50 transition-colors">
+                  <div key={teacher.id} className="flex items-center justify-between p-4 bg-white border border-[#3453a7]/15 rounded-xl hover:border-[#3453a7]/35 transition-colors">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-full bg-[#1a2332]/5 flex items-center justify-center text-[#1a2332]">
                         <User className="w-5 h-5" />
@@ -309,14 +305,14 @@ export function GlobalTeachersDialog() {
                         <h3 className="font-bold text-[#1a2332] text-sm">{teacher.name}</h3>
                         <div className="flex items-center gap-2 mt-1 text-xs text-neutral-500">
                           <span className="bg-[#1a2332]/5 px-2 py-0.5 rounded-full">{teacher.halaqah}</span>
-                          <span className="bg-[#D4AF37]/10 text-[#D4AF37] px-2 py-0.5 rounded-full">
+                          <span className="bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full">
                             {teacher.role === 'deputy_teacher' ? 'نائب معلم' : 'معلم'}
                           </span>
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEditTeacher(teacher)} className="h-8 border-[#D4AF37]/30 hover:bg-[#D4AF37]/10 text-[#D4AF37]">
+                      <Button variant="outline" size="sm" onClick={() => handleEditTeacher(teacher)} className="h-8 border-[#3453a7]/30 hover:bg-[#3453a7]/10 text-[#3453a7]">
                         <Edit2 className="w-3.5 h-3.5 ml-1" />
                         تعديل
                       </Button>
@@ -381,8 +377,8 @@ export function GlobalTeachersDialog() {
             </div>
           </div>
           <div className="flex justify-end gap-3" dir="rtl">
-            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-            <Button onClick={handleAddTeacher} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37]">حفظ</Button>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+            <Button onClick={handleAddTeacher} className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white">حفظ</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -433,8 +429,8 @@ export function GlobalTeachersDialog() {
             </div>
           </div>
           <div className="flex justify-end gap-3" dir="rtl">
-            <Button variant="outline" onClick={() => { setIsEditDialogOpen(false); setEditingTeacher(null) }} className="border-[#D4AF37]/50 text-neutral-600">إلغاء</Button>
-            <Button onClick={handleSaveEdit} disabled={isSavingEdit} className="border border-[#D4AF37]/50 bg-[#D4AF37]/10 hover:bg-[#D4AF37]/20 text-[#C9A961] hover:text-[#D4AF37] disabled:opacity-60 disabled:cursor-not-allowed">
+            <Button variant="outline" onClick={() => { setIsEditDialogOpen(false); setEditingTeacher(null) }} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
+            <Button onClick={handleSaveEdit} disabled={isSavingEdit} className="border border-[#3453a7] bg-[#3453a7] hover:bg-[#27428d] text-white disabled:opacity-60 disabled:cursor-not-allowed">
               {isSavingEdit ? (
                 <span className="flex items-center gap-2">
                   <SiteLoader size="sm" />

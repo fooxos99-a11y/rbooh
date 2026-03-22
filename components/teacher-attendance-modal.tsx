@@ -206,7 +206,7 @@ export function TeacherAttendanceModal({
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10"
+              className="border-[#003f55]/20 text-neutral-600 rounded-xl h-10 hover:bg-[#003f55]/8"
             >
               إغلاق
             </Button>

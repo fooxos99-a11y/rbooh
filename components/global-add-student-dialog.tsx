@@ -93,7 +93,7 @@ export function GlobalAddStudentDialog() {
           toast({
             title: "✓ تم الحفظ بنجاح",
             description: `تم إضافة الطالب ${newStudentName} إلى ${selectedCircleToAdd} بنجاح`,
-            className: "bg-gradient-to-r from-[#D4AF37] to-[#C9A961] text-white border-none",
+            className: "bg-gradient-to-r from-[#3453a7] to-[#4a67b7] text-white border-none",
           })
           setNewStudentName("")
           setNewStudentIdNumber("")
@@ -118,13 +118,14 @@ export function GlobalAddStudentDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md bg-white rounded-2xl p-0 overflow-hidden [&>button]:hidden" dir="rtl">
-        <DialogHeader className="px-6 py-5 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent">
-          <DialogTitle className="flex w-full justify-start pr-2 text-right text-lg font-bold text-[#1a2332]">
-            <span className="inline-flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-[#C9A961]" />
-              <span>إضافة طالب جديد</span>
-            </span>
+        <DialogHeader className="px-6 py-5 border-b border-[#003f55]/15 bg-gradient-to-r from-[#003f55]/6 to-transparent">
+          <DialogTitle className="text-lg font-bold text-[#1a2332]">
+            <UserPlus className="h-5 w-5 text-[#003f55]" />
+            <span>إضافة طالب جديد</span>
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            نافذة لإضافة طالب جديد مع الاسم ورقم الحساب والهوية والجوال والحلقة.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-4">
@@ -135,7 +136,7 @@ export function GlobalAddStudentDialog() {
                 value={newStudentName}
                 onChange={(e) => setNewStudentName(e.target.value)}
                 placeholder="الاسم الكامل"
-                className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
               />
             </div>
             <div className="space-y-1.5">
@@ -144,7 +145,7 @@ export function GlobalAddStudentDialog() {
                 value={newStudentAccountNumber}
                 onChange={(e) => setNewStudentAccountNumber(e.target.value)}
                 placeholder="00000"
-                className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                 dir="ltr"
                 type="number"
               />
@@ -158,7 +159,7 @@ export function GlobalAddStudentDialog() {
                 value={newStudentIdNumber}
                 onChange={(e) => setNewStudentIdNumber(e.target.value)}
                 placeholder="1xxxxxxxxx"
-                className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
               />
             </div>
             <div className="space-y-1.5">
@@ -167,7 +168,7 @@ export function GlobalAddStudentDialog() {
                 value={newGuardianPhone}
                 onChange={(e) => setNewGuardianPhone(e.target.value)}
                 placeholder="966501234567"
-                className="rounded-xl border-[#D4AF37]/40 focus-visible:ring-[#D4AF37]/30 focus-visible:border-[#D4AF37] text-sm h-10"
+                className="rounded-xl border-[#003f55]/20 focus-visible:ring-[#003f55]/20 focus-visible:border-[#003f55] text-sm h-10"
                 dir="ltr"
                 type="tel"
               />
@@ -177,7 +178,7 @@ export function GlobalAddStudentDialog() {
           <div className="space-y-1.5">
             <label className="text-sm font-semibold text-[#1a2332]">الحلقة</label>
             <Select value={selectedCircleToAdd} onValueChange={setSelectedCircleToAdd}>
-              <SelectTrigger className="rounded-xl border-[#D4AF37]/40 focus:border-[#D4AF37] h-10 text-sm">
+              <SelectTrigger className="rounded-xl border-[#003f55]/20 focus:border-[#003f55] h-10 text-sm">
                 <SelectValue placeholder="اختر الحلقة" />
               </SelectTrigger>
               <SelectContent>
@@ -191,16 +192,16 @@ export function GlobalAddStudentDialog() {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-[#D4AF37]/25 flex gap-3">
+        <div className="px-6 py-4 border-t border-[#003f55]/15 flex gap-3">
           <Button
             onClick={handleAddStudent}
             disabled={!newStudentName.trim() || !newStudentIdNumber.trim() || !newStudentAccountNumber.trim() || !selectedCircleToAdd || isSubmitting}
-            className="flex-1 h-10 rounded-lg border border-[#D4AF37]/30 bg-[#D4AF37]/10 text-[#C9A961] font-medium transition-colors hover:bg-[#D4AF37]/20 disabled:opacity-50"
+            className="flex-1 h-10 rounded-lg border border-[#3453a7] bg-[#3453a7] text-white font-medium transition-colors hover:bg-[#27428d] disabled:opacity-50"
           >
             {isSubmitting ? "جاري الحفظ..." : "حفظ"}
           </Button>
           <Button variant="outline" onClick={() => handleClose(false)}
-            className="border-[#D4AF37]/40 text-neutral-600 rounded-xl h-10">
+            className="border-[#003f55]/20 text-neutral-600 rounded-xl h-10 hover:bg-[#003f55]/8">
             إلغاء
           </Button>
         </div>

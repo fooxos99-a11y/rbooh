@@ -11,8 +11,8 @@ const geist = Geist({ subsets: ["latin"] })
 const cairo = Cairo({ subsets: ["arabic"], variable: "--font-cairo" })
 
 export const metadata: Metadata = {
-  title: "قَبَسْ",
-  description: "منصة قَبَسْ التعليمية - كل ما تحتاجه في مكان واحد",
+  title: "ربوة",
+  description: "منصة ربوة التعليمية - كل ما تحتاجه في مكان واحد",
   generator: "v0.app",
 }
 

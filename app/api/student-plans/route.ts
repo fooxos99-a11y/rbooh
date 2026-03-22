@@ -19,6 +19,9 @@ import { getSaudiDateString } from "@/lib/saudi-time"
 import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 import { buildPlanSessionProgress } from "@/lib/plan-session-progress"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 function hasCompletedMemorization(record: any) {
   const evaluations = Array.isArray(record.evaluations)
     ? record.evaluations
@@ -133,9 +136,29 @@ export async function GET(request: NextRequest) {
       if (error) throw error
 
       if (!plans || plans.length === 0) {
+        const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
+        const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
+          ? null
+          : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+        const hasStoredStudentMemorizedRange = Boolean(
+          studentData?.memorized_start_surah && studentData?.memorized_end_surah,
+        )
         const quranMemorization = calculateQuranMemorizationProgress(
           {
             completed_juzs: studentData?.completed_juzs || [],
+            has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange),
+            prev_start_surah: hasStoredStudentMemorizedRange
+              ? (studentData?.memorized_start_surah ?? null)
+              : completedJuzRange?.startSurahNumber ?? null,
+            prev_start_verse: hasStoredStudentMemorizedRange
+              ? (studentData?.memorized_start_verse ?? null)
+              : completedJuzRange?.startVerseNumber ?? null,
+            prev_end_surah: hasStoredStudentMemorizedRange
+              ? (studentData?.memorized_end_surah ?? null)
+              : completedJuzRange?.endSurahNumber ?? null,
+            prev_end_verse: hasStoredStudentMemorizedRange
+              ? (studentData?.memorized_end_verse ?? null)
+              : completedJuzRange?.endVerseNumber ?? null,
           },
           0,
         )
@@ -164,22 +187,48 @@ export async function GET(request: NextRequest) {
       const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
         ? null
         : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
-      const studentHasStoredMemorization = Boolean(
-        (studentData?.memorized_start_surah && studentData?.memorized_end_surah) ||
-        completedJuzRange ||
-        normalizedCompletedJuzs.length > 0,
-      )
+        const hasStoredStudentMemorizedRange = Boolean(
+          studentData?.memorized_start_surah && studentData?.memorized_end_surah,
+        )
+        const hasExplicitCompletedJuzs = normalizedCompletedJuzs.length > 0
+        const shouldUsePlanPreviousRange = !hasStoredStudentMemorizedRange && !completedJuzRange && !hasExplicitCompletedJuzs
       const effectivePlan = {
         ...rawPlan,
         completed_juzs: studentData?.completed_juzs || [],
         current_juzs: studentData?.current_juzs || [],
-        has_previous: studentHasStoredMemorization
-          ? true
-          : Boolean(rawPlan.has_previous),
-        prev_start_surah: studentData?.memorized_start_surah || completedJuzRange?.startSurahNumber || rawPlan.prev_start_surah || null,
-        prev_start_verse: studentData?.memorized_start_verse || completedJuzRange?.startVerseNumber || rawPlan.prev_start_verse || null,
-        prev_end_surah: studentData?.memorized_end_surah || completedJuzRange?.endSurahNumber || rawPlan.prev_end_surah || null,
-        prev_end_verse: studentData?.memorized_end_verse || completedJuzRange?.endVerseNumber || rawPlan.prev_end_verse || null,
+          has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange)
+            ? true
+            : shouldUsePlanPreviousRange
+              ? Boolean(rawPlan.has_previous)
+              : false,
+          prev_start_surah: hasStoredStudentMemorizedRange
+            ? (studentData?.memorized_start_surah ?? null)
+            : completedJuzRange
+              ? completedJuzRange.startSurahNumber
+              : shouldUsePlanPreviousRange
+                ? (rawPlan.prev_start_surah ?? null)
+                : null,
+          prev_start_verse: hasStoredStudentMemorizedRange
+            ? (studentData?.memorized_start_verse ?? null)
+            : completedJuzRange
+              ? completedJuzRange.startVerseNumber
+              : shouldUsePlanPreviousRange
+                ? (rawPlan.prev_start_verse ?? null)
+                : null,
+          prev_end_surah: hasStoredStudentMemorizedRange
+            ? (studentData?.memorized_end_surah ?? null)
+            : completedJuzRange
+              ? completedJuzRange.endSurahNumber
+              : shouldUsePlanPreviousRange
+                ? (rawPlan.prev_end_surah ?? null)
+                : null,
+          prev_end_verse: hasStoredStudentMemorizedRange
+            ? (studentData?.memorized_end_verse ?? null)
+            : completedJuzRange
+              ? completedJuzRange.endVerseNumber
+              : shouldUsePlanPreviousRange
+                ? (rawPlan.prev_end_verse ?? null)
+                : null,
       }
       const plan = {
         ...effectivePlan,
