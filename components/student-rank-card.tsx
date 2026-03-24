@@ -204,7 +204,7 @@ export function StudentRankCard({
             {showName ? (
               <div className="min-w-0 flex-1 text-right">
                 <div className="flex items-center gap-2">
-                  <h3 className={`truncate font-black tracking-tight text-[#003f55] ${nameClass}`} style={{ fontFamily }}>
+                  <h3 className={`truncate font-black tracking-tight text-[#1f4d9a] ${nameClass}`} style={{ fontFamily }}>
                     {name}
                   </h3>
                   {activeBadge ? (
@@ -227,8 +227,18 @@ export function StudentRankCard({
         ) : null}
 
         {showPoints ? (
-          <div className={`shrink-0 border bg-white/95 text-center shadow-sm ${pointsClass}`} style={{ borderColor: `${palette.primary}40` }}>
-            <div className="text-[1.55rem] font-black leading-none text-[#173d3a] md:text-[1.8rem]">{points}</div>
+          <div
+            className={`shrink-0 border text-center ${pointsClass}`}
+            style={{
+              borderColor: `${palette.primary}18`,
+              background: "linear-gradient(135deg, rgba(251,253,255,0.98) 0%, rgba(241,246,255,0.95) 100%)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.82), 0 8px 18px rgba(52,83,167,0.07)",
+            }}
+          >
+            <div className="flex items-center justify-center gap-1.5">
+              <Star className="h-5 w-5 fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_6px_rgba(255,215,102,0.28)] md:h-[22px] md:w-[22px]" strokeWidth={1.8} />
+              <div className="text-[1.55rem] font-black leading-none text-[#3453a7] md:text-[1.8rem]">{points}</div>
+            </div>
           </div>
         ) : null}
       </div>

@@ -51,8 +51,17 @@ type DailyReportRow = {
   linking_done: boolean
 }
 
+function getSaudiWeekday(dateValue: string) {
+  return new Date(`${dateValue}T12:00:00+03:00`).getUTCDay()
+}
+
 function isFriday(dateValue: string) {
-  return new Date(`${dateValue}T12:00:00+03:00`).getUTCDay() === 5
+  return getSaudiWeekday(dateValue) === 5
+}
+
+function isCircleAttendanceDay(dateValue: string) {
+  const weekday = getSaudiWeekday(dateValue)
+  return weekday === 0 || weekday === 3
 }
 
 function addDays(dateValue: string, days: number) {
@@ -69,6 +78,25 @@ function getLatestHafizLevel(record: AttendanceRow) {
       : []
 
   return evaluations.length > 0 ? evaluations[evaluations.length - 1]?.hafiz_level ?? null : null
+}
+
+function countAttendanceSessions(rangeStart: string, rangeEnd: string) {
+  if (!rangeStart || rangeStart > rangeEnd) {
+    return 0
+  }
+
+  let currentDate = rangeStart
+  let total = 0
+
+  while (currentDate <= rangeEnd) {
+    if (isCircleAttendanceDay(currentDate)) {
+      total += 1
+    }
+
+    currentDate = addDays(currentDate, 1)
+  }
+
+  return total
 }
 
 function countPlannedExecutions(plan: PlanRow | null | undefined, rangeStart: string, rangeEnd: string) {
@@ -162,7 +190,7 @@ export async function GET(request: NextRequest) {
 
     const studentIds = safeStudents.map((student) => student.id)
 
-    const [{ data: plans, error: plansError }, { data: attendance, error: attendanceError }, { data: reports, error: reportsError }] = await Promise.all([
+    const [{ data: plans, error: plansError }, { data: attendance, error: attendanceError }, { data: reports, error: reportsError }, { data: allAttendanceUpToEnd, error: allAttendanceUpToEndError }] = await Promise.all([
       supabase
         .from("student_plans")
         .select("id, student_id, start_date, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, daily_pages, total_days, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, created_at")
@@ -182,6 +210,12 @@ export async function GET(request: NextRequest) {
         .gte("report_date", startDate)
         .lte("report_date", endDate)
         .order("report_date", { ascending: true }),
+      supabase
+        .from("attendance_records")
+        .select("student_id, date")
+        .in("student_id", studentIds)
+        .lte("date", endDate)
+        .order("date", { ascending: true }),
     ])
 
     if (plansError) {
@@ -194,6 +228,10 @@ export async function GET(request: NextRequest) {
 
     if (reportsError) {
       throw reportsError
+    }
+
+    if (allAttendanceUpToEndError) {
+      throw allAttendanceUpToEndError
     }
 
     const latestPlanByStudent = new Map<string, PlanRow>()
@@ -217,12 +255,14 @@ export async function GET(request: NextRequest) {
       reportsByStudent.set(report.student_id, current)
     }
 
-    const attendanceDates = new Set(
-      ((attendance || []) as AttendanceRow[])
-        .map((record) => record.date)
-        .filter(Boolean),
-    )
-    const attendanceTotal = attendanceDates.size
+    const firstAttendanceDateByStudent = new Map<string, string>()
+    for (const record of ((allAttendanceUpToEnd || []) as Array<Pick<AttendanceRow, "student_id" | "date">>)) {
+      if (!record.date || firstAttendanceDateByStudent.has(record.student_id)) {
+        continue
+      }
+
+      firstAttendanceDateByStudent.set(record.student_id, record.date)
+    }
 
     const rows = safeStudents
       .map((student) => {
@@ -230,6 +270,9 @@ export async function GET(request: NextRequest) {
         const studentReports = reportsByStudent.get(student.id) || []
         const plan = latestPlanByStudent.get(student.id)
         const plannedExecutions = countPlannedExecutions(plan, startDate, endDate)
+        const firstAttendanceDate = firstAttendanceDateByStudent.get(student.id) || null
+        const attendanceRangeStart = firstAttendanceDate && firstAttendanceDate > startDate ? firstAttendanceDate : startDate
+        const attendanceTotal = firstAttendanceDate ? countAttendanceSessions(attendanceRangeStart, endDate) : 0
 
         const presentCount = studentAttendance.filter((record) => record.status === "present").length
         const lateCount = studentAttendance.filter((record) => record.status === "late").length

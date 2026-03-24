@@ -1287,7 +1287,7 @@ function AdminDashboard() {
                 {[
                   { icon: MessageSquare, label: "الإرسال إلى أولياء الأمور", path: "/admin/whatsapp-send" },
                   { icon: Bell, label: "الإشعارات", path: "/admin/notifications" },
-                  { icon: Map, label: "إدارة المسار", path: "/admin/pathways" },
+                  { icon: Map, label: "إدارة الإختبارات", path: "/admin/pathways" },
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, path }) => (
                   <button key={label} onClick={() => router.push(path)} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                     <div className="flex items-center gap-3">

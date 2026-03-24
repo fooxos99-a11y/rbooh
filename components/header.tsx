@@ -700,7 +700,10 @@ export function Header() {
         </div>
       )}
 
-      <header className="text-white sticky top-0 z-50 shadow-lg relative" style={{ backgroundColor: "#243870" }}>
+      <header
+        className="text-white sticky top-0 z-50 shadow-lg relative"
+        style={{ background: "linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)" }}
+      >
         <div className="absolute right-4 top-1/2 -translate-y-1/2 z-30 flex items-center gap-2">
           <button
             className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/10 transition-colors"
@@ -712,7 +715,7 @@ export function Header() {
           {isLoggedIn && userRole === "student" && (
             <div className="flex items-center gap-2">
               <button
-                className="h-10 rounded-full border border-white/15 bg-white/10 px-4 text-sm font-black text-white transition-colors hover:bg-white/15"
+                className="h-10 rounded-full bg-white/10 px-4 text-sm font-black text-white transition-colors hover:bg-white/15"
                 onClick={openDailyExecution}
               >
                 التنفيذ
@@ -893,19 +896,27 @@ export function Header() {
 
               <div className="relative z-30 group">
                 <div
-                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#3453a7]/35"
+                  className="relative flex items-center gap-0.5 h-7 sm:h-7.5 overflow-hidden rounded-full px-2.5 sm:px-2.5"
                   style={{
-                    background: "linear-gradient(135deg, rgba(37,63,140,0.96), rgba(74,103,183,0.92))",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 10px rgba(0,0,0,0.18)",
+                    background: "linear-gradient(135deg, rgba(125,183,255,0.24) 0%, rgba(52,83,167,0.20) 55%, rgba(24,49,112,0.18) 100%)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(4,16,44,0.18), 0 0 0 1px rgba(255,255,255,0.08)",
+                    backdropFilter: "blur(10px)",
                   }}
                   aria-label="الترتيب العام"
                   title="الترتيب العام"
                 >
-                  <Trophy
-                    className="w-4 h-4 text-[#dbe7ff] drop-shadow-[0_0_4px_rgba(219,231,255,0.35)]"
-                    strokeWidth={1.9}
-                  />
-                  <span className="text-[13px] font-black tabular-nums text-white leading-none tracking-wide">
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent_52%)]" />
+                  <div className="relative flex h-6 w-6 items-center justify-center translate-y-[1px] sm:h-6.5 sm:w-6.5">
+                    <svg
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      className="h-[19px] w-[19px] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)] sm:h-[17px] sm:w-[17px]"
+                      fill="currentColor"
+                    >
+                      <path d="M8 2.75a1.25 1.25 0 0 0-1.25 1.25v1H4.75A1.75 1.75 0 0 0 3 6.96c.2 2.58 1.72 4.72 4.12 5.54A5.51 5.51 0 0 0 10.75 16v1.25H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2h-2.25V16a5.51 5.51 0 0 0 3.63-3.5c2.4-.82 3.92-2.96 4.12-5.54A1.75 1.75 0 0 0 19.25 5h-2V4A1.25 1.25 0 0 0 16 2.75H8Zm-.95 4.25c.11 1.21.46 2.34 1 3.32-1.33-.63-2.17-1.79-2.42-3.32h1.42Zm10.9 0c-.25 1.53-1.09 2.69-2.42 3.32.54-.98.89-2.11 1-3.32h1.42Z" />
+                    </svg>
+                  </div>
+                  <span className="relative text-[12px] font-black tabular-nums text-white leading-none tracking-[0.01em] sm:text-[13px]" style={{ textShadow: "0 2px 8px rgba(7,20,54,0.32)" }}>
                     {globalRank ?? "-"}
                   </span>
                 </div>
@@ -917,19 +928,23 @@ export function Header() {
 
               <div className="relative z-30 group">
                 <div
-                  className="flex items-center gap-1.5 h-7 sm:h-8 px-3 rounded-full border border-[#3453a7]/35"
+                  className="relative flex items-center gap-1 h-7 sm:h-7.5 overflow-hidden rounded-full px-2.5 sm:px-2.5"
                   style={{
-                    background: "linear-gradient(135deg, rgba(37,63,140,0.98), rgba(64,98,188,0.94))",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 10px rgba(0,0,0,0.18)",
+                    background: "linear-gradient(135deg, rgba(125,183,255,0.24) 0%, rgba(52,83,167,0.20) 55%, rgba(24,49,112,0.18) 100%)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(4,16,44,0.18), 0 0 0 1px rgba(255,255,255,0.08)",
+                    backdropFilter: "blur(10px)",
                   }}
                   aria-label="النقاط"
                   title="النقاط"
                 >
-                  <Star
-                    className="w-4 h-4 text-[#dbe7ff] fill-[#dbe7ff] drop-shadow-[0_0_4px_rgba(219,231,255,0.28)]"
-                    strokeWidth={1.8}
-                  />
-                  <span className="text-[13px] font-black tabular-nums text-white leading-none tracking-wide">
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent_52%)]" />
+                  <div className="relative flex h-5 w-5 items-center justify-center sm:h-5.5 sm:w-5.5">
+                    <Star
+                      className="h-4 w-4 fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)] sm:h-[14px] sm:w-[14px]"
+                      strokeWidth={1.9}
+                    />
+                  </div>
+                  <span className="relative text-[12px] font-black tabular-nums text-white leading-none tracking-[0.01em] sm:text-[13px]" style={{ textShadow: "0 2px 8px rgba(7,20,54,0.32)" }}>
                     {sidebarStudentPoints}
                   </span>
                 </div>
@@ -987,7 +1002,7 @@ export function Header() {
               }}>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="fixed left-3 top-3 z-[95] flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-[#243870] shadow-[0_12px_30px_rgba(36,56,112,0.28)] backdrop-blur-sm transition-colors hover:bg-[#2c4488] md:left-4 md:top-4"
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 transition-colors hover:bg-white/15"
                     aria-label="الإشعارات"
                   >
                     <Bell size={22} className="text-white" />
@@ -1067,7 +1082,7 @@ export function Header() {
             {authResolved && !isLoggedIn && (
               <Button
                 onClick={() => handleNav("/login")}
-                className="fixed left-3 top-3 z-[95] h-10 rounded-lg bg-[#3453a7] px-5 text-sm font-extrabold text-white shadow-[0_12px_30px_rgba(52,83,167,0.28)] hover:bg-[#27428d] md:left-4 md:top-4"
+                className="h-10 rounded-full bg-white/10 px-5 text-sm font-extrabold text-white transition-colors hover:bg-white/15"
               >
                 دخول
               </Button>
@@ -1092,7 +1107,10 @@ export function Header() {
       >
         {/* رأس الدرج */}
 
-        <div className="bg-[#243870] px-4 pt-3 pb-4 flex-shrink-0">
+        <div
+          className="px-4 pt-3 pb-4 flex-shrink-0"
+          style={{ background: "linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)" }}
+        >
           {/* الصف العلوي: اللوغو + إغلاق */}
           <div className="flex items-center justify-between mb-3">
             <Image
@@ -1254,7 +1272,7 @@ export function Header() {
                 />
                 <NavItem
                   icon={Map}
-                  label="المسار"
+                  label="الإختبارات"
                   onClick={() => handleNav("/pathways")}
                 />
               </div>
@@ -1492,7 +1510,7 @@ export function Header() {
                     {
                       icon: Map,
 
-                      label: "إدارة المسار",
+                      label: "إدارة الإختبارات",
 
                       permKey: "إدارة المسار",
 

@@ -655,7 +655,7 @@ function ProfilePage() {
 
   if (!studentData) {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+      <div className="min-h-screen flex flex-col bg-[#ffffff]">
         <Header />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-2xl text-[#1a2332]">لم يتم العثور على بيانات الطالب.</div>
@@ -967,7 +967,7 @@ function ProfilePage() {
         </div>
       )}
 
-      <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+      <div className="min-h-screen flex flex-col bg-[#ffffff]">
         <Header />
 
         <main className="flex-1 py-6 md:py-12 px-3 md:px-4">

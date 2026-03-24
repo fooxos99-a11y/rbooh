@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Cairo } from "next/font/google"
+import { Geist, Cairo, Readex_Pro } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog"
 import { GlobalAdminModals } from '@/components/global-admin-modals'
@@ -9,6 +9,7 @@ import "./globals.css"
 
 const geist = Geist({ subsets: ["latin"] })
 const cairo = Cairo({ subsets: ["arabic"], variable: "--font-cairo" })
+const readexPro = Readex_Pro({ subsets: ["arabic", "latin"], variable: "--font-display" })
 
 export const metadata: Metadata = {
   title: "ربوة",
@@ -26,7 +27,7 @@ export default function RootLayout({
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
-      <body className={`${cairo.className} antialiased`} suppressHydrationWarning>
+      <body className={`${cairo.className} ${readexPro.variable} antialiased`} suppressHydrationWarning>
         <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
         <GlobalAdminModals />
         <Toaster />

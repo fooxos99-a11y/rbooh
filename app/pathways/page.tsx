@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createBrowserClient } from "@supabase/ssr"
-import { Check, Lock, Star } from "lucide-react"
+import { Check, Lock, Star, X } from "lucide-react"
 
 import { Footer } from "@/components/footer"
 import { Header } from "@/components/header"
@@ -217,7 +217,7 @@ export default function PathwaysPage() {
         <div className="container mx-auto max-w-6xl">
           <div className="mb-8 text-center md:mb-12">
             <div className="mb-3 flex items-center justify-center gap-2 md:mb-4 md:gap-3">
-              <h1 className="text-3xl font-bold text-[#1a2332] md:text-5xl">المسار</h1>
+              <h1 className="inline-block bg-gradient-to-r from-[#0f2f6d] via-[#1f4d9a] to-[#3667b2] bg-clip-text pb-1 text-3xl font-bold leading-[1.2] text-transparent md:text-5xl">الإختبارات</h1>
             </div>
           </div>
 
@@ -228,7 +228,7 @@ export default function PathwaysPage() {
             <div className="relative z-10 grid grid-cols-1 items-center gap-6 md:grid-cols-3 md:gap-10">
               <div className="md:col-span-2">
                 <div className="mb-4">
-                  <p className="text-sm font-bold tracking-wide opacity-90 md:text-base">التقدم في المسار</p>
+                  <p className="text-sm font-bold tracking-wide opacity-90 md:text-base">التقدم في الإختبارات</p>
                 </div>
 
                 <div className="relative h-7 overflow-hidden rounded-full border border-white/14 bg-[#153874]/55 shadow-inner md:h-9">
@@ -254,16 +254,16 @@ export default function PathwaysPage() {
 
                 <div className="mt-2 flex justify-between px-1">
                   {[0, 25, 50, 75, 100].map((milestone) => (
-                    <span key={milestone} className="text-[10px] font-semibold text-white/55 md:text-xs">
+                    <span key={milestone} className="text-[10px] font-semibold text-[#f5f9ff] md:text-xs">
                       {milestone}%
                     </span>
                   ))}
                 </div>
               </div>
 
-              <div className="flex flex-col items-center justify-center p-4 md:p-6">
+              <div className="flex items-center justify-center gap-3 p-4 md:gap-4 md:p-6">
                 <Star
-                  className="mb-4 h-12 w-12 fill-[#dcecff] text-[#dcecff] drop-shadow-[0_0_14px_rgba(220,236,255,0.2)] md:h-16 md:w-16"
+                  className="translate-y-[1px] h-9 w-9 fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_14px_rgba(255,215,102,0.30)] md:h-12 md:w-12"
                   strokeWidth={2.1}
                 />
                 <div
@@ -271,11 +271,6 @@ export default function PathwaysPage() {
                   style={{ color: "#f5f9ff", textShadow: "0 10px 30px rgba(8,24,61,0.28), 0 2px 0 rgba(16,44,100,0.35)" }}
                 >
                   {totalPoints}
-                </div>
-                <div className="mt-2 flex items-center gap-1.5">
-                  <div className="h-px w-6 bg-white/25" />
-                  <p className="text-xs font-semibold tracking-widest text-white/75 md:text-sm">الإجمالي</p>
-                  <div className="h-px w-6 bg-white/25" />
                 </div>
               </div>
             </div>
@@ -293,9 +288,9 @@ export default function PathwaysPage() {
               ].sort((left, right) => left.juzNumber - right.juzNumber)
 
               const statusBadgeClassName = hasPassedTests && !hasFailedTests
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                ? "border-[#3453a7]/15 bg-[linear-gradient(135deg,rgba(125,183,255,0.16),rgba(52,83,167,0.08))] text-[#3453a7] shadow-[0_10px_24px_rgba(52,83,167,0.08)]"
                 : hasFailedTests && !hasPassedTests
-                  ? "border-red-200 bg-red-50 text-red-600"
+                  ? "border-red-500/15 bg-[linear-gradient(135deg,rgba(255,99,99,0.10),rgba(255,99,99,0.04))] text-red-600 shadow-[0_10px_24px_rgba(239,68,68,0.08)]"
                   : ""
 
               const statusBadgeLabel = hasPassedTests && !hasFailedTests
@@ -342,7 +337,7 @@ export default function PathwaysPage() {
                         className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-xl font-black md:h-14 md:w-14 md:text-2xl"
                         style={{
                           background: level.isCompleted
-                            ? "linear-gradient(145deg, #3453a7, #27428d)"
+                            ? "linear-gradient(145deg, #7db7ff, #3453a7)"
                             : level.isLocked
                               ? "#e5e7eb"
                                 : "linear-gradient(145deg, #7db7ff, #3453a7)",
@@ -365,7 +360,12 @@ export default function PathwaysPage() {
                           </div>
                         )}
                         {statusBadgeLabel && (
-                          <div className={`rounded-full border px-3 py-1 text-[11px] font-black ${statusBadgeClassName}`}>
+                          <div className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black backdrop-blur-sm ${statusBadgeClassName}`}>
+                            <span
+                              className={`flex h-4 w-4 items-center justify-center rounded-full ${statusBadgeLabel === "ناجح" ? "bg-[#3453a7] text-white" : "bg-red-500 text-white"}`}
+                            >
+                              {statusBadgeLabel === "ناجح" ? <Check className="h-2.5 w-2.5" strokeWidth={3.2} /> : <X className="h-2.5 w-2.5" strokeWidth={3.2} />}
+                            </span>
                             {statusBadgeLabel}
                           </div>
                         )}
@@ -386,15 +386,26 @@ export default function PathwaysPage() {
                           {levelTestItems.map((item) => (
                             <div
                               key={`${level.id}-${item.juzNumber}-${item.status}`}
-                              className={`rounded-xl border px-3 py-2 ${
+                              className={`rounded-2xl border px-3 py-2.5 backdrop-blur-sm transition-all duration-200 ${
                                 item.status === "pass"
-                                  ? "border-[#3453a7]/30 bg-[#f3f7ff] text-[#3453a7]"
-                                  : "border-red-200 bg-red-50 text-red-600"
+                                  ? "border-[#3453a7]/16 bg-[linear-gradient(135deg,rgba(255,255,255,0.96),rgba(233,242,255,0.92))] text-[#3453a7] shadow-[0_10px_28px_rgba(52,83,167,0.08)]"
+                                  : "border-red-500/16 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,240,240,0.94))] text-red-600 shadow-[0_10px_28px_rgba(239,68,68,0.08)]"
                               }`}
                             >
                               <div className="flex items-center justify-between gap-2">
-                                <span className="text-[11px] font-black">{item.status === "pass" ? "ناجح" : "راسب"}</span>
-                                <span className="text-[11px] font-black">الجزء {item.juzNumber}</span>
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                                      item.status === "pass"
+                                        ? "bg-[linear-gradient(145deg,#7db7ff,#3453a7)] text-white shadow-[0_6px_14px_rgba(52,83,167,0.20)]"
+                                        : "bg-[linear-gradient(145deg,#ff8f8f,#ef4444)] text-white shadow-[0_6px_14px_rgba(239,68,68,0.18)]"
+                                    }`}
+                                  >
+                                    {item.status === "pass" ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : <X className="h-3.5 w-3.5" strokeWidth={3} />}
+                                  </span>
+                                  <span className="text-[11px] font-black tracking-tight">{item.status === "pass" ? "ناجح" : "راسب"}</span>
+                                </div>
+                                <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-black text-current/90">الجزء {item.juzNumber}</span>
                               </div>
                             </div>
                           ))}
@@ -412,7 +423,7 @@ export default function PathwaysPage() {
                           className={`h-4 w-4 ${
                             level.isLocked
                               ? "fill-gray-300 text-gray-300"
-                              : "fill-[#8fd3ff] text-[#8fd3ff] drop-shadow-[0_0_4px_rgba(143,211,255,0.35)]"
+                              : "fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_4px_rgba(255,215,102,0.30)]"
                           }`}
                           strokeWidth={1.8}
                         />

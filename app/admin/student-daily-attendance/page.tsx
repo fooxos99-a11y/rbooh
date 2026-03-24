@@ -79,7 +79,7 @@ function SeverityBadge({ severity }: { severity: IssueSeverity }) {
 	return severity === "alert" ? (
     <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">إنذار</Badge>
 	) : (
-    <Badge className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">تنبيه</Badge>
+  <Badge className="border-[#8fb1ff] bg-[#eef4ff] text-[#3453a7] hover:bg-[#eef4ff]">تنبيه</Badge>
 	)
 }
 
@@ -338,7 +338,7 @@ export default function StudentDailyAttendancePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f5f1e8] to-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#ffffff]">
         <SiteLoader size="lg" />
       </div>
     )
@@ -351,7 +351,7 @@ export default function StudentDailyAttendancePage() {
   if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>)
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+    <div className="min-h-screen flex flex-col bg-[#ffffff]">
       <Header />
 
       <main className="flex-1 py-6 md:py-10 px-3 md:px-6">
@@ -474,7 +474,7 @@ export default function StudentDailyAttendancePage() {
                               <Eye className="h-4 w-4" />
                               التفاصيل
                             </Button>
-                            <Button size="sm" className="bg-amber-500 text-white hover:bg-amber-600" onClick={() => openActionDialog(row, "warning")}>
+                            <Button size="sm" className="bg-[#3453a7] text-white hover:bg-[#27428d]" onClick={() => openActionDialog(row, "warning")}>
                               <BellRing className="h-4 w-4" />
                               تنبيه
                             </Button>
@@ -554,31 +554,31 @@ export default function StudentDailyAttendancePage() {
       </Dialog>
 
       <Dialog open={Boolean(detailsRow)} onOpenChange={(open) => !open && setDetailsRow(null)}>
-        <DialogContent className="max-w-3xl border border-[#D4AF37]/20 bg-[#fffdf8]" dir="rtl" showCloseButton={false}>
+        <DialogContent className="max-w-3xl border border-[#3453a7]/20 bg-[#fbfdff]" dir="rtl" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle className="text-2xl font-black text-[#1a2332]">تفاصيل المشكلة</DialogTitle>
           </DialogHeader>
           {detailsRow ? (
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-2">
-                <div className="rounded-2xl border border-[#D4AF37]/15 bg-white p-4">
-                  <p className="text-sm font-bold text-[#8b6b3f]">التنبيهات السابقة</p>
+                <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
+                  <p className="text-sm font-bold text-[#3453a7]">التنبيهات السابقة</p>
                   <p className="mt-2 font-black text-[#1a2332]">{detailsRow.warningCount}</p>
                 </div>
-                <div className="rounded-2xl border border-[#D4AF37]/15 bg-white p-4">
-                  <p className="text-sm font-bold text-[#8b6b3f]">الإنذارات السابقة</p>
+                <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
+                  <p className="text-sm font-bold text-[#3453a7]">الإنذارات السابقة</p>
                   <p className="mt-2 font-black text-[#1a2332]">{detailsRow.alertCount}</p>
                 </div>
               </div>
 
-              <div className="space-y-3 rounded-3xl border border-[#D4AF37]/15 bg-white p-5">
+              <div className="space-y-3 rounded-3xl border border-[#3453a7]/15 bg-white p-5">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-lg font-black text-[#1a2332]">الأسباب الحالية</h3>
                   <SeverityBadge severity={detailsRow.recommendedAction} />
                 </div>
                 <div className="space-y-3">
                   {detailsRow.reasons.map((reason) => (
-                    <div key={`${detailsRow.studentId}-${reason.code}`} className="rounded-2xl border border-[#D4AF37]/10 bg-[#fcfaf4] p-4">
+                    <div key={`${detailsRow.studentId}-${reason.code}`} className="rounded-2xl border border-[#3453a7]/10 bg-[#f8fbff] p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
                           <CategoryBadge category={reason.category} />
@@ -594,12 +594,12 @@ export default function StudentDailyAttendancePage() {
 
               {(detailsRow.attendanceNotes || detailsRow.dailyReportNotes) ? (
                 <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-2xl border border-[#D4AF37]/15 bg-white p-4">
-                    <p className="text-sm font-bold text-[#8b6b3f]">ملاحظات الحضور</p>
+                  <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
+                    <p className="text-sm font-bold text-[#3453a7]">ملاحظات الحضور</p>
                     <p className="mt-2 text-sm leading-7 text-[#4b5563]">{detailsRow.attendanceNotes || "—"}</p>
                   </div>
-                  <div className="rounded-2xl border border-[#D4AF37]/15 bg-white p-4">
-                    <p className="text-sm font-bold text-[#8b6b3f]">ملاحظات التنفيذ</p>
+                  <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
+                    <p className="text-sm font-bold text-[#3453a7]">ملاحظات التنفيذ</p>
                     <p className="mt-2 text-sm leading-7 text-[#4b5563]">{detailsRow.dailyReportNotes || "—"}</p>
                   </div>
                 </div>
@@ -607,7 +607,7 @@ export default function StudentDailyAttendancePage() {
 
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setDetailsRow(null)} className="border-[#003f55]/20">إغلاق</Button>
-                <Button className="bg-amber-500 text-white hover:bg-amber-600" onClick={() => openActionDialog(detailsRow, "warning")}>
+                <Button className="bg-[#3453a7] text-white hover:bg-[#27428d]" onClick={() => openActionDialog(detailsRow, "warning")}>
                   <BellRing className="h-4 w-4" />
                   إرسال تنبيه
                 </Button>
@@ -622,17 +622,17 @@ export default function StudentDailyAttendancePage() {
       </Dialog>
 
       <Dialog open={Boolean(actionRow)} onOpenChange={(open) => !open && setActionRow(null)}>
-        <DialogContent className="max-w-2xl border border-[#D4AF37]/20 bg-[#fffdf8]" dir="rtl" showCloseButton={false}>
+        <DialogContent className="max-w-2xl border border-[#3453a7]/20 bg-[#fbfdff]" dir="rtl" showCloseButton={false}>
           <DialogHeader>
             <DialogTitle className="text-2xl font-black text-[#1a2332]">{actionType === "alert" ? "إرسال إنذار" : "إرسال تنبيه"}</DialogTitle>
           </DialogHeader>
           {actionRow ? (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-[#D4AF37]/15 bg-white p-4">
+              <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-black text-[#1a2332]">{actionRow.studentName}</p>
-                    <p className="mt-1 text-sm text-[#8b6b3f]">{actionRow.circleName}</p>
+                    <p className="mt-1 text-sm text-[#3453a7]">{actionRow.circleName}</p>
                   </div>
                   <SeverityBadge severity={actionType} />
                 </div>
@@ -644,7 +644,7 @@ export default function StudentDailyAttendancePage() {
               ) : null}
               <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => setActionRow(null)} className="border-[#003f55]/20">إلغاء</Button>
-                <Button onClick={handleSendNotification} disabled={isSendingNotification || !actionRow.accountNumber} className={actionType === "alert" ? "bg-red-500 text-white hover:bg-red-600" : "bg-amber-500 text-white hover:bg-amber-600"}>
+                <Button onClick={handleSendNotification} disabled={isSendingNotification || !actionRow.accountNumber} className={actionType === "alert" ? "bg-red-500 text-white hover:bg-red-600" : "bg-[#3453a7] text-white hover:bg-[#27428d]"}>
                   {isSendingNotification ? "جاري الإرسال..." : actionType === "alert" ? "إرسال الإنذار" : "إرسال التنبيه"}
                 </Button>
               </div>

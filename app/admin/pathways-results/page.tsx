@@ -117,7 +117,7 @@ export default function PathwaysResultsPage() {
               <div className="w-10 h-10 flex items-center justify-center">
                 <Trophy className="w-5 h-5 text-[#003f55]" />
               </div>
-              <h1 className="text-2xl font-bold text-[#1a2332]">نتائج المسار</h1>
+              <h1 className="text-2xl font-bold text-[#1a2332]">نتائج الإختبارات</h1>
             </div>
           </div>
 

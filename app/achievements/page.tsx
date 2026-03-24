@@ -93,14 +93,14 @@ function AchievementsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+      <div className="min-h-screen flex items-center justify-center bg-[#ffffff]">
         <SiteLoader />
       </div>
     )
   }
 
   return (
-    <div dir="rtl" className="min-h-screen flex flex-col bg-[#fafaf9]">
+    <div dir="rtl" className="min-h-screen flex flex-col bg-[#ffffff]">
       <Header />
 
       <ConfirmDialog
