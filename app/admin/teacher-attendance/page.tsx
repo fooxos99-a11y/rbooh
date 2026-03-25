@@ -6,16 +6,14 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Calendar, Clock } from "lucide-react"
+import { Calendar as CalendarIcon, Clock } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
-import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { formatSaudiTimeWithPeriod, getSaudiDateString } from "@/lib/saudi-time"
-import { DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES, TEACHER_ATTENDANCE_DELAY_SETTING_ID } from "@/lib/site-settings-constants"
 
 interface AttendanceRecord {
   id: string
@@ -45,14 +43,8 @@ export default function TeacherAttendancePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([])
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
-  const [graceMinutes, setGraceMinutes] = useState(50)
-  const [todayIshaTime, setTodayIshaTime] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
-  const [isDelayDialogOpen, setIsDelayDialogOpen] = useState(false)
-  const [delayMinutes, setDelayMinutes] = useState(String(DEFAULT_TEACHER_ATTENDANCE_DELAY_MINUTES))
-  const [isSavingDelay, setIsSavingDelay] = useState(false)
   const router = useRouter()
-  const showAlert = useAlertDialog()
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -104,13 +96,6 @@ export default function TeacherAttendancePage() {
       if (data.records) {
         setAttendanceRecords(data.records)
       }
-
-      if (typeof data.meta?.graceMinutes === "number") {
-        setGraceMinutes(data.meta.graceMinutes)
-        setDelayMinutes(String(data.meta.graceMinutes))
-      }
-
-      setTodayIshaTime(typeof data.meta?.todayIshaTime === "string" ? data.meta.todayIshaTime : null)
     } catch (error) {
       console.error("[v0] Error fetching attendance:", error)
     } finally {
@@ -125,45 +110,6 @@ export default function TeacherAttendancePage() {
       filtered = filtered.filter((record) => record.attendance_date === selectedDate)
     }
     setFilteredRecords(filtered)
-  }
-
-  const handleSaveDelaySetting = async () => {
-    const parsedMinutes = Number.parseInt(delayMinutes, 10)
-    if (!Number.isFinite(parsedMinutes) || parsedMinutes < 0) {
-      await showAlert("أدخل مدة تأخير صحيحة بالدقائق", "تنبيه")
-      return
-    }
-
-    try {
-      setIsSavingDelay(true)
-      const response = await fetch("/api/site-settings", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: TEACHER_ATTENDANCE_DELAY_SETTING_ID,
-          value: { minutes: parsedMinutes },
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "فشل في حفظ مدة التأخير")
-      }
-
-      setGraceMinutes(parsedMinutes)
-      setDelayMinutes(String(parsedMinutes))
-      setIsDelayDialogOpen(false)
-      await fetchAttendanceRecords()
-      await showAlert(`تم ضبط مدة التأخير إلى ${parsedMinutes} دقيقة بعد أذان العشاء في بريدة`, "نجاح")
-    } catch (error) {
-      console.error("[teacher-attendance] Error saving teacher delay setting:", error)
-      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ مدة التأخير", "خطأ")
-    } finally {
-      setIsSavingDelay(false)
-    }
   }
 
   const formatTime = (timestamp: string) => {
@@ -228,16 +174,7 @@ export default function TeacherAttendancePage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h1 className="text-3xl md:text-4xl font-bold text-[#1a2332] mb-2">تحضير المعلمين</h1>
-                <p className="text-gray-600">يحتسب التأخر بعد {graceMinutes} دقيقة من أذان العشاء</p>
-                <p className="mt-2 text-sm text-[#3453a7]">أذان العشاء اليوم: {todayIshaTime ? formatSaudiTimeWithPeriod(todayIshaTime) : "-"}</p>
               </div>
-              <Button
-                variant="outline"
-                onClick={() => setIsDelayDialogOpen(true)}
-                className="self-start border-[#8fb1ff] bg-white text-[#3453a7] hover:bg-[#eaf1ff] hover:text-[#27428d]"
-              >
-                مدة التأخير
-              </Button>
             </div>
 
             {/* Filters Card */}
@@ -251,16 +188,36 @@ export default function TeacherAttendancePage() {
                   <div className="space-y-2">
                     <Label className="text-sm font-semibold text-[#1a2332]">
                       <div className="flex items-center gap-2 mb-1">
-                        <Calendar className="w-4 h-4" />
+                        <CalendarIcon className="w-4 h-4" />
                         التاريخ
                       </div>
                     </Label>
-                    <Input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="text-base"
-                    />
+                    <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={`w-full justify-start text-right font-normal flex-row-reverse gap-2 ${!selectedDate ? "text-muted-foreground" : ""} text-base h-10`}
+                          >
+                            <span className="flex-1 text-right" dir="ltr">{selectedDate || "اختر تاريخاً"}</span>
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate ? new Date(selectedDate) : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                const pad = (n) => n.toString().padStart(2, "0");
+                                const val = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+                                setSelectedDate(val);
+                              }
+                            }}
+                            disabled={(date) => date.getDay() !== 0 && date.getDay() !== 3}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                   </div>
                 </div>
               </CardContent>
@@ -327,35 +284,6 @@ export default function TeacherAttendancePage() {
           </div>
         </div>
       </main>
-
-      <Dialog open={isDelayDialogOpen} onOpenChange={setIsDelayDialogOpen}>
-        <DialogContent className="sm:max-w-[420px]" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="text-xl text-[#1a2332] text-right">مدة التأخير</DialogTitle>
-            <DialogDescription className="text-sm text-neutral-500 text-right">يتم احتساب التأخير بعد أذان العشاء في بريدة بهذه المدة</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4 text-right">
-            <div className="space-y-2">
-              <Label htmlFor="teacherDelayMinutes" className="text-sm font-semibold text-[#1a2332]">عدد الدقائق بعد أذان العشاء</Label>
-              <Input
-                id="teacherDelayMinutes"
-                value={delayMinutes}
-                onChange={(e) => setDelayMinutes(e.target.value)}
-                placeholder="50"
-                dir="ltr"
-                type="number"
-                min="0"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3" dir="rtl">
-            <Button variant="outline" onClick={() => setIsDelayDialogOpen(false)} className="border-[#003f55]/20 text-neutral-600">إلغاء</Button>
-            <Button onClick={handleSaveDelaySetting} disabled={isSavingDelay} className="bg-[#3453a7] hover:bg-[#27428d] text-white disabled:opacity-60 disabled:cursor-not-allowed">
-              {isSavingDelay ? "جاري الحفظ..." : "حفظ"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Footer />
     </div>

@@ -25,9 +25,9 @@ function getKsaDateString(baseDate = new Date()) {
 }
 
 function getEarlierKsaDateString(referenceDate: string, daysBack: number) {
-  const baseDate = new Date(`${referenceDate}T00:00:00+03:00`)
+  const baseDate = new Date(`${referenceDate}T12:00:00+03:00`)
   baseDate.setUTCDate(baseDate.getUTCDate() - daysBack)
-  return baseDate.toISOString().slice(0, 10)
+  return getKsaDateString(baseDate)
 }
 
 function isMissingReportsTable(error: { message?: string | null; details?: string | null; hint?: string | null } | null) {

@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getClientAccountNumber } from "@/lib/client-auth";
-import { ArrowRight } from "lucide-react";
 
 import { CircleWeeklyReports } from "@/components/circle-weekly-reports";
 import { Footer } from "@/components/footer";
@@ -73,15 +71,6 @@ export default function TeacherWeeklyReportsPage() {
         <Header />
         <main className="px-4 py-10">
           <div className="container mx-auto max-w-4xl space-y-8">
-            <div className="flex justify-start">
-              <Link
-                href="/teacher/dashboard"
-                className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#dccba0] bg-white text-[#1a2332] shadow-sm transition hover:border-[#d8a355]"
-                aria-label="العودة للوحة المعلم"
-              >
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
             <div className="rounded-[28px] border border-red-200 bg-white px-6 py-16 text-center text-lg font-bold text-red-700 shadow-sm">
               {error || "لا توجد حلقة مرتبطة بهذا المعلم"}
             </div>
@@ -92,5 +81,5 @@ export default function TeacherWeeklyReportsPage() {
     );
   }
 
-  return <CircleWeeklyReports circleName={teacherCircle} backHref="/teacher/dashboard" backLabel="العودة للوحة المعلم" />;
+  return <CircleWeeklyReports circleName={teacherCircle} />;
 }

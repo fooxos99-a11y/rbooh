@@ -5,14 +5,15 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { getSaudiDateString, getSaudiWeekday, getSaudiTimeString, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
-import { Calendar } from "lucide-react"
+import { Calendar as CalendarIcon } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar"
 
 type AttendanceStatus = "present" | "late" | "absent" | "excused" | null
 type StaffGroup = "students" | "teachers"
@@ -48,22 +49,22 @@ const STATUS_OPTIONS: Array<{ value: Exclude<AttendanceStatus, null>; label: str
   {
     value: "present",
     label: "حاضر",
-    className: "border-emerald-300 text-emerald-700 hover:bg-emerald-50 data-[active=true]:bg-emerald-100 data-[active=true]:text-emerald-800",
+    className: "text-[#1a2332] focus:bg-[#eef4ff] focus:text-[#1a2332] data-[highlighted]:bg-[#eef4ff] data-[highlighted]:text-[#1a2332]",
   },
   {
     value: "late",
     label: "متأخر",
-    className: "border-orange-300 text-orange-700 hover:bg-orange-50 data-[active=true]:bg-orange-100 data-[active=true]:text-orange-800",
+    className: "text-[#1a2332] focus:bg-[#eef4ff] focus:text-[#1a2332] data-[highlighted]:bg-[#eef4ff] data-[highlighted]:text-[#1a2332]",
   },
   {
     value: "absent",
     label: "غائب",
-    className: "border-rose-300 text-rose-700 hover:bg-rose-50 data-[active=true]:bg-rose-100 data-[active=true]:text-rose-800",
+    className: "text-[#1a2332] focus:bg-[#eef4ff] focus:text-[#1a2332] data-[highlighted]:bg-[#eef4ff] data-[highlighted]:text-[#1a2332]",
   },
   {
     value: "excused",
     label: "مستأذن",
-    className: "border-amber-300 text-amber-700 hover:bg-amber-50 data-[active=true]:bg-amber-100 data-[active=true]:text-amber-800",
+    className: "text-[#1a2332] focus:bg-[#eef4ff] focus:text-[#1a2332] data-[highlighted]:bg-[#eef4ff] data-[highlighted]:text-[#1a2332]",
   },
 ]
 
@@ -87,16 +88,19 @@ export default function StaffAttendancePage() {
   const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
   const [activeGroup, setActiveGroup] = useState<StaffGroup>("students")
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [timeTick, setTimeTick] = useState(() => Date.now())
+  const [savingStudentIds, setSavingStudentIds] = useState<string[]>([])
+  const [savingTeacherIds, setSavingTeacherIds] = useState<string[]>([])
 
   const filteredStudentRecords = useMemo(() => {
     const base = selectedCircle === "all"
       ? studentRecords
       : studentRecords.filter((record) => record.halaqah === selectedCircle)
 
-    return [...base].sort((first, second) => {
+    const pendingRecords = base.filter((record) => !record.isEvaluated && record.status === null)
+
+    return [...pendingRecords].sort((first, second) => {
       const firstNumber = first.account_number || 0
       const secondNumber = second.account_number || 0
       if (firstNumber !== secondNumber) {
@@ -152,6 +156,26 @@ export default function StaffAttendancePage() {
       setSelectedCircle("all")
     }
   }, [circles, selectedCircle])
+
+  useEffect(() => {
+    if (authLoading || !authVerified) {
+      return
+    }
+
+    const refreshRecords = () => {
+      if (document.visibilityState === "visible" && isAttendanceWindowOpen) {
+        void fetchRecords(selectedDate)
+      }
+    }
+
+    window.addEventListener("focus", refreshRecords)
+    document.addEventListener("visibilitychange", refreshRecords)
+
+    return () => {
+      window.removeEventListener("focus", refreshRecords)
+      document.removeEventListener("visibilitychange", refreshRecords)
+    }
+  }, [authLoading, authVerified, isAttendanceWindowOpen, selectedDate])
 
   const fetchRecords = async (date: string) => {
     const isFirstLoad = isLoading
@@ -227,7 +251,7 @@ export default function StaffAttendancePage() {
     }
   }
 
-  const setStudentStatus = (studentId: string, status: Exclude<AttendanceStatus, null>) => {
+  const setStudentStatus = (studentId: string, status: AttendanceStatus) => {
     setStudentRecords((current) => current.map((record) => (
       record.student_id === studentId && !record.isEvaluated
         ? { ...record, status }
@@ -235,7 +259,7 @@ export default function StaffAttendancePage() {
     )))
   }
 
-  const setTeacherStatus = (teacherId: string, status: Exclude<AttendanceStatus, null>) => {
+  const setTeacherStatus = (teacherId: string, status: AttendanceStatus) => {
     setTeacherRecords((current) => current.map((record) => (
       record.teacher_id === teacherId
         ? { ...record, status }
@@ -243,100 +267,81 @@ export default function StaffAttendancePage() {
     )))
   }
 
-  const handleSaveStudents = async () => {
-    const updates = studentRecords
-      .filter((record) => record.status !== null)
-      .map((record) => ({ student_id: record.student_id, status: record.status }))
-
-    if (updates.length === 0) {
-      await showAlert("حدد حالة واحدة على الأقل قبل الحفظ", "تنبيه")
+  const saveStudentStatus = async (studentId: string, status: AttendanceStatus) => {
+    if (!status) {
       return
     }
 
-    const response = await fetch("/api/admin-student-attendance", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: selectedDate, updates }),
-    })
-    const data = await response.json()
-
-    if (!response.ok) {
-      throw new Error(data.error || "فشل في حفظ تحضير الطلاب")
-    }
-
-    await fetchRecords(selectedDate)
-
-    if (Array.isArray(data.blocked) && data.blocked.length > 0) {
-      const blockedCount = data.blocked.length
-      const savedCount = Array.isArray(data.saved) ? data.saved.length : 0
-      await showAlert(
-        savedCount > 0
-          ? `تم حفظ ${savedCount} سجل وتعذر تحديث ${blockedCount} سجل.`
-          : `تعذر حفظ ${blockedCount} سجل.`,
-        savedCount > 0 ? "تنبيه" : "خطأ",
-      )
-      return
-    }
-
-    await showAlert("تم حفظ تحضير الطلاب", "نجاح")
-  }
-
-  const handleSaveTeachers = async () => {
-    const updates = teacherRecords.filter((record) => record.status !== null)
-
-    if (updates.length === 0) {
-      await showAlert("حدد حالة واحدة على الأقل قبل الحفظ", "تنبيه")
-      return
-    }
-
-    const timestamp = buildAttendanceTimestamp(selectedDate)
-    const results = await Promise.all(
-      updates.map(async (record) => {
-        const response = await fetch("/api/teacher-attendance", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            teacher_id: record.teacher_id,
-            teacher_name: record.teacher_name,
-            account_number: record.account_number,
-            status: record.status,
-            check_in_time: timestamp,
-            attendance_date: selectedDate,
-          }),
-        })
-
-        const data = await response.json().catch(() => ({}))
-        return { ok: response.ok, data }
-      }),
-    )
-
-    const failedResult = results.find((result) => !result.ok)
-    if (failedResult) {
-      throw new Error(failedResult.data?.error || "فشل في حفظ تحضير المعلمين")
-    }
-
-    await fetchRecords(selectedDate)
-    await showAlert("تم حفظ تحضير المعلمين", "نجاح")
-  }
-
-  const handleSave = async () => {
-    if (!isAttendanceWindowOpen) {
-      await showAlert("التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 12 ظهرًا بتوقيت السعودية", "تنبيه")
-      return
-    }
+    const previousStatus = studentRecords.find((record) => record.student_id === studentId)?.status ?? null
+    setStudentStatus(studentId, status)
+    setSavingStudentIds((current) => [...current, studentId])
 
     try {
-      setIsSaving(true)
-      if (activeGroup === "students") {
-        await handleSaveStudents()
-      } else {
-        await handleSaveTeachers()
+      const response = await fetch("/api/admin-student-attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          updates: [{ student_id: studentId, status }],
+        }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "فشل في حفظ تحضير الطالب")
+      }
+
+      if (Array.isArray(data.blocked) && data.blocked.length > 0) {
+        throw new Error("تعذر حفظ حالة الطالب المحددة")
       }
     } catch (error) {
-      console.error("[staff-attendance] Error saving records:", error)
-      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء الحفظ", "خطأ")
+      setStudentStatus(studentId, previousStatus)
+      console.error("[staff-attendance] Error saving student status:", error)
+      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ حالة الطالب", "خطأ")
     } finally {
-      setIsSaving(false)
+      setSavingStudentIds((current) => current.filter((id) => id !== studentId))
+    }
+  }
+
+  const saveTeacherStatus = async (teacherId: string, status: AttendanceStatus) => {
+    if (!status) {
+      return
+    }
+
+    const teacherRecord = teacherRecords.find((record) => record.teacher_id === teacherId)
+    if (!teacherRecord) {
+      return
+    }
+
+    const previousStatus = teacherRecord.status
+    const timestamp = buildAttendanceTimestamp(selectedDate)
+    setTeacherStatus(teacherId, status)
+    setSavingTeacherIds((current) => [...current, teacherId])
+
+    try {
+      const response = await fetch("/api/teacher-attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teacher_id: teacherRecord.teacher_id,
+          teacher_name: teacherRecord.teacher_name,
+          account_number: teacherRecord.account_number,
+          status,
+          check_in_time: timestamp,
+          attendance_date: selectedDate,
+        }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.error || "فشل في حفظ تحضير المعلم")
+      }
+    } catch (error) {
+      setTeacherStatus(teacherId, previousStatus)
+      console.error("[staff-attendance] Error saving teacher status:", error)
+      await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ حالة المعلم", "خطأ")
+    } finally {
+      setSavingTeacherIds((current) => current.filter((id) => id !== teacherId))
     }
   }
 
@@ -374,11 +379,36 @@ export default function StaffAttendancePage() {
                 <div className="space-y-2 text-right">
                   <Label className="text-sm font-semibold text-[#1a2332]">
                     <span className="inline-flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-[#003f55]" />
+                      <CalendarIcon className="h-4 w-4 text-[#003f55]" />
                       التاريخ
                     </span>
                   </Label>
-                  <Input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={`w-full justify-start gap-2 text-right font-normal flex-row-reverse ${!selectedDate ? "text-muted-foreground" : ""}`}
+                      >
+                        <span className="flex-1 text-right" dir="ltr">{selectedDate || "اختر تاريخاً"}</span>
+                        <CalendarIcon className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={selectedDate ? new Date(selectedDate) : undefined}
+                        onSelect={(date) => {
+                          if (date) {
+                            const pad = (value: number) => value.toString().padStart(2, "0")
+                            const nextDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+                            setSelectedDate(nextDate)
+                          }
+                        }}
+                        disabled={(date) => date.getDay() !== 0 && date.getDay() !== 3}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div className="space-y-2 text-right">
                   <Label className="text-sm font-semibold text-[#1a2332]">الحلقة</Label>
@@ -440,31 +470,31 @@ export default function StaffAttendancePage() {
                     لا يوجد طلاب ضمن الفلترة الحالية.
                   </div>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="flex flex-wrap gap-2.5">
                     {filteredStudentRecords.map((record) => (
-                      <Card key={record.student_id} className={`border border-[#003f55]/12 bg-white/95 shadow-sm ${record.isEvaluated ? "opacity-70" : ""}`}>
-                        <CardContent className="p-3" dir="rtl">
-                          <div className="mb-3 flex justify-start">
+                      <Card key={record.student_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm">
+                        <CardContent className="p-2.5" dir="rtl">
+                          <div className="mb-2 flex justify-start">
                             <p className="text-base font-black text-[#1a2332] text-left">{record.student_name}</p>
                           </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            {STATUS_OPTIONS.map((option) => {
-                              const isActive = record.status === option.value
-                              return (
-                                <Button
-                                  key={`${record.student_id}-${option.value}`}
-                                  type="button"
-                                  variant="outline"
-                                  disabled={record.isEvaluated || !isAttendanceDateAllowed}
-                                  data-active={isActive}
-                                  onClick={() => setStudentStatus(record.student_id, option.value)}
-                                  className={`h-9 rounded-lg px-2 text-sm font-bold transition-colors ${option.className}`}
-                                >
+                          <Select
+                            value={record.status ?? undefined}
+                            onValueChange={(value) => {
+                              void saveStudentStatus(record.student_id, value as Exclude<AttendanceStatus, null>)
+                            }}
+                            disabled={!isAttendanceDateAllowed || savingStudentIds.includes(record.student_id)}
+                          >
+                            <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] [&>span]:flex-1 [&>span]:text-right">
+                              <SelectValue placeholder="اختيار" />
+                            </SelectTrigger>
+                            <SelectContent dir="rtl">
+                              {STATUS_OPTIONS.map((option) => (
+                                <SelectItem key={`${record.student_id}-${option.value}`} value={option.value} className={`text-base ${option.className}`}>
                                   {option.label}
-                                </Button>
-                              )
-                            })}
-                          </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </CardContent>
                       </Card>
                     ))}
@@ -472,34 +502,34 @@ export default function StaffAttendancePage() {
                 )
               ) : filteredTeacherRecords.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
-                  لا يوجد معلمون ضمن الفلترة الحالية.
+                  لايوجد معلمون
                 </div>
               ) : (
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="flex flex-wrap gap-2.5">
                   {filteredTeacherRecords.map((record) => (
-                    <Card key={record.teacher_id} className="border border-[#003f55]/12 bg-white/95 shadow-sm">
-                      <CardContent className="p-3" dir="rtl">
-                        <div className="mb-3 flex justify-start">
+                    <Card key={record.teacher_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm">
+                      <CardContent className="p-2.5" dir="rtl">
+                        <div className="mb-2 flex justify-start">
                           <p className="text-base font-black text-[#1a2332] text-left">{record.teacher_name}</p>
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          {STATUS_OPTIONS.map((option) => {
-                            const isActive = record.status === option.value
-                            return (
-                              <Button
-                                key={`${record.teacher_id}-${option.value}`}
-                                type="button"
-                                variant="outline"
-                                disabled={!isAttendanceDateAllowed}
-                                data-active={isActive}
-                                onClick={() => setTeacherStatus(record.teacher_id, option.value)}
-                                className={`h-9 rounded-lg px-2 text-sm font-bold transition-colors ${option.className}`}
-                              >
+                        <Select
+                          value={record.status ?? undefined}
+                          onValueChange={(value) => {
+                            void saveTeacherStatus(record.teacher_id, value as Exclude<AttendanceStatus, null>)
+                          }}
+                          disabled={!isAttendanceDateAllowed || savingTeacherIds.includes(record.teacher_id)}
+                        >
+                          <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] [&>span]:flex-1 [&>span]:text-right">
+                            <SelectValue placeholder="اختيار" />
+                          </SelectTrigger>
+                          <SelectContent dir="rtl">
+                            {STATUS_OPTIONS.map((option) => (
+                              <SelectItem key={`${record.teacher_id}-${option.value}`} value={option.value} className={`text-base ${option.className}`}>
                                 {option.label}
-                              </Button>
-                            )
-                          })}
-                        </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </CardContent>
                     </Card>
                   ))}
@@ -507,17 +537,6 @@ export default function StaffAttendancePage() {
               )}
             </CardContent>
           </Card>
-
-          <div className="flex justify-center">
-            <Button
-              type="button"
-              onClick={handleSave}
-              disabled={isSaving || isFutureDate || !isAttendanceDateAllowed || !isAttendanceWindowOpen}
-              className="h-12 min-w-[220px] rounded-xl bg-[#3453a7] text-white hover:bg-[#27428d]"
-            >
-              {isSaving ? "جاري الحفظ..." : "حفظ التحضير"}
-            </Button>
-          </div>
         </div>
       </main>
 

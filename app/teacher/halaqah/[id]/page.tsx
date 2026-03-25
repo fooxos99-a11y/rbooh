@@ -512,11 +512,7 @@ export default function HalaqahManagement() {
 	const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
 	const [notesText, setNotesText] = useState("")
 	const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false)
-		const [showReadingSegments, setShowReadingSegments] = useState(false)
-		const studentsRef = useRef<StudentAttendance[]>([])
-		const readingSegmentsStorageKey = teacherData?.id
-			? `halaqah-show-reading-segments-${teacherData.id}`
-			: null
+	const studentsRef = useRef<StudentAttendance[]>([])
 
 	const showAlert = useAlertDialog()
 
@@ -568,22 +564,16 @@ export default function HalaqahManagement() {
 	}, [teacherHalaqah])
 
 	useEffect(() => {
-		if (!readingSegmentsStorageKey) return
-
-		const savedPreference = localStorage.getItem(readingSegmentsStorageKey)
-		if (savedPreference !== null) {
-			setShowReadingSegments(savedPreference === "true")
-		}
-	}, [readingSegmentsStorageKey])
-
-	useEffect(() => {
-		if (!readingSegmentsStorageKey) return
-		localStorage.setItem(readingSegmentsStorageKey, String(showReadingSegments))
-	}, [readingSegmentsStorageKey, showReadingSegments])
-
-	useEffect(() => {
 		studentsRef.current = students
 	}, [students])
+
+	const updateStudentsState = (updater: (current: StudentAttendance[]) => StudentAttendance[]) => {
+		setStudents((current) => {
+			const next = updater(current)
+			studentsRef.current = next
+			return next
+		})
+	}
 
 	const fetchTeacherData = async (accountNumber: string) => {
 		try {
@@ -631,6 +621,7 @@ export default function HalaqahManagement() {
 				list.map((student) => mergeSavedAttendance(student, savedMap.get(student.id)))
 
 			const nextStudents = applySavedState(baseStudents ?? students)
+			studentsRef.current = nextStudents
 			setStudents(nextStudents)
 			setHasSavedToday(nextStudents.some((student) => student.savedToday))
 			return nextStudents
@@ -687,7 +678,7 @@ export default function HalaqahManagement() {
 							const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.nextSessionNumber, planData?.failedSessionNumbers, planData?.progressedDays)
 					const localStudent = localStudentsMap.get(student.id)
 					const hasUnsavedLocalChanges = !!localStudent && !localStudent.savedToday
-					const selfReports = reportsByStudent[student.id] || []
+					const selfReports = (reportsByStudent[student.id] || []).filter((report) => report.memorization_done)
 					const savedReportDates = savedReportDatesMap[student.id] || []
 					const allReportDatesSaved = selfReports.length > 0 && selfReports.every((report) => savedReportDates.includes(report.report_date))
 					const baseReportEvaluations = hasUnsavedLocalChanges
@@ -721,6 +712,7 @@ export default function HalaqahManagement() {
 				const eligibleStudents = nextStudents.filter(
 					(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
 				)
+				studentsRef.current = eligibleStudents
 				setStudents(eligibleStudents)
 				setHasSavedToday(eligibleStudents.some((student) => student.savedToday))
 			}
@@ -780,8 +772,8 @@ export default function HalaqahManagement() {
 		const student = students.find((s) => s.id === id)
 		if (student?.savedToday || !student?.hasPlan) return
 
-		setStudents(
-			students.map((s) =>
+		updateStudentsState((current) =>
+			current.map((s) =>
 				s.id === id
 					? {
 							...s,
@@ -803,8 +795,8 @@ export default function HalaqahManagement() {
 		const student = students.find((s) => s.id === studentId)
 		if (student?.savedToday || (type === "hafiz" && !student?.hasPlan)) return
 
-		setStudents(
-			students.map((s) =>
+		updateStudentsState((current) =>
+			current.map((s) =>
 				s.id === studentId
 					? {
 							...s,
@@ -816,8 +808,8 @@ export default function HalaqahManagement() {
 	}
 
 	const setReportEvaluation = (studentId: string, reportDate: string, level?: EvaluationLevel) => {
-		setStudents(
-			students.map((student) =>
+		updateStudentsState((current) =>
+			current.map((student) =>
 				student.id === studentId
 					? {
 							...student,
@@ -837,8 +829,8 @@ export default function HalaqahManagement() {
 	}
 
 	const handleReset = () => {
-		setStudents(
-			students.map((s) =>
+		updateStudentsState((current) =>
+			current.map((s) =>
 				s.savedToday
 					? s
 					: {
@@ -1025,8 +1017,8 @@ export default function HalaqahManagement() {
 	}
 
 	const markAllPresent = () => {
-		setStudents(
-			students.map((s) =>
+		updateStudentsState((current) =>
+			current.map((s) =>
 				s.savedToday
 					? s
 					: !s.hasPlan
@@ -1037,8 +1029,8 @@ export default function HalaqahManagement() {
 	}
 
 	const markAllAbsent = () => {
-		setStudents(
-			students.map((s) =>
+		updateStudentsState((current) =>
+			current.map((s) =>
 				s.savedToday
 					? s
 					: !s.hasPlan
@@ -1058,7 +1050,7 @@ export default function HalaqahManagement() {
 
 	const saveNotes = () => {
 		if (notesStudentId !== null) {
-			setStudents(students.map((s) => (s.id === notesStudentId ? { ...s, notes: notesText } : s)))
+			updateStudentsState((current) => current.map((s) => (s.id === notesStudentId ? { ...s, notes: notesText } : s)))
 		}
 		setIsNotesDialogOpen(false)
 	}
@@ -1100,13 +1092,13 @@ export default function HalaqahManagement() {
 			? evaluationOptions.find((option) => option.level === currentLevelValue)?.label || "اختر التقييم"
 			: "اختر التقييم"
 		const scoreSelector = (
-			<div className="w-full sm:max-w-[148px] shrink-0">
+			<div className="w-full sm:max-w-[136px] shrink-0">
 				<Select
 					value={currentLevelValue}
 					onValueChange={(value) => setEvaluation(studentId, type, value as EvaluationLevel)}
 					disabled={isDisabled}
 				>
-					<SelectTrigger className="h-12 rounded-2xl border-[#D4AF37]/55 bg-white px-4 text-base font-black text-[#1a2332] shadow-none focus:ring-[#D4AF37]/20" dir="rtl">
+					<SelectTrigger className="h-9 rounded-xl border-[#3453a7]/30 bg-white px-2.5 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
 						<SelectValue>{currentLevelLabel}</SelectValue>
 					</SelectTrigger>
 					<SelectContent dir="rtl">
@@ -1124,17 +1116,17 @@ export default function HalaqahManagement() {
 			<div
 				className={`space-y-2 rounded-lg border px-3 py-2 ${
 					isSavedLocked
-						? "border-[#D4AF37]/35 bg-[#fbf8ee]/85 opacity-80"
+						? "border-[#3453a7]/25 bg-[#eef4ff]/80 opacity-80"
 						: isHafizLocked
-							? "border-[#D4AF37]/25 bg-[#fbf8ee]/60 opacity-75"
-							: "border-[#D4AF37]/15"
+							? "border-[#3453a7]/18 bg-[#f5f8ff]/75 opacity-75"
+							: "border-[#3453a7]/15 bg-[#fafdff]"
 				}`}
 			>
-				{showReadingSegments && showsReadingFields && !isHafizLocked ? (
+				{showsReadingFields && !isHafizLocked ? (
 					<div className="flex flex-col gap-2 lg:flex-row-reverse lg:items-start lg:justify-between">
 						<div className="flex-1 text-right">
-							<div className="text-sm font-semibold text-[#1a2332]">{label}</div>
-							<div className={`mt-1 text-sm ${readingSummary ? "font-semibold text-emerald-700" : "text-[#8b6b3f]"}`}>
+							<div className="text-base font-semibold text-[#1a2332]">{label}</div>
+							<div className={`mt-1 text-base ${readingSummary ? "font-semibold text-[#0f766e]" : "text-[#4d6b76]"}`}>
 								{readingSummary || emptyReadingMessage}
 							</div>
 						</div>
@@ -1142,7 +1134,7 @@ export default function HalaqahManagement() {
 					</div>
 				) : (
 					<>
-						<div className="text-right text-sm font-semibold text-[#1a2332]">{label}</div>
+						<div className="text-right text-base font-semibold text-[#1a2332]">{label}</div>
 						{scoreSelector}
 					</>
 				)}
@@ -1151,35 +1143,26 @@ export default function HalaqahManagement() {
 	}
 
 	return (
-		<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white">
+		<div className="min-h-screen flex flex-col bg-gradient-to-br from-[#eef6f8] via-white to-[#f3f7ff]">
 			<Header />
 			<main className="flex-1 py-4 px-4">
 				<div className="container mx-auto max-w-7xl space-y-6">
-					<section className="rounded-[32px] border border-[#D4AF37]/20 bg-white/85 p-6 shadow-sm backdrop-blur-sm">
+					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 							<div className="text-right">
-								<p className="text-sm font-extrabold tracking-[0.18em] text-[#b38a1e]">إدارة الحلقة</p>
-								<h1 className="mt-2 text-3xl font-black text-[#1a2332]">{halaqahName}</h1>
-							</div>
-							<div className="flex flex-wrap items-center justify-end gap-2">
-								<Button
-									variant="outline"
-									onClick={() => setShowReadingSegments((current) => !current)}
-									className="h-11 rounded-xl border-[#D4AF37]/70 bg-white text-sm font-bold text-neutral-700 hover:bg-[#D4AF37]/10"
-								>
-									{showReadingSegments ? "إخفاء المقاطع" : "إظهار المقاطع"}
-								</Button>
+								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">إدارة الحلقة</p>
+								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
 						</div>
 					</section>
 
 					{students.length === 0 ? (
-						<div className="rounded-[28px] border border-[#D4AF37]/20 bg-white/90 px-6 py-12 text-center shadow-sm">
+						<div className="rounded-[28px] border border-[#3453a7]/15 bg-white/90 px-6 py-12 text-center shadow-sm">
 							<p className="text-lg font-bold text-[#1a2332]">لا توجد تقارير تنفيذ معلقة للتسميع بعد اعتماد حضورهم اليوم</p>
 						</div>
 					) : (
 						<>
-							<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+							<div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
 								{students.map((student) => {
 									const isNoPlanLocked = !student.savedToday && !student.hasPlan
 									const shouldShowReportEvaluations = (student.selfReports || []).length > 0
@@ -1193,19 +1176,19 @@ export default function HalaqahManagement() {
 									return (
 										<Card
 											key={student.id}
-											className={`overflow-hidden rounded-[30px] border shadow-[0_24px_60px_-32px_rgba(88,67,18,0.38)] transition-all ${
+											className={`overflow-hidden rounded-[20px] border shadow-[0_18px_42px_-34px_rgba(52,83,167,0.24)] transition-all ${
 												student.savedToday
-													? "border-[#D4AF37]/35 bg-[#fbf8ee]/90 opacity-80 pointer-events-none select-none"
+													? "border-[#3453a7]/25 bg-[#eef4ff]/90 opacity-80 pointer-events-none select-none"
 													: isNoPlanLocked
-														? "border-[#D4AF37]/25 bg-[#fbf8ee]/75 opacity-75"
-														: "border-[#D4AF37]/15 bg-white"
+														? "border-[#3453a7]/18 bg-[#f5f8ff] opacity-75"
+														: "border-[#3453a7]/12 bg-white"
 											}`}
 										>
-											<CardContent className={`p-4 lg:p-3 xl:p-4 ${shouldExpandCard ? "" : "pb-3"}`}>
-												<div className={`${shouldExpandCard ? "space-y-4" : "space-y-3"}`} dir="rtl">
-													<div className="flex items-start justify-between gap-3">
+											<CardContent className={`p-2.5 lg:p-2 xl:p-2.5 ${shouldExpandCard ? "" : "pb-2"}`}>
+												<div className={`${shouldExpandCard ? "space-y-3" : "space-y-2.5"}`} dir="rtl">
+													<div className="flex items-start justify-between gap-2.5">
 														<div className="min-w-0 flex-1 text-right">
-															<p className="text-lg font-black leading-none text-[#1a2332] lg:text-base xl:text-lg">{student.name}</p>
+															<p className="text-base font-black leading-none text-[#1a2332] lg:text-[15px] xl:text-base">{student.name}</p>
 														</div>
 														<div className="flex items-center gap-2">
 															<Button
@@ -1213,44 +1196,43 @@ export default function HalaqahManagement() {
 																onClick={() => openNotesDialog(student.id)}
 																title="الملاحظات"
 																disabled={student.savedToday}
-																className={`h-8 w-8 rounded-full ${
+																className={`h-6.5 w-6.5 rounded-full ${
 																	student.notes
-																		? "border-[#D4AF37] bg-[#D4AF37]/18 text-neutral-800"
-																		: "border-[#D4AF37]/70 bg-white text-neutral-600 hover:bg-[#D4AF37]/10 hover:border-[#D4AF37] hover:text-neutral-800"
+																		? "border-[#3453a7] bg-[#3453a7]/12 text-[#1a2332]"
+																		: "border-[#3453a7]/50 bg-white text-neutral-600 hover:bg-[#3453a7]/10 hover:border-[#3453a7] hover:text-neutral-800"
 																}`}
 															>
-																<MessageSquare className="h-3.5 w-3.5" />
+																<MessageSquare className="h-2.5 w-2.5" />
 															</Button>
 														</div>
 													</div>
 
 													{isNoPlanLocked && shouldExpandCard ? (
-														<div className="rounded-2xl bg-[#f8f3df] px-3 py-3 text-center">
-															<p className="text-sm font-semibold text-[#8b6b16]">لا توجد لديه خطة</p>
+														<div className="rounded-2xl bg-[#edf4ff] px-3 py-3 text-center">
+															<p className="text-base font-semibold text-[#3453a7]">لا توجد لديه خطة</p>
 														</div>
 													) : !isEvaluatedAttendance(student.attendance) && !student.savedToday && !student.hasPlan ? (
-														<div className="rounded-xl bg-[#f8f3df] px-3 py-2 text-center">
-															<p className="text-xs font-semibold text-[#8b6b16]">لا توجد لديه خطة</p>
+														<div className="rounded-xl bg-[#edf4ff] px-3 py-2 text-center">
+															<p className="text-sm font-semibold text-[#3453a7]">لا توجد لديه خطة</p>
 														</div>
 													) : shouldExpandCard && !isNoPlanLocked && shouldShowReportEvaluations ? (
-														<div className="rounded-3xl bg-[#fcfaf3] px-3 py-3 sm:px-4">
-															<div className="space-y-2.5">
+														<div className="rounded-[18px] bg-[#f7fbff] px-2 py-2 sm:px-2.5">
+															<div className="space-y-2">
 																{[...(student.selfReports || [])]
 																	.sort((left, right) => left.report_date.localeCompare(right.report_date))
 																	.map((report) => (
-																	<div key={report.id} className="grid gap-3 rounded-[22px] bg-white px-3 py-3 shadow-sm ring-1 ring-[#D4AF37]/10 md:grid-cols-[minmax(0,1fr)_128px] md:items-center">
+																	<div key={report.id} className="grid gap-2 rounded-[16px] bg-white px-2.5 py-2 shadow-sm ring-1 ring-[#3453a7]/10 md:grid-cols-[minmax(0,1fr)_102px] md:items-center">
 																		<div className="min-w-0 text-right">
 																			{isRetrySessionNumber(student, getDisplayReportSessionNumbersByDate(student)[report.report_date]) && (
-																				<p className="text-xs font-extrabold text-[#b06f00]">إعادة حفظ</p>
+																				<p className="text-xs font-extrabold text-[#3453a7]">إعادة حفظ</p>
 																			)}
-																			{showReadingSegments && (
-																				<p className={`${isRetrySessionNumber(student, getDisplayReportSessionNumbersByDate(student)[report.report_date]) ? "mt-1" : ""} text-sm font-semibold ${report.memorization_done ? "text-emerald-700" : "text-[#8b6b3f]"}`}>
+																				<p className={`${isRetrySessionNumber(student, getDisplayReportSessionNumbersByDate(student)[report.report_date]) ? "mt-0.5" : ""} text-[13px] leading-5 font-semibold ${report.memorization_done ? "text-[#0f766e]" : "text-[#4d6b76]"}`}>
 																					{getReportMemorizationSegment(student, report.report_date)}
 																				</p>
-																			)}
+																			
 																		</div>
-																		<div className="rounded-[20px] border border-[#D4AF37]/18 bg-[#fffaf0] px-3 py-2">
-																			<p className="mb-2 text-right text-[11px] font-extrabold tracking-[0.08em] text-[#a8842d]">التقييم</p>
+																		<div className="rounded-[14px] border border-[#3453a7]/15 bg-[#f5f9ff] px-2 py-1.5">
+																			<p className="mb-1 text-right text-[10px] font-bold tracking-[0.06em] text-[#3453a7]">التقييم</p>
 																			{(() => {
 																				const reportEvaluationOptions = getReportEvaluationOptions(student, report.report_date, student.reportEvaluations?.[report.report_date])
 																				return (
@@ -1259,7 +1241,7 @@ export default function HalaqahManagement() {
 																				onValueChange={(value) => setReportEvaluation(student.id, report.report_date, value === UNSET_REPORT_EVALUATION ? undefined : value as EvaluationLevel)}
 																				disabled={(student.savedReportDates || []).includes(report.report_date)}
 																			>
-																				<SelectTrigger className="h-11 w-full rounded-2xl border-[#D4AF37]/45 bg-white px-3 text-base font-black text-[#1a2332] shadow-none focus:ring-[#D4AF37]/20" dir="rtl">
+																				<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
 																					<SelectValue />
 																				</SelectTrigger>
 																				<SelectContent dir="rtl">
@@ -1293,7 +1275,7 @@ export default function HalaqahManagement() {
 								<Button
 									onClick={handleReset}
 									variant="outline"
-									className="text-base h-12 px-8 rounded-lg border-[#D4AF37]/80 bg-white/90 text-neutral-600 transition-all hover:bg-[#D4AF37]/12 hover:border-[#D4AF37] hover:text-neutral-800 focus-visible:border-[#D4AF37] focus-visible:ring-[#D4AF37]/30 active:bg-[#D4AF37]/18"
+									className="text-base h-12 px-8 rounded-lg border-[#3453a7]/45 bg-white/90 text-neutral-600 transition-all hover:bg-[#3453a7]/8 hover:border-[#3453a7] hover:text-neutral-800 focus-visible:border-[#3453a7] focus-visible:ring-[#3453a7]/25 active:bg-[#3453a7]/12"
 									disabled={isSaving}
 								>
 									<RotateCcw className="w-4 h-4 ml-2" />
@@ -1302,7 +1284,7 @@ export default function HalaqahManagement() {
 								<Button
 									onClick={handleSave}
 									variant="outline"
-									className="text-base h-12 px-8 rounded-lg bg-[#3453a7] hover:bg-[#27428d] border-[#3453a7] text-white"
+									className="text-base h-12 px-8 rounded-lg border-[#3453a7] bg-[#3453a7] text-white hover:border-[#27428d] hover:bg-[#27428d] hover:text-white focus-visible:text-white active:text-white"
 									disabled={isSaving || !hasPendingStudents}
 								>
 									{saveStatus === "saving"
@@ -1321,27 +1303,27 @@ export default function HalaqahManagement() {
 
 			{/* Notes Dialog */}
 			<Dialog open={isNotesDialogOpen} onOpenChange={setIsNotesDialogOpen}>
-				<DialogContent className="max-w-md" dir="rtl">
+				<DialogContent className="max-w-md border-[#3453a7]/15 bg-white" dir="rtl">
 					<DialogTitle className="sr-only">الملاحظات</DialogTitle>
 					<div className="space-y-4 pt-4">
 						<Textarea
 							value={notesText}
 							onChange={(e) => setNotesText(e.target.value)}
 							placeholder="اكتب ملاحظاتك هنا..."
-							className="min-h-[120px] text-right border-[#D4AF37]/50 focus-visible:ring-[#D4AF37]/50"
+							className="min-h-[120px] text-right border-[#3453a7]/30 bg-[#f8fbff] focus-visible:border-[#3453a7]/50 focus-visible:ring-[#3453a7]/25"
 						/>
 						<div className="flex gap-2 justify-end">
 							<Button
 								variant="outline"
 								onClick={() => setIsNotesDialogOpen(false)}
-								className="text-sm h-9 rounded-lg border-[#D4AF37]/80 text-neutral-600"
+								className="text-sm h-9 rounded-lg border-[#3453a7]/45 bg-white text-neutral-600 hover:bg-[#3453a7]/8 hover:border-[#3453a7]"
 							>
 								إلغاء
 							</Button>
 							<Button
 								variant="outline"
 								onClick={saveNotes}
-								className="text-sm h-9 rounded-lg bg-[#3453a7] hover:bg-[#27428d] border-[#3453a7] text-white"
+								className="text-sm h-9 rounded-lg border-[#3453a7] bg-[#3453a7] text-white hover:border-[#27428d] hover:bg-[#27428d] hover:text-white focus-visible:text-white active:text-white"
 							>
 								حفظ الملاحظة
 							</Button>

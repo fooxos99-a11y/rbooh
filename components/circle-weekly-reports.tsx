@@ -8,6 +8,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
 import { createClient } from "@/lib/supabase/client";
+import { getSaudiDateString, getSaudiWeekday } from "@/lib/saudi-time";
 import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import { isPassingMemorizationLevel, type EvaluationLevelValue } from "@/lib/student-attendance";
 
@@ -103,6 +104,16 @@ function formatDateForQuery(value: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(value);
 }
 
+function parseSaudiDate(value: string) {
+  return new Date(`${value}T12:00:00+03:00`);
+}
+
+function addDaysToSaudiDate(value: string, days: number) {
+  const date = parseSaudiDate(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return formatDateForQuery(date);
+}
+
 function isStudyDay(dateValue: Date | string) {
   const date = typeof dateValue === "string" ? new Date(`${dateValue}T00:00:00`) : dateValue;
   const day = date.getDay();
@@ -121,13 +132,8 @@ function isSaturdayReviewOnlyDay(dateValue: Date | string) {
 }
 
 function getCurrentStudyWeekStart() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const start = new Date(today);
-  start.setDate(today.getDate() - today.getDay());
-
-  return start;
+  const today = getSaudiDateString();
+  return addDaysToSaudiDate(today, -getSaudiWeekday(today));
 }
 
 function getStudyWeekLabel(weekOffset: number) {
@@ -143,19 +149,17 @@ function getStudyWeekLabel(weekOffset: number) {
 }
 
 function getStudyWeek(weekOffset: number) {
-  const start = getCurrentStudyWeekStart();
-  start.setDate(start.getDate() - weekOffset * 7);
-
-  const dates = [0, 1, 2, 3, 4, 5, 6].map((offset) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + offset);
-    return formatDateForQuery(date);
-  });
+  const startDate = addDaysToSaudiDate(getCurrentStudyWeekStart(), -weekOffset * 7);
+  const fullWeekDates = [0, 1, 2, 3, 4, 5, 6].map((offset) => addDaysToSaudiDate(startDate, offset));
+  const endDate = weekOffset === 0
+    ? addDaysToSaudiDate(getSaudiDateString(), -1)
+    : fullWeekDates[fullWeekDates.length - 1];
+  const dates = fullWeekDates.filter((date) => date <= endDate);
 
   return {
     dates,
-    startDate: dates[0],
-    endDate: dates[dates.length - 1],
+    startDate,
+    endDate,
     label: getStudyWeekLabel(weekOffset),
   };
 }
@@ -299,8 +303,8 @@ function MetricSummaryPill({ label, value, toneClass }: { label: string; value: 
 
 type CircleWeeklyReportsProps = {
   circleName: string;
-  backHref: string;
-  backLabel: string;
+  backHref?: string;
+  backLabel?: string;
 };
 
 export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleWeeklyReportsProps) {
@@ -545,16 +549,17 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
       <main className="px-4 py-10">
         <div className="container mx-auto max-w-7xl space-y-8">
           <div className="grid grid-cols-[48px_1fr_48px] items-center">
-            <Link
-              href={backHref}
-              className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#dccba0] bg-white text-[#1a2332] shadow-sm transition hover:border-[#d8a355]"
-              aria-label={backLabel}
-            >
-              <ArrowRight className="h-4.5 w-4.5" />
-            </Link>
-            <div className="text-center">
-              <h1 className="text-2xl font-black text-[#1f2937]">{TEXT.titleSuffix}</h1>
-            </div>
+              {backHref ? (
+                <Link
+                  href={backHref}
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#dccba0] bg-white text-[#1a2332] shadow-sm transition hover:border-[#d8a355]"
+                  aria-label={backLabel}
+                >
+                  <ArrowRight className="h-4.5 w-4.5" />
+                </Link>
+              ) : (
+                <div />
+              )}
             <div />
           </div>
 

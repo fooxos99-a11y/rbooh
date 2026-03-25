@@ -130,40 +130,78 @@ export function buildPlanSessionProgress<TReport extends SessionNumberCarrier, T
 
   const reportSessionNumbersByDate = deriveReportSessionNumbersByDate(reports)
   const savedReportDates = Array.from(new Set(attendanceRecords.map((record) => record.date).filter((value): value is string => Boolean(value))))
-  const successfulSessionNumbers = new Set<number>()
-  const failedSessionNumberSet = new Set<number>()
-
-  attendanceRecords.forEach((record) => {
-    if (!record.date) return
-    const sessionNumber = reportSessionNumbersByDate[record.date]
-    const normalizedSessionNumber = normalizeSessionNumber(sessionNumber)
-
-    if (!normalizedSessionNumber) {
-      return
-    }
-
-    if (hasPassingMemorization(record)) {
-      successfulSessionNumbers.add(normalizedSessionNumber)
-      failedSessionNumberSet.delete(normalizedSessionNumber)
-      return
-    }
-
-    if (hasFailedMemorization(record)) {
-      failedSessionNumberSet.add(normalizedSessionNumber)
-    }
-  })
-
-  const completedSessionNumbers = [...successfulSessionNumbers].sort((left, right) => left - right)
-  const failedSessionNumbers = [...failedSessionNumberSet].sort((left, right) => left - right)
   const assignedSessionNumbers = new Set(
     Object.values(reportSessionNumbersByDate)
     .map((value) => normalizeSessionNumber(value))
     .filter((value): value is number => value !== null),
   )
+  const latestReportDateBySession = new Map<number, string>()
+
+  reports.forEach((report) => {
+    const normalizedSessionNumber = normalizeSessionNumber(reportSessionNumbersByDate[report.report_date])
+    if (!normalizedSessionNumber) {
+      return
+    }
+
+    const currentLatestReportDate = latestReportDateBySession.get(normalizedSessionNumber)
+    if (!currentLatestReportDate || report.report_date > currentLatestReportDate) {
+      latestReportDateBySession.set(normalizedSessionNumber, report.report_date)
+    }
+  })
+
+  const latestAttendanceStateBySession = new Map<number, { date: string; status: "passed" | "failed" }>()
+
+  attendanceRecords.forEach((record) => {
+    if (!record.date) {
+      return
+    }
+
+    const normalizedSessionNumber = normalizeSessionNumber(reportSessionNumbersByDate[record.date])
+    if (!normalizedSessionNumber) {
+      return
+    }
+
+    const status = hasPassingMemorization(record)
+      ? "passed"
+      : hasFailedMemorization(record)
+        ? "failed"
+        : null
+
+    if (!status) {
+      return
+    }
+
+    const currentLatestAttendance = latestAttendanceStateBySession.get(normalizedSessionNumber)
+    if (!currentLatestAttendance || record.date > currentLatestAttendance.date) {
+      latestAttendanceStateBySession.set(normalizedSessionNumber, { date: record.date, status })
+    }
+  })
+
+  const successfulSessionNumbers = new Set<number>()
+  const failedSessionNumberSet = new Set<number>()
+  const awaitingHearingSessionNumberSet = new Set<number>()
+
+  assignedSessionNumbers.forEach((sessionNumber) => {
+    const latestReportDate = latestReportDateBySession.get(sessionNumber)
+    const latestAttendanceState = latestAttendanceStateBySession.get(sessionNumber)
+
+    if (!latestAttendanceState || (latestReportDate && latestReportDate > latestAttendanceState.date)) {
+      awaitingHearingSessionNumberSet.add(sessionNumber)
+      return
+    }
+
+    if (latestAttendanceState.status === "passed") {
+      successfulSessionNumbers.add(sessionNumber)
+      return
+    }
+
+    failedSessionNumberSet.add(sessionNumber)
+  })
+
+  const completedSessionNumbers = [...successfulSessionNumbers].sort((left, right) => left - right)
+  const failedSessionNumbers = [...failedSessionNumberSet].sort((left, right) => left - right)
   const progressedDays = assignedSessionNumbers.size
-  const awaitingHearingSessionNumbers = [...assignedSessionNumbers]
-    .filter((sessionNumber) => !successfulSessionNumbers.has(sessionNumber) && !failedSessionNumberSet.has(sessionNumber))
-    .sort((left, right) => left - right)
+  const awaitingHearingSessionNumbers = [...awaitingHearingSessionNumberSet].sort((left, right) => left - right)
   const rawNextSessionNumber = failedSessionNumbers[0] || getFirstMissingAssignedSessionNumber(assignedSessionNumbers)
   const nextSessionNumber = totalDays > 0 ? Math.min(rawNextSessionNumber, totalDays) : rawNextSessionNumber
 
