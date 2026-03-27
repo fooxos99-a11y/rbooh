@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getSiteSetting } from "@/lib/site-settings"
-import { getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
   DEFAULT_ABSENCE_ALERT_TEMPLATES,
   calculateEffectiveAbsenceCount,
@@ -13,11 +13,6 @@ import {
 type AdminAttendanceStatus = "present" | "late" | "absent" | "excused"
 
 const VALID_STATUSES = new Set<AdminAttendanceStatus>(["present", "late", "absent", "excused"])
-
-function isAllowedAttendanceDate(date: string) {
-  const day = getSaudiWeekday(date)
-  return day === 0 || day === 3
-}
 
 function normalizeCircleName(value: string | null | undefined) {
   return (value || "").trim().toLowerCase()
@@ -125,7 +120,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 })
     }
 
-    if (!isAllowedAttendanceDate(date) || !isSaudiAttendanceWindowOpen()) {
+    if (!isSaudiAttendanceDateAllowed(date) || !isSaudiAttendanceWindowOpen()) {
       return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 11:59 مساءً بتوقيت السعودية" }, { status: 400 })
     }
 

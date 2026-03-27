@@ -32,7 +32,7 @@ export function HeroSection() {
               <div className="mx-auto overflow-hidden rounded-[2rem] border border-[#9fb7e9]/18 bg-white px-6 py-5 text-center shadow-[0_22px_65px_rgba(15,47,109,0.08)] sm:px-10 sm:py-7">
                 <div className="mx-auto mb-3 h-px w-24 bg-gradient-to-r from-transparent via-[#7f9bd1] to-transparent sm:mb-4" />
                 <p className="mx-auto max-w-3xl text-base leading-8 text-[#24406f] sm:text-lg sm:leading-9 [font-family:var(--font-readex-pro)]">
-                  برنامج دورة الربوة هو برنامج متخصص في تحفيظ القرآن الكريم، يسعى لتقديم بيئة تربوية متميزة تجمع بين الأصالة والمعاصرة. نهدف إلى تخريج جيل قرآني متقن لكتاب الله، ملتزم بتعاليمه، قادر على خدمة دينه ومجتمعه، مع التركيز على الجودة والإتقان والمتابعة المستمرة لكل طالب.
+                  برنامج نوعي يُعنى بحفظ القرآن الكريم وإتقانه، وفق مسارات تعليمية مدروسة وخطط مرحلية دقيقة، بإشراف نخبة من المقرئين والمشرفين المتخصصين؛ لضمان بناء حافظٍ متقن وتحقيق مخرجات عالية الجودة.
                 </p>
               </div>
             </div>

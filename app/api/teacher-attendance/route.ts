@@ -1,11 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getSaudiDateString, getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
-
-function isAllowedAttendanceDate(date: string) {
-  const day = getSaudiWeekday(date)
-  return day === 0 || day === 3
-}
+import { getSaudiDateString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -72,7 +67,7 @@ export async function POST(request: NextRequest) {
       ? attendance_date.trim()
       : getSaudiDateString()
 
-    if (!isAllowedAttendanceDate(attendanceDate) || !isSaudiAttendanceWindowOpen()) {
+    if (!isSaudiAttendanceDateAllowed(attendanceDate) || !isSaudiAttendanceWindowOpen()) {
       return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 11:59 مساءً بتوقيت السعودية" }, { status: 400 })
     }
 

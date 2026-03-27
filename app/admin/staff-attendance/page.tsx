@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { getSaudiDateString, getSaudiWeekday, getSaudiTimeString, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiDateString, getSaudiTimeString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import { Calendar as CalendarIcon } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -72,11 +72,6 @@ function buildAttendanceTimestamp(date: string) {
   return new Date(`${date}T12:00:00+03:00`).toISOString()
 }
 
-function isAllowedAttendanceDate(date: string) {
-  const day = getSaudiWeekday(date)
-  return day === 0 || day === 3
-}
-
 export default function StaffAttendancePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير")
   const showAlert = useAlertDialog()
@@ -125,7 +120,7 @@ export default function StaffAttendancePage() {
     })
   }, [selectedCircle, teacherRecords])
 
-  const isAttendanceDateAllowed = isAllowedAttendanceDate(selectedDate)
+  const isAttendanceDateAllowed = isSaudiAttendanceDateAllowed(selectedDate)
   const isAttendanceWindowOpen = isSaudiAttendanceWindowOpen(new Date(timeTick))
   const saudiTimeLabel = getSaudiTimeString(new Date(timeTick))
 

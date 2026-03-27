@@ -14,6 +14,7 @@ import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
+import { isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
 	type AttendanceStatus,
 	type EvaluationLevelValue,
@@ -496,16 +497,7 @@ export default function HalaqahManagement() {
 	const [isLoading, setIsLoading] = useState(true)
 	const router = useRouter()
 	const params = useParams()
-	const todayKsaDate = getKsaDateString()
-	const manuallyAllowedAttendanceDates = ["2026-03-27"]
-	const isAttendanceEntryAllowedToday = (() => {
-		if (manuallyAllowedAttendanceDates.includes(todayKsaDate)) {
-			return true
-		}
-
-		const day = new Date(`${todayKsaDate}T12:00:00+03:00`).getUTCDay()
-		return day === 0 || day === 3
-	})()
+	const isAttendanceEntryAllowedToday = isSaudiAttendanceWindowOpen()
 
 	const [teacherData, setTeacherData] = useState<any>(null)
 	const [teacherHalaqah, setTeacherHalaqah] = useState("")
