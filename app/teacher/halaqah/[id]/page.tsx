@@ -497,7 +497,12 @@ export default function HalaqahManagement() {
 	const router = useRouter()
 	const params = useParams()
 	const todayKsaDate = getKsaDateString()
+	const manuallyAllowedAttendanceDates = ["2026-03-27"]
 	const isAttendanceEntryAllowedToday = (() => {
+		if (manuallyAllowedAttendanceDates.includes(todayKsaDate)) {
+			return true
+		}
+
 		const day = new Date(`${todayKsaDate}T12:00:00+03:00`).getUTCDay()
 		return day === 0 || day === 3
 	})()
