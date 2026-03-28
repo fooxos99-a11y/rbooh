@@ -7,6 +7,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
 
+    const respond = (payload: Record<string, unknown>, status = 200) => {
+      const response = NextResponse.json(payload, { status })
+      response.headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600")
+      return response
+    }
+
     if (studentId) {
       const { data, error } = await supabase
         .from("student_preferences")
@@ -15,9 +21,9 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (error || !data) {
-        return NextResponse.json({ badge: null })
+        return respond({ badge: null })
       }
-      return NextResponse.json({ badge: data.active_badge || null })
+      return respond({ badge: data.active_badge || null })
     }
 
     // جلب كل الشارات
@@ -26,7 +32,7 @@ export async function GET(request: NextRequest) {
       .select("student_id, active_badge")
 
     if (error || !data) {
-      return NextResponse.json({ badges: {} })
+      return respond({ badges: {} })
     }
 
     const badges: Record<string, string> = {}
@@ -34,10 +40,12 @@ export async function GET(request: NextRequest) {
       if (row.active_badge) badges[row.student_id] = row.active_badge
     }
 
-    return NextResponse.json({ badges })
+    return respond({ badges })
   } catch (error) {
     console.error("[badges] Error in GET /api/badges:", error)
-    return NextResponse.json({ badges: {} }, { status: 500 })
+    const response = NextResponse.json({ badges: {} }, { status: 500 })
+    response.headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120")
+    return response
   }
 }
 

@@ -1,12 +1,11 @@
 ﻿"use client"
 
-import Link from "next/link"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Mail, Clock, CheckCircle, Archive, ArchiveX, Trash2, FileText, ClipboardCheck, BookOpen, UserCheck } from "lucide-react"
+import { Mail, Clock, Archive, ArchiveX, Trash2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
@@ -31,38 +30,51 @@ const subjectLabels: Record<string, string> = {
 export default function ReportsPage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير");
   const [messages, setMessages] = useState<ContactMessage[]>([])
+  const [sessionUnreadIds, setSessionUnreadIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<"all" | "unread" | "read" | "archived">("all")
+
+  const dispatchContactMessagesChanged = () => {
+    window.dispatchEvent(new Event("contactMessages:changed"))
+  }
 
   useEffect(() => {
     fetchMessages()
   }, [])
 
+  const getVisualStatus = (message: ContactMessage): ContactMessage["status"] => {
+    if (message.status === "archived") return "archived"
+    if (sessionUnreadIds.includes(message.id)) return "unread"
+    return "read"
+  }
+
   const fetchMessages = async () => {
     try {
       const response = await fetch("/api/contact")
       const data = await response.json()
-      setMessages(data.messages || [])
+      const nextMessages: ContactMessage[] = data.messages || []
+      const unreadIds = nextMessages.filter((message) => message.status === "unread").map((message) => message.id)
+
+      setMessages(nextMessages)
+      setSessionUnreadIds(unreadIds)
+
+      if (unreadIds.length > 0) {
+        await Promise.all(
+          unreadIds.map((id) =>
+            fetch("/api/contact", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id, status: "read" }),
+            }).catch(() => null),
+          ),
+        )
+      }
+
+      dispatchContactMessagesChanged()
     } catch (error) {
       console.error("[v0] Error fetching messages:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const markAsRead = async (id: string) => {
-    try {
-      const response = await fetch("/api/contact", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status: "read" }),
-      })
-
-      if (response.ok) {
-        setMessages(messages.map((msg) => (msg.id === id ? { ...msg, status: "read" as const } : msg)))
-      }
-    } catch (error) {
-      console.error("[v0] Error updating message:", error)
     }
   }
 
@@ -76,6 +88,8 @@ export default function ReportsPage() {
 
       if (response.ok) {
         setMessages(messages.map((msg) => (msg.id === id ? { ...msg, status: "archived" as const } : msg)))
+        setSessionUnreadIds((current) => current.filter((messageId) => messageId !== id))
+        dispatchContactMessagesChanged()
       }
     } catch (error) {
       console.error("[v0] Error archiving message:", error)
@@ -92,6 +106,8 @@ export default function ReportsPage() {
 
       if (response.ok) {
         setMessages(messages.map((msg) => (msg.id === id ? { ...msg, status: "read" as const } : msg)))
+        setSessionUnreadIds((current) => current.filter((messageId) => messageId !== id))
+        dispatchContactMessagesChanged()
       }
     } catch (error) {
       console.error("[v0] Error unarchiving message:", error)
@@ -106,6 +122,8 @@ export default function ReportsPage() {
 
       if (response.ok) {
         setMessages(messages.filter((msg) => msg.id !== id))
+        setSessionUnreadIds((current) => current.filter((messageId) => messageId !== id))
+        dispatchContactMessagesChanged()
       }
     } catch (error) {
       console.error("[v0] Error deleting message:", error)
@@ -114,10 +132,12 @@ export default function ReportsPage() {
 
   const filteredMessages = messages.filter((msg) => {
     if (filter === "all") return true
-    return msg.status === filter
+    return getVisualStatus(msg) === filter
   })
 
-  const unreadCount = messages.filter((msg) => msg.status === "unread").length
+  const unreadCount = messages.filter((msg) => getVisualStatus(msg) === "unread").length
+  const readCount = messages.filter((msg) => getVisualStatus(msg) === "read").length
+  const archivedCount = messages.filter((msg) => getVisualStatus(msg) === "archived").length
 
   const formatDate = (dateString: string) => {
     // تأكد من أن التاريخ يتم تفسيره كـ UTC إذا لم يحتوي على معلومات المنطقة الزمنية
@@ -138,124 +158,42 @@ export default function ReportsPage() {
     return date.toLocaleDateString("ar-SA")
   }
 
-    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
+    if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_top,#eef6f8_0%,#f7fbff_45%,#ffffff_100%)]"><SiteLoader size="md" /></div>);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-[#f5f1e8] to-white" dir="rtl">
+    <div className="min-h-screen flex flex-col bg-[radial-gradient(circle_at_top,#eef6f8_0%,#f7fbff_45%,#ffffff_100%)]" dir="rtl">
       <Header />
       <main className="flex-1 py-12">
         <div className="container mx-auto px-4">
-          <div className="mb-8">
+          <div className="mb-8 rounded-[28px] border border-[#3453a7]/12 bg-white/90 px-6 py-7 shadow-[0_22px_55px_-42px_rgba(52,83,167,0.35)] backdrop-blur-sm">
             <h1 className="text-4xl font-bold text-[#1a2332] mb-2">التقارير والرسائل</h1>
-            <p className="text-lg text-gray-600">جميع الرسائل المرسلة من صفحة تواصل معنا</p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
-            {[
-              { href: "/admin/reports/circle-short-report", label: "تقرير الحلقات المختصر", icon: FileText },
-              { href: "/admin/student-daily-attendance", label: "متابعة التنفيذ", icon: BookOpen },
-              { href: "/admin/staff-attendance", label: "التحضير", icon: ClipboardCheck },
-              { href: "/admin/teacher-attendance", label: "تقارير المعلمين", icon: UserCheck },
-            ].map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className="group rounded-2xl border-2 border-[#3453a7]/20 bg-white p-5 transition-all hover:border-[#3453a7] hover:shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-base font-bold text-[#1a2332]">{label}</p>
-                    <p className="mt-1 text-sm text-gray-500">فتح الصفحة</p>
-                  </div>
-                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#003f55]/10 text-[#003f55] transition group-hover:bg-[#003f55]/15">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-            <Card className="border-2 border-[#8fb1ff] bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">إجمالي الرسائل</p>
-                    <p className="text-3xl font-bold text-[#1a2332]">{messages.length}</p>
-                  </div>
-                  <Mail className="w-10 h-10 text-[#003f55]" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-2 border-[#8fb1ff] bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">غير مقروءة</p>
-                    <p className="text-3xl font-bold text-[#3453a7]">{unreadCount}</p>
-                  </div>
-                  <Clock className="w-10 h-10 text-[#003f55]" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-2 border-[#8fb1ff] bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">مقروءة</p>
-                    <p className="text-3xl font-bold text-[#3453a7]">
-                      {messages.filter((m) => m.status === "read").length}
-                    </p>
-                  </div>
-                  <CheckCircle className="w-10 h-10 text-[#003f55]" />
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="border-2 border-[#8fb1ff] bg-white">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">مؤرشفة</p>
-                    <p className="text-3xl font-bold text-[#3453a7]">
-                      {messages.filter((m) => m.status === "archived").length}
-                    </p>
-                  </div>
-                  <Archive className="w-10 h-10 text-[#003f55]" />
-                </div>
-              </CardContent>
-            </Card>
+            <p className="text-lg text-[#4d6b76]">جميع الرسائل المرسلة من صفحة تواصل معنا</p>
           </div>
 
           {/* Filter Buttons فقط */}
-          <div className="flex flex-wrap gap-3 mb-6 items-center">
-            <Button
-              onClick={() => setFilter("all")}
-              variant={filter === "all" ? "default" : "outline"}
-              className={filter === "all" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
-            >
-              الكل
-            </Button>
-            <Button
-              onClick={() => setFilter("unread")}
-              variant={filter === "unread" ? "default" : "outline"}
-              className={filter === "unread" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
-            >
-              غير مقروءة
-            </Button>
-            <Button
-              onClick={() => setFilter("read")}
-              variant={filter === "read" ? "default" : "outline"}
-              className={filter === "read" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
-            >
-              مقروءة
-            </Button>
-            <Button
-              onClick={() => setFilter("archived")}
-              variant={filter === "archived" ? "default" : "outline"}
-              className={filter === "archived" ? "bg-[#3453a7] hover:bg-[#27428d] text-white" : ""}
-            >
-              مؤرشفة
-            </Button>
+          <div className="mb-6 flex flex-wrap items-center gap-3">
+            {[
+              { key: "all" as const, label: "الكل", count: messages.length },
+              { key: "unread" as const, label: "غير مقروءة", count: unreadCount },
+              { key: "read" as const, label: "مقروءة", count: readCount },
+              { key: "archived" as const, label: "مؤرشفة", count: archivedCount },
+            ].map((item) => {
+              const isActive = filter === item.key
+
+              return (
+                <Button
+                  key={item.key}
+                  onClick={() => setFilter(item.key)}
+                  variant={isActive ? "default" : "outline"}
+                  className={`h-11 rounded-xl px-4 ${isActive ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/25 bg-white text-[#1a2332] hover:bg-[#3453a7]/8"}`}
+                >
+                  <span>{item.label}</span>
+                  <span className={`mr-2 inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-extrabold leading-none ${isActive ? "bg-white/18 text-white" : "bg-[#3453a7]/12 text-[#3453a7]"}`}>
+                    {item.count}
+                  </span>
+                </Button>
+              )
+            })}
           </div>
 
           {/* Messages List */}
@@ -264,23 +202,26 @@ export default function ReportsPage() {
               <SiteLoader />
             </div>
           ) : filteredMessages.length === 0 ? (
-            <Card className="border-2 border-gray-300">
+            <Card className="border border-[#3453a7]/12 bg-white/95 shadow-[0_18px_40px_-34px_rgba(52,83,167,0.22)]">
               <CardContent className="p-6 sm:p-12 text-center">
-                <Mail className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-xl text-gray-600">لا توجد رسائل</p>
+                <Mail className="w-16 h-16 text-[#3453a7]/45 mx-auto mb-4" />
+                <p className="text-xl text-[#60757f]">لا توجد رسائل</p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
               {filteredMessages.map((message) => (
+                (() => {
+                  const visualStatus = getVisualStatus(message)
+                  return (
                 <Card
                   key={message.id}
                   className={`border-2 transition-all duration-200 hover:shadow-lg ${
-                    message.status === "unread"
-                      ? "border-[#d8a355] bg-[#fef9f0]"
-                      : message.status === "archived"
-                        ? "border-gray-300 bg-gray-50"
-                        : "border-gray-300 bg-white"
+                    visualStatus === "unread"
+                      ? "border-[#3453a7]/28 bg-[linear-gradient(135deg,rgba(52,83,167,0.08),rgba(79,111,199,0.03))]"
+                      : visualStatus === "archived"
+                        ? "border-slate-300 bg-slate-50"
+                        : "border-[#d7dfef] bg-white"
                   }`}
                 >
                   <CardHeader>
@@ -289,23 +230,23 @@ export default function ReportsPage() {
                         <div className="flex items-center gap-3 mb-2">
                           <CardTitle className="text-xl text-[#1a2332]">{message.name}</CardTitle>
                           <Badge
-                            variant={message.status === "unread" ? "default" : "secondary"}
+                            variant={visualStatus === "unread" ? "default" : "secondary"}
                             className={
-                              message.status === "unread"
-                                ? "bg-[#d8a355]"
-                                : message.status === "archived"
-                                  ? "bg-gray-600"
-                                  : "bg-[#c99245]"
+                              visualStatus === "unread"
+                                ? "bg-[#3453a7] text-white"
+                                : visualStatus === "archived"
+                                  ? "bg-slate-600 text-white"
+                                  : "bg-[#dce7ff] text-[#27428d]"
                             }
                           >
-                            {message.status === "unread"
+                            {visualStatus === "unread"
                               ? "جديدة"
-                              : message.status === "archived"
+                              : visualStatus === "archived"
                                 ? "مؤرشفة"
                                 : "مقروءة"}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-4 text-sm text-[#60757f]">
                           <span className="font-semibold">{subjectLabels[message.subject]}</span>
                           <span className="flex items-center gap-1">
                             <Clock className="w-4 h-4" />
@@ -314,17 +255,7 @@ export default function ReportsPage() {
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        {message.status === "unread" && (
-                          <Button
-                            onClick={() => markAsRead(message.id)}
-                            size="sm"
-                            className="bg-[#3453a7] hover:bg-[#27428d] text-white"
-                          >
-                            <CheckCircle className="w-4 h-4 ml-1" />
-                            تعليم كمقروءة
-                          </Button>
-                        )}
-                        {message.status === "archived" ? (
+                        {visualStatus === "archived" ? (
                           <Button
                             onClick={() => unarchiveMessage(message.id)}
                             size="sm"
@@ -338,7 +269,7 @@ export default function ReportsPage() {
                             onClick={() => archiveMessage(message.id)}
                             size="sm"
                             variant="outline"
-                            className="border-gray-400"
+                            className="border-[#3453a7]/30 text-[#27428d] hover:bg-[#3453a7]/8"
                           >
                             <Archive className="w-4 h-4 ml-1" />
                             أرشفة
@@ -357,9 +288,11 @@ export default function ReportsPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-base text-gray-700 leading-relaxed whitespace-pre-wrap">{message.message}</p>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap text-[#334155]">{message.message}</p>
                   </CardContent>
                 </Card>
+                  )
+                })()
               ))}
             </div>
           )}

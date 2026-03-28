@@ -19,6 +19,50 @@ type Student = {
   selected_badge?: string | null
 }
 
+type LeaderboardAppearancePayload = {
+  themes: Record<string, string>
+  badges: Record<string, string>
+  fonts: Record<string, string>
+}
+
+const LEADERBOARD_APPEARANCE_CACHE_KEY = "leaderboardAppearanceCache"
+const LEADERBOARD_APPEARANCE_CACHE_TTL = 10 * 60 * 1000
+
+const readLeaderboardAppearanceCache = (): LeaderboardAppearancePayload | null => {
+  if (typeof window === "undefined") return null
+
+  try {
+    const rawCache = localStorage.getItem(LEADERBOARD_APPEARANCE_CACHE_KEY)
+    if (!rawCache) return null
+
+    const parsed = JSON.parse(rawCache) as { timestamp?: number; data?: LeaderboardAppearancePayload }
+    if (!parsed?.timestamp || !parsed?.data) return null
+    if (Date.now() - parsed.timestamp > LEADERBOARD_APPEARANCE_CACHE_TTL) return null
+
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+const writeLeaderboardAppearanceCache = (data: LeaderboardAppearancePayload) => {
+  if (typeof window === "undefined") return
+
+  try {
+    localStorage.setItem(
+      LEADERBOARD_APPEARANCE_CACHE_KEY,
+      JSON.stringify({ timestamp: Date.now(), data }),
+    )
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+const clearLeaderboardAppearanceCache = () => {
+  if (typeof window === "undefined") return
+  localStorage.removeItem(LEADERBOARD_APPEARANCE_CACHE_KEY)
+}
+
 export default function AllStudentsPage() {
   const searchParams = useSearchParams()
   const selectedCircle = searchParams.get("circle")?.trim() || ""
@@ -60,22 +104,32 @@ export default function AllStudentsPage() {
           ? `/api/students?circle=${encodeURIComponent(selectedCircle)}`
           : "/api/students"
 
+        const cachedAppearance = readLeaderboardAppearanceCache()
+
         const [studentsRes, themesRes, badgesRes, fontsRes] = await Promise.all([
           fetch(studentsUrl, { cache: "no-store" }),
-          fetch("/api/themes", { cache: "no-store" }),
-          fetch("/api/badges", { cache: "no-store" }),
-          fetch("/api/fonts", { cache: "no-store" }),
+          cachedAppearance ? Promise.resolve(null) : fetch("/api/themes"),
+          cachedAppearance ? Promise.resolve(null) : fetch("/api/badges"),
+          cachedAppearance ? Promise.resolve(null) : fetch("/api/fonts"),
         ])
 
         const studentsJson = studentsRes.ok ? await studentsRes.json() : { students: [] }
-        const themesJson = themesRes.ok ? await themesRes.json() : { themes: {} }
-        const badgesJson = badgesRes.ok ? await badgesRes.json() : { badges: {} }
-        const fontsJson = fontsRes.ok ? await fontsRes.json() : { fonts: {} }
+        const appearanceData = cachedAppearance
+          ? cachedAppearance
+          : {
+              themes: themesRes && themesRes.ok ? ((await themesRes.json()).themes ?? {}) : {},
+              badges: badgesRes && badgesRes.ok ? ((await badgesRes.json()).badges ?? {}) : {},
+              fonts: fontsRes && fontsRes.ok ? ((await fontsRes.json()).fonts ?? {}) : {},
+            }
+
+        if (!cachedAppearance) {
+          writeLeaderboardAppearanceCache(appearanceData)
+        }
 
         const students = (studentsJson.students ?? []) as Student[]
-        const themes = (themesJson.themes ?? {}) as Record<string, string>
-        const selectedBadges = (badgesJson.badges ?? {}) as Record<string, string>
-        const fonts = (fontsJson.fonts ?? {}) as Record<string, string>
+        const themes = appearanceData.themes
+        const selectedBadges = appearanceData.badges
+        const fonts = appearanceData.fonts
 
         const mappedStudents = students
           .map((student) => {
@@ -109,13 +163,18 @@ export default function AllStudentsPage() {
       void fetchAllStudents()
     }
 
-    window.addEventListener("themeChanged", refresh)
-    window.addEventListener("fontChanged", refresh)
+    const refreshAppearance = () => {
+      clearLeaderboardAppearanceCache()
+      refresh()
+    }
+
+    window.addEventListener("themeChanged", refreshAppearance)
+    window.addEventListener("fontChanged", refreshAppearance)
     window.addEventListener("effectChanged", refresh)
 
     return () => {
-      window.removeEventListener("themeChanged", refresh)
-      window.removeEventListener("fontChanged", refresh)
+      window.removeEventListener("themeChanged", refreshAppearance)
+      window.removeEventListener("fontChanged", refreshAppearance)
       window.removeEventListener("effectChanged", refresh)
     }
   }, [selectedCircle, showAllStudents])

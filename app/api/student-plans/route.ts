@@ -88,6 +88,230 @@ function isStartAllowedAfterPrevious(
   return previousDirection === "desc" ? comparison <= 0 : comparison >= 0
 }
 
+async function buildStudentPlanSummary(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  actor: Awaited<ReturnType<typeof getRequestActor>>
+  studentId: string
+}) {
+  const { supabase, actor, studentId } = params
+
+  const canViewStudent = await canAccessStudent({
+    supabase,
+    actor,
+    studentId,
+    allowStudentSelf: true,
+    allowTeacher: true,
+  })
+
+  if (!canViewStudent) {
+    return { error: "غير مصرح لك بعرض خطة هذا الطالب", status: 403 as const }
+  }
+
+  const { data: studentData } = await supabase
+    .from("students")
+    .select("completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
+    .eq("id", studentId)
+    .maybeSingle()
+
+  const { data: plans, error } = await supabase
+    .from("student_plans")
+    .select("*")
+    .eq("student_id", studentId)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    throw error
+  }
+
+  if (!plans || plans.length === 0) {
+    const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
+    const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
+      ? null
+      : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+    const hasStoredStudentMemorizedRange = Boolean(
+      studentData?.memorized_start_surah && studentData?.memorized_end_surah,
+    )
+    const quranMemorization = calculateQuranMemorizationProgress(
+      {
+        completed_juzs: studentData?.completed_juzs || [],
+        has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange),
+        prev_start_surah: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_start_surah ?? null)
+          : completedJuzRange?.startSurahNumber ?? null,
+        prev_start_verse: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_start_verse ?? null)
+          : completedJuzRange?.startVerseNumber ?? null,
+        prev_end_surah: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_end_surah ?? null)
+          : completedJuzRange?.endSurahNumber ?? null,
+        prev_end_verse: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_end_verse ?? null)
+          : completedJuzRange?.endVerseNumber ?? null,
+      },
+      0,
+    )
+
+    return {
+      plan: null,
+      completedDays: 0,
+      progressedDays: 0,
+      awaitingHearingSessionNumbers: [],
+      failedSessionNumbers: [],
+      completedSessionNumbers: [],
+      completedRecordsBySessionNumber: {},
+      nextSessionNumber: 1,
+      reportSessionNumbersByDate: {},
+      progressPercent: 0,
+      quranMemorizedPages: quranMemorization.memorizedPages,
+      quranProgressPercent: quranMemorization.progressPercent,
+      quranLevel: quranMemorization.level,
+      attendanceRecords: [],
+      completedRecords: [],
+    }
+  }
+
+  const rawPlan = plans[0]
+  const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
+  const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
+    ? null
+    : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+  const hasStoredStudentMemorizedRange = Boolean(
+    studentData?.memorized_start_surah && studentData?.memorized_end_surah,
+  )
+  const hasExplicitCompletedJuzs = normalizedCompletedJuzs.length > 0
+  const shouldUsePlanPreviousRange = !hasStoredStudentMemorizedRange && !completedJuzRange && !hasExplicitCompletedJuzs
+  const effectivePlan = {
+    ...rawPlan,
+    completed_juzs: studentData?.completed_juzs || [],
+    current_juzs: studentData?.current_juzs || [],
+    has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange)
+      ? true
+      : shouldUsePlanPreviousRange
+        ? Boolean(rawPlan.has_previous)
+        : false,
+    prev_start_surah: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_start_surah ?? null)
+      : completedJuzRange
+        ? completedJuzRange.startSurahNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_start_surah ?? null)
+          : null,
+    prev_start_verse: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_start_verse ?? null)
+      : completedJuzRange
+        ? completedJuzRange.startVerseNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_start_verse ?? null)
+          : null,
+    prev_end_surah: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_end_surah ?? null)
+      : completedJuzRange
+        ? completedJuzRange.endSurahNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_end_surah ?? null)
+          : null,
+    prev_end_verse: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_end_verse ?? null)
+      : completedJuzRange
+        ? completedJuzRange.endVerseNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_end_verse ?? null)
+          : null,
+  }
+  const plan = {
+    ...effectivePlan,
+    total_pages: resolvePlanTotalPages({
+      ...effectivePlan,
+      completed_juzs: studentData?.completed_juzs || [],
+    }),
+    total_days: resolvePlanTotalDays({
+      ...effectivePlan,
+      completed_juzs: studentData?.completed_juzs || [],
+    }),
+  }
+
+  let reportsQuery = supabase
+    .from("student_daily_reports")
+    .select("report_date, plan_session_number")
+    .eq("student_id", studentId)
+    .order("report_date", { ascending: true })
+
+  if (plan.start_date) {
+    reportsQuery = reportsQuery.gte("report_date", plan.start_date)
+  }
+
+  const { data: studentDailyReports, error: reportsError } = await reportsQuery
+
+  if (reportsError) {
+    console.error("[plans] student daily reports query error:", reportsError)
+  }
+
+  let attQuery = supabase
+    .from("attendance_records")
+    .select("id, date, status, evaluations(hafiz_level, tikrar_level, samaa_level, rabet_level)")
+    .eq("student_id", studentId)
+    .order("date", { ascending: true })
+
+  if (plan.start_date) {
+    attQuery = attQuery.gte("date", plan.start_date)
+  }
+
+  const { data: attendanceRecords, error: attError } = await attQuery
+
+  if (attError) {
+    console.error("[plans] attendance query error:", attError)
+    return {
+      plan,
+      completedDays: 0,
+      progressedDays: 0,
+      awaitingHearingSessionNumbers: [],
+      failedSessionNumbers: [],
+      progressPercent: 0,
+      attendanceRecords: [],
+      completedRecords: [],
+    }
+  }
+
+  const completedRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
+
+  const planSessionProgress = buildPlanSessionProgress({
+    reports: studentDailyReports || [],
+    attendanceRecords: attendanceRecords || [],
+    totalDays: plan.total_days,
+  })
+  const completedDays = planSessionProgress.completedDays
+  const completedRecordsBySessionNumber = completedRecords.reduce<Record<string, (typeof completedRecords)[number]>>((acc, record) => {
+    const sessionNumber = planSessionProgress.reportSessionNumbersByDate[record.date]
+    if (sessionNumber) {
+      acc[String(sessionNumber)] = record
+    }
+    return acc
+  }, {})
+  const progressPercent =
+    plan.total_days > 0
+      ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
+      : 0
+  const quranMemorization = calculateQuranMemorizationProgress(plan, completedDays)
+
+  return {
+    plan,
+    completedDays,
+    progressedDays: planSessionProgress.progressedDays,
+    awaitingHearingSessionNumbers: planSessionProgress.awaitingHearingSessionNumbers,
+    failedSessionNumbers: planSessionProgress.failedSessionNumbers,
+    completedSessionNumbers: planSessionProgress.completedSessionNumbers,
+    completedRecordsBySessionNumber,
+    nextSessionNumber: planSessionProgress.nextSessionNumber,
+    reportSessionNumbersByDate: planSessionProgress.reportSessionNumbersByDate,
+    progressPercent,
+    quranMemorizedPages: quranMemorization.memorizedPages,
+    quranProgressPercent: quranMemorization.progressPercent,
+    quranLevel: quranMemorization.level,
+    attendanceRecords: attendanceRecords || [],
+    completedRecords,
+  }
+}
+
 // GET - جلب خطط طالب معين أو جلب كل الخطط
 export async function GET(request: NextRequest) {
   try {
@@ -95,6 +319,10 @@ export async function GET(request: NextRequest) {
     const actor = await getRequestActor(request, supabase)
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("student_id")
+    const studentIds = (searchParams.get("student_ids") || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
     const planId = searchParams.get("plan_id")
 
     if (planId) {
@@ -107,223 +335,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ plan: data })
     }
 
+    if (studentIds.length > 0) {
+      const summaries = await Promise.all(
+        studentIds.map(async (currentStudentId) => [currentStudentId, await buildStudentPlanSummary({ supabase, actor, studentId: currentStudentId })] as const),
+      )
+
+      const plansByStudent = Object.fromEntries(
+        summaries
+          .filter(([, result]) => !("error" in result))
+          .map(([currentStudentId, result]) => [currentStudentId, result]),
+      )
+
+      return NextResponse.json({ plansByStudent })
+    }
+
     if (studentId) {
-      const canViewStudent = await canAccessStudent({
-        supabase,
-        actor,
-        studentId,
-        allowStudentSelf: true,
-        allowTeacher: true,
-      })
+      const result = await buildStudentPlanSummary({ supabase, actor, studentId })
 
-      if (!canViewStudent) {
-        return NextResponse.json({ error: "غير مصرح لك بعرض خطة هذا الطالب" }, { status: 403 })
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status })
       }
 
-      const { data: studentData } = await supabase
-        .from("students")
-        .select("completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
-        .eq("id", studentId)
-        .maybeSingle()
-
-      // جلب الخطة مع عدد الأيام المكتملة
-      const { data: plans, error } = await supabase
-        .from("student_plans")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: false })
-
-      if (error) throw error
-
-      if (!plans || plans.length === 0) {
-        const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
-        const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
-          ? null
-          : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
-        const hasStoredStudentMemorizedRange = Boolean(
-          studentData?.memorized_start_surah && studentData?.memorized_end_surah,
-        )
-        const quranMemorization = calculateQuranMemorizationProgress(
-          {
-            completed_juzs: studentData?.completed_juzs || [],
-            has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange),
-            prev_start_surah: hasStoredStudentMemorizedRange
-              ? (studentData?.memorized_start_surah ?? null)
-              : completedJuzRange?.startSurahNumber ?? null,
-            prev_start_verse: hasStoredStudentMemorizedRange
-              ? (studentData?.memorized_start_verse ?? null)
-              : completedJuzRange?.startVerseNumber ?? null,
-            prev_end_surah: hasStoredStudentMemorizedRange
-              ? (studentData?.memorized_end_surah ?? null)
-              : completedJuzRange?.endSurahNumber ?? null,
-            prev_end_verse: hasStoredStudentMemorizedRange
-              ? (studentData?.memorized_end_verse ?? null)
-              : completedJuzRange?.endVerseNumber ?? null,
-          },
-          0,
-        )
-
-        return NextResponse.json({
-          plan: null,
-          completedDays: 0,
-          progressedDays: 0,
-          awaitingHearingSessionNumbers: [],
-          failedSessionNumbers: [],
-          completedSessionNumbers: [],
-          completedRecordsBySessionNumber: {},
-          nextSessionNumber: 1,
-          reportSessionNumbersByDate: {},
-          progressPercent: 0,
-          quranMemorizedPages: quranMemorization.memorizedPages,
-          quranProgressPercent: quranMemorization.progressPercent,
-          quranLevel: quranMemorization.level,
-          attendanceRecords: [],
-          completedRecords: [],
-        })
-      }
-
-      const rawPlan = plans[0] // الخطة الأحدث هي الفعالة
-      const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
-      const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
-        ? null
-        : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
-        const hasStoredStudentMemorizedRange = Boolean(
-          studentData?.memorized_start_surah && studentData?.memorized_end_surah,
-        )
-        const hasExplicitCompletedJuzs = normalizedCompletedJuzs.length > 0
-        const shouldUsePlanPreviousRange = !hasStoredStudentMemorizedRange && !completedJuzRange && !hasExplicitCompletedJuzs
-      const effectivePlan = {
-        ...rawPlan,
-        completed_juzs: studentData?.completed_juzs || [],
-        current_juzs: studentData?.current_juzs || [],
-          has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange)
-            ? true
-            : shouldUsePlanPreviousRange
-              ? Boolean(rawPlan.has_previous)
-              : false,
-          prev_start_surah: hasStoredStudentMemorizedRange
-            ? (studentData?.memorized_start_surah ?? null)
-            : completedJuzRange
-              ? completedJuzRange.startSurahNumber
-              : shouldUsePlanPreviousRange
-                ? (rawPlan.prev_start_surah ?? null)
-                : null,
-          prev_start_verse: hasStoredStudentMemorizedRange
-            ? (studentData?.memorized_start_verse ?? null)
-            : completedJuzRange
-              ? completedJuzRange.startVerseNumber
-              : shouldUsePlanPreviousRange
-                ? (rawPlan.prev_start_verse ?? null)
-                : null,
-          prev_end_surah: hasStoredStudentMemorizedRange
-            ? (studentData?.memorized_end_surah ?? null)
-            : completedJuzRange
-              ? completedJuzRange.endSurahNumber
-              : shouldUsePlanPreviousRange
-                ? (rawPlan.prev_end_surah ?? null)
-                : null,
-          prev_end_verse: hasStoredStudentMemorizedRange
-            ? (studentData?.memorized_end_verse ?? null)
-            : completedJuzRange
-              ? completedJuzRange.endVerseNumber
-              : shouldUsePlanPreviousRange
-                ? (rawPlan.prev_end_verse ?? null)
-                : null,
-      }
-      const plan = {
-        ...effectivePlan,
-        total_pages: resolvePlanTotalPages({
-          ...effectivePlan,
-          completed_juzs: studentData?.completed_juzs || [],
-        }),
-        total_days: resolvePlanTotalDays({
-          ...effectivePlan,
-          completed_juzs: studentData?.completed_juzs || [],
-        }),
-      }
-
-      let reportsQuery = supabase
-        .from("student_daily_reports")
-        .select("report_date, plan_session_number")
-        .eq("student_id", studentId)
-        .order("report_date", { ascending: true })
-
-      if (plan.start_date) {
-        reportsQuery = reportsQuery.gte("report_date", plan.start_date)
-      }
-
-      const { data: studentDailyReports, error: reportsError } = await reportsQuery
-
-      if (reportsError) {
-        console.error("[plans] student daily reports query error:", reportsError)
-      }
-
-      // جلب سجلات الحضور مع تقييماتها (join مع evaluations)
-      let attQuery = supabase
-        .from("attendance_records")
-        .select("id, date, status, evaluations(hafiz_level, tikrar_level, samaa_level, rabet_level)")
-        .eq("student_id", studentId)
-        .order("date", { ascending: true })
-
-      if (plan.start_date) {
-        attQuery = attQuery.gte("date", plan.start_date)
-      }
-
-      const { data: attendanceRecords, error: attError } = await attQuery
-
-      if (attError) {
-        console.error("[plans] attendance query error:", attError)
-        return NextResponse.json({
-          plan,
-          completedDays: 0,
-          progressedDays: 0,
-          awaitingHearingSessionNumbers: [],
-          failedSessionNumbers: [],
-          progressPercent: 0,
-          attendanceRecords: [],
-          completedRecords: [],
-        })
-      }
-
-      // اليوم يُحتسب مكتملًا فقط إذا كان الطالب حاضرًا وتم تقييم الحفظ نفسه بشكل إيجابي.
-      const completedRecords = (attendanceRecords || []).filter(hasCompletedMemorization)
-
-      const planSessionProgress = buildPlanSessionProgress({
-        reports: studentDailyReports || [],
-        attendanceRecords: attendanceRecords || [],
-        totalDays: plan.total_days,
-      })
-      const completedDays = planSessionProgress.completedDays
-      const completedRecordsBySessionNumber = completedRecords.reduce<Record<string, (typeof completedRecords)[number]>>((acc, record) => {
-        const sessionNumber = planSessionProgress.reportSessionNumbersByDate[record.date]
-        if (sessionNumber) {
-          acc[String(sessionNumber)] = record
-        }
-        return acc
-      }, {})
-      const progressPercent =
-        plan.total_days > 0
-          ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
-          : 0
-      const quranMemorization = calculateQuranMemorizationProgress(plan, completedDays)
-
-      return NextResponse.json({
-        plan,
-        completedDays,
-        progressedDays: planSessionProgress.progressedDays,
-        awaitingHearingSessionNumbers: planSessionProgress.awaitingHearingSessionNumbers,
-        failedSessionNumbers: planSessionProgress.failedSessionNumbers,
-        completedSessionNumbers: planSessionProgress.completedSessionNumbers,
-        completedRecordsBySessionNumber,
-        nextSessionNumber: planSessionProgress.nextSessionNumber,
-        reportSessionNumbersByDate: planSessionProgress.reportSessionNumbersByDate,
-        progressPercent,
-        quranMemorizedPages: quranMemorization.memorizedPages,
-        quranProgressPercent: quranMemorization.progressPercent,
-        quranLevel: quranMemorization.level,
-        attendanceRecords: attendanceRecords || [],
-        completedRecords,
-      })
+      return NextResponse.json(result)
     }
 
     return NextResponse.json({ error: "معرف الطالب مطلوب" }, { status: 400 })

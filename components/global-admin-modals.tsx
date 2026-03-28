@@ -1,17 +1,48 @@
 "use client";
-import { GlobalAdminsDialog } from "./admin-modals/global-admins-dialog"
-import { GlobalCirclesDialog } from "./admin-modals/global-circles-dialog"
-import { GlobalTeachersDialog } from "./admin-modals/global-teachers-dialog"
-import { GlobalEditStudentDialog } from "./admin-modals/global-edit-student-dialog"
-import { GlobalMoveStudentDialog } from "./admin-modals/global-move-student-dialog"
-import { GlobalRemoveStudentDialog } from "./admin-modals/global-remove-student-dialog"
-
+import dynamic from "next/dynamic"
 import React, { Suspense } from "react"
 import { usePathname, useSearchParams } from "next/navigation"
-import { GlobalBulkAddStudentDialog } from "./admin-modals/global-bulk-add-student-dialog"
-import { GlobalEditPointsDialog } from "./admin-modals/global-edit-points-dialog"
-import { GlobalEndSemesterDialog } from "./admin-modals/global-end-semester-dialog"
-import { GlobalStudentRecordsDialog } from "./admin-modals/global-student-records-dialog"
+
+const GlobalAdminsDialog = dynamic(() => import("./admin-modals/global-admins-dialog").then((mod) => mod.GlobalAdminsDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalCirclesDialog = dynamic(() => import("./admin-modals/global-circles-dialog").then((mod) => mod.GlobalCirclesDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalTeachersDialog = dynamic(() => import("./admin-modals/global-teachers-dialog").then((mod) => mod.GlobalTeachersDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalEditStudentDialog = dynamic(() => import("./admin-modals/global-edit-student-dialog").then((mod) => mod.GlobalEditStudentDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalMoveStudentDialog = dynamic(() => import("./admin-modals/global-move-student-dialog").then((mod) => mod.GlobalMoveStudentDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalRemoveStudentDialog = dynamic(() => import("./admin-modals/global-remove-student-dialog").then((mod) => mod.GlobalRemoveStudentDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalBulkAddStudentDialog = dynamic(() => import("./admin-modals/global-bulk-add-student-dialog").then((mod) => mod.GlobalBulkAddStudentDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalEditPointsDialog = dynamic(() => import("./admin-modals/global-edit-points-dialog").then((mod) => mod.GlobalEditPointsDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalEndSemesterDialog = dynamic(() => import("./admin-modals/global-end-semester-dialog").then((mod) => mod.GlobalEndSemesterDialog), {
+  ssr: false,
+  loading: () => null,
+})
+const GlobalStudentRecordsDialog = dynamic(() => import("./admin-modals/global-student-records-dialog").then((mod) => mod.GlobalStudentRecordsDialog), {
+  ssr: false,
+  loading: () => null,
+})
 
 function AdminModalsContent() {
   const pathname = usePathname()

@@ -58,7 +58,7 @@ export default function CircleManagement() {
 
   const fetchCircles = async () => {
     try {
-      const response = await fetch(`/api/circles?t=${Date.now()}`, { cache: "no-store" })
+      const response = await fetch("/api/circles")
       const data = await response.json()
       if (data.circles) {
         setCircles(data.circles)

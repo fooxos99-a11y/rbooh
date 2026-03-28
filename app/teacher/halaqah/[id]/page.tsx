@@ -6,7 +6,7 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ArrowRight, RotateCcw, MessageSquare } from "lucide-react"
+import { ArrowRight, RotateCcw, MessageSquare, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
@@ -167,6 +167,8 @@ interface PlanProgressResponse {
 interface SavedAttendanceRecord {
 	student_id: string
 	date?: string
+	created_at?: string | null
+	updated_at?: string | null
 	status: AttendanceStatus
 	hafiz_level?: EvaluationLevel
 	tikrar_level?: EvaluationLevel
@@ -498,18 +500,23 @@ export default function HalaqahManagement() {
 	const router = useRouter()
 	const params = useParams()
 	const isAttendanceEntryAllowedToday = isSaudiAttendanceWindowOpen()
+	const todayKsaDate = getKsaDateString()
 
 	const [teacherData, setTeacherData] = useState<any>(null)
 	const [teacherHalaqah, setTeacherHalaqah] = useState("")
 	const [students, setStudents] = useState<StudentAttendance[]>([])
 	const [hasCircle, setHasCircle] = useState(true)
+	const [isEditMode, setIsEditMode] = useState(false)
 	const [isSaving, setIsSaving] = useState(false)
 	const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success">("idle")
 	const [hasSavedToday, setHasSavedToday] = useState(false)
 	const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
 	const [notesText, setNotesText] = useState("")
 	const [isNotesDialogOpen, setIsNotesDialogOpen] = useState(false)
+	const [savingReportKeys, setSavingReportKeys] = useState<string[]>([])
+	const [recentlySavedReportKeys, setRecentlySavedReportKeys] = useState<string[]>([])
 	const studentsRef = useRef<StudentAttendance[]>([])
+	const reportSuccessTimersRef = useRef<Record<string, number>>({})
 
 	const showAlert = useAlertDialog()
 
@@ -534,9 +541,14 @@ export default function HalaqahManagement() {
 
 	useEffect(() => {
 		if (!teacherHalaqah) return
+		void fetchStudents(teacherHalaqah, isEditMode)
+	}, [teacherHalaqah, isEditMode])
+
+	useEffect(() => {
+		if (!teacherHalaqah) return
 
 		const refreshStudentsState = () => {
-			void fetchStudents(teacherHalaqah)
+			void fetchStudents(teacherHalaqah, isEditMode)
 		}
 
 		const handlePageShow = () => {
@@ -558,11 +570,19 @@ export default function HalaqahManagement() {
 			window.removeEventListener("pageshow", handlePageShow)
 			document.removeEventListener("visibilitychange", handleVisibilityChange)
 		}
-	}, [teacherHalaqah])
+	}, [teacherHalaqah, isEditMode])
 
 	useEffect(() => {
 		studentsRef.current = students
 	}, [students])
+
+	useEffect(() => {
+		return () => {
+			Object.values(reportSuccessTimersRef.current).forEach((timerId) => {
+				window.clearTimeout(timerId)
+			})
+		}
+	}, [])
 
 	const updateStudentsState = (updater: (current: StudentAttendance[]) => StudentAttendance[]) => {
 		setStudents((current) => {
@@ -570,6 +590,178 @@ export default function HalaqahManagement() {
 			studentsRef.current = next
 			return next
 		})
+	}
+
+	const getReportSaveKey = (studentId: string, reportDate: string) => `${studentId}:${reportDate}`
+
+	const flashReportSaved = (reportKey: string) => {
+		const activeTimer = reportSuccessTimersRef.current[reportKey]
+		if (activeTimer) {
+			window.clearTimeout(activeTimer)
+		}
+
+		setRecentlySavedReportKeys((current) => (current.includes(reportKey) ? current : [...current, reportKey]))
+
+		reportSuccessTimersRef.current[reportKey] = window.setTimeout(() => {
+			setRecentlySavedReportKeys((current) => current.filter((key) => key !== reportKey))
+			delete reportSuccessTimersRef.current[reportKey]
+		}, 900)
+	}
+
+	const updateStudentAfterReportSave = (studentId: string, reportDate: string, level: EvaluationLevel) => {
+		updateStudentsState((current) =>
+			current.map((student) => {
+				if (student.id !== studentId) {
+					return student
+				}
+
+				const nextSavedReportDates = Array.from(new Set([...(student.savedReportDates || []), reportDate]))
+				const hasPendingSelfReports = (student.selfReports || []).some((report) => !nextSavedReportDates.includes(report.report_date))
+
+				return {
+					...student,
+					reportEvaluations: {
+						...(student.reportEvaluations || {}),
+						[reportDate]: level,
+					},
+					savedReportDates: nextSavedReportDates,
+					savedToday: hasPendingSelfReports ? student.savedToday : true,
+				}
+			}),
+		)
+	}
+
+	const saveSingleReportEvaluation = async (studentId: string, reportDate: string, level: EvaluationLevel) => {
+		const student = studentsRef.current.find((entry) => entry.id === studentId)
+		const report = student?.selfReports?.find((entry) => entry.report_date === reportDate)
+
+		if (!student || !report || !teacherData?.id || !teacherHalaqah) {
+			return
+		}
+
+		const reportContent = getReportMemorizationContent(student, reportDate)
+		const autoSupportEvaluation = buildAutoSupportEvaluationForReport(report)
+		const reportKey = getReportSaveKey(studentId, reportDate)
+
+		setSavingReportKeys((current) => (current.includes(reportKey) ? current : [...current, reportKey]))
+		flashReportSaved(reportKey)
+
+		try {
+			const response = await fetch("/api/attendance", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
+				body: JSON.stringify({
+					student_id: student.id,
+					teacher_id: teacherData.id,
+					halaqah: teacherHalaqah,
+					status: student.attendance,
+					report_date: reportDate,
+					hafiz_level: level,
+					tikrar_level: autoSupportEvaluation.tikrar,
+					samaa_level: autoSupportEvaluation.samaa,
+					rabet_level: autoSupportEvaluation.rabet,
+					hafiz_from_surah: reportContent?.fromSurah?.trim() || null,
+					hafiz_from_verse: reportContent?.fromVerse?.trim() || null,
+					hafiz_to_surah: reportContent?.toSurah?.trim() || null,
+					hafiz_to_verse: reportContent?.toVerse?.trim() || null,
+					notes: student.notes || null,
+				}),
+			})
+
+			const data = await response.json().catch(() => ({}))
+			if (!response.ok) {
+				throw new Error(data.error || "حدث خطأ أثناء حفظ تقييم المقطع")
+			}
+
+			updateStudentAfterReportSave(studentId, reportDate, level)
+		} catch (error) {
+			setReportEvaluation(studentId, reportDate, student.reportEvaluations?.[reportDate])
+			setRecentlySavedReportKeys((current) => current.filter((key) => key !== reportKey))
+			delete reportSuccessTimersRef.current[reportKey]
+			await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء حفظ تقييم المقطع", "خطأ")
+		} finally {
+			setSavingReportKeys((current) => current.filter((key) => key !== reportKey))
+		}
+	}
+
+	const saveTodayEvaluation = async (studentId: string, level: EvaluationLevel) => {
+		const student = studentsRef.current.find((entry) => entry.id === studentId)
+		const directSaveKey = getReportSaveKey(studentId, todayKsaDate)
+
+		if (!student || !teacherData?.id || !teacherHalaqah || !isEvaluatedAttendance(student.attendance)) {
+			return
+		}
+
+		setSavingReportKeys((current) => (current.includes(directSaveKey) ? current : [...current, directSaveKey]))
+		flashReportSaved(directSaveKey)
+
+		try {
+			const response = await fetch("/api/attendance", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
+				body: JSON.stringify({
+					student_id: student.id,
+					teacher_id: teacherData.id,
+					halaqah: teacherHalaqah,
+					status: student.attendance,
+					hafiz_level: level,
+					tikrar_level: student.evaluation?.tikrar || "0",
+					samaa_level: student.evaluation?.samaa || "0",
+					rabet_level: student.evaluation?.rabet || "0",
+					hafiz_from_surah: student.readingDetails?.hafiz?.fromSurah?.trim() || null,
+					hafiz_from_verse: student.readingDetails?.hafiz?.fromVerse?.trim() || null,
+					hafiz_to_surah: student.readingDetails?.hafiz?.toSurah?.trim() || null,
+					hafiz_to_verse: student.readingDetails?.hafiz?.toVerse?.trim() || null,
+					samaa_from_surah: student.readingDetails?.samaa?.fromSurah?.trim() || null,
+					samaa_from_verse: student.readingDetails?.samaa?.fromVerse?.trim() || null,
+					samaa_to_surah: student.readingDetails?.samaa?.toSurah?.trim() || null,
+					samaa_to_verse: student.readingDetails?.samaa?.toVerse?.trim() || null,
+					rabet_from_surah: student.readingDetails?.rabet?.fromSurah?.trim() || null,
+					rabet_from_verse: student.readingDetails?.rabet?.fromVerse?.trim() || null,
+					rabet_to_surah: student.readingDetails?.rabet?.toSurah?.trim() || null,
+					rabet_to_verse: student.readingDetails?.rabet?.toVerse?.trim() || null,
+					notes: student.notes || null,
+				}),
+			})
+
+			const data = await response.json().catch(() => ({}))
+			if (!response.ok) {
+				throw new Error(data.error || "حدث خطأ أثناء تحديث تقييم اليوم")
+			}
+
+			updateStudentsState((current) =>
+				current.map((entry) =>
+					entry.id === studentId
+						? {
+								...entry,
+								evaluation: { ...(entry.evaluation || {}), hafiz: level },
+								savedToday: true,
+							}
+						: entry,
+				),
+			)
+		} catch (error) {
+			setRecentlySavedReportKeys((current) => current.filter((key) => key !== directSaveKey))
+			delete reportSuccessTimersRef.current[directSaveKey]
+			await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء تحديث تقييم اليوم", "خطأ")
+		} finally {
+			setSavingReportKeys((current) => current.filter((key) => key !== directSaveKey))
+		}
+	}
+
+	const handleReportEvaluationChange = async (studentId: string, reportDate: string, level?: EvaluationLevel) => {
+		const previousLevel = studentsRef.current.find((student) => student.id === studentId)?.reportEvaluations?.[reportDate]
+		setReportEvaluation(studentId, reportDate, level)
+
+		if (!level) {
+			return
+		}
+
+		try {
+			await saveSingleReportEvaluation(studentId, reportDate, level)
+		} catch {
+			setReportEvaluation(studentId, reportDate, previousLevel)
+		}
 	}
 
 	const fetchTeacherData = async (accountNumber: string) => {
@@ -589,7 +781,6 @@ export default function HalaqahManagement() {
 					setHasCircle(true)
 					setTeacherHalaqah(teacherHalaqah)
 					setTeacherData({ ...teacher, halaqah: teacherHalaqah })
-					fetchStudents(teacherHalaqah)
 				} else {
 					setTeacherHalaqah("")
 					setHasCircle(false)
@@ -617,7 +808,7 @@ export default function HalaqahManagement() {
 			const applySavedState = (list: StudentAttendance[]) =>
 				list.map((student) => mergeSavedAttendance(student, savedMap.get(student.id)))
 
-			const nextStudents = applySavedState(baseStudents ?? students)
+			const nextStudents = applySavedState(baseStudents ?? studentsRef.current)
 			studentsRef.current = nextStudents
 			setStudents(nextStudents)
 			setHasSavedToday(nextStudents.some((student) => student.savedToday))
@@ -627,46 +818,108 @@ export default function HalaqahManagement() {
 		}
 	}
 
-	const fetchStudents = async (halaqah: string) => {
+	const fetchStudents = async (halaqah: string, editMode = isEditMode) => {
 		try {
 			const response = await fetch(`/api/students?circle=${encodeURIComponent(halaqah)}`)
 			const data = await response.json()
 
 			if (data.students) {
 				const studentIds = data.students.map((student: any) => student.id).filter(Boolean)
-				const planEntries = await Promise.all(
-					data.students.map(async (student: any) => {
-						try {
-							const planResponse = await fetch(`/api/student-plans?student_id=${student.id}`, { cache: "no-store", headers: getClientAuthHeaders() })
-							if (!planResponse.ok) return [student.id, { plan: null, completedDays: 0 }] as const
-							const planData: PlanProgressResponse = await planResponse.json()
-							return [student.id, planData] as const
-						} catch {
-							return [student.id, { plan: null, completedDays: 0 }] as const
-						}
-					}),
-				)
-
-				const planMap = new Map<string, PlanProgressResponse>(planEntries)
-				let reportsByStudent: Record<string, StudentDailyReport[]> = {}
+				let planMap = new Map<string, PlanProgressResponse>()
 
 				if (studentIds.length > 0) {
 					try {
-						const reportsResponse = await fetch(
-							`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
-							{ cache: "no-store" },
+						const planResponse = await fetch(
+							`/api/student-plans?student_ids=${encodeURIComponent(studentIds.join(","))}`,
+							{ cache: "no-store", headers: getClientAuthHeaders() },
 						)
-						const reportsData = await reportsResponse.json()
-						if (reportsResponse.ok && reportsData.reportsByStudent) {
-							reportsByStudent = reportsData.reportsByStudent
+						const planJson = await planResponse.json().catch(() => ({}))
+
+						if (planResponse.ok && planJson.plansByStudent) {
+							planMap = new Map<string, PlanProgressResponse>(
+								Object.entries(planJson.plansByStudent as Record<string, PlanProgressResponse>),
+							)
 						}
-					} catch (reportsError) {
-						console.error("Error fetching student daily reports:", reportsError)
+					} catch (planError) {
+						console.error("Error fetching batched student plans:", planError)
 					}
 				}
+				let reportsByStudent: Record<string, StudentDailyReport[]> = {}
+				let savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
+				let savedReportDatesMap: Record<string, string[]> = {}
+				let savedRecordsByStudent: Record<string, SavedAttendanceRecord[]> = {}
 
-				const savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
-				const savedReportDatesMap: Record<string, string[]> = {}
+				if (studentIds.length > 0) {
+					try {
+						if (editMode) {
+							const [reportsResponse, savedTodayResponse] = await Promise.all([
+								fetch(
+									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&days=14`,
+									{ cache: "no-store" },
+								),
+								fetch(
+									`/api/attendance-by-date?saved_on=${todayKsaDate}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
+									{ cache: "no-store" },
+								),
+							])
+
+							const reportsData = await reportsResponse.json().catch(() => ({}))
+							const savedTodayData = await savedTodayResponse.json().catch(() => ({}))
+							const savedTodayRecords: SavedAttendanceRecord[] = Array.isArray(savedTodayData.records)
+								? savedTodayData.records.filter(
+									(record: SavedAttendanceRecord) =>
+										isEvaluatedAttendance(record.status) && !!record.hafiz_level && studentIds.includes(record.student_id),
+								)
+								: []
+
+							savedRecordsByStudent = savedTodayRecords.reduce<Record<string, SavedAttendanceRecord[]>>((acc, record) => {
+								if (!acc[record.student_id]) {
+									acc[record.student_id] = []
+								}
+								acc[record.student_id].push(record)
+								return acc
+							}, {})
+
+							savedReportDatesMap = Object.fromEntries(
+								Object.entries(savedRecordsByStudent).map(([currentStudentId, records]) => [
+									currentStudentId,
+									Array.from(new Set(records.map((record) => record.date).filter((value): value is string => !!value))).sort((left, right) => left.localeCompare(right)),
+								]),
+							)
+
+							savedReportEvaluationMap = Object.fromEntries(
+								Object.entries(savedRecordsByStudent).map(([currentStudentId, records]) => [
+									currentStudentId,
+									Object.fromEntries(
+										records
+											.filter((record) => !!record.date && !!record.hafiz_level)
+											.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel]),
+									),
+								]),
+							)
+
+							if (reportsResponse.ok && reportsData.reportsByStudent) {
+								reportsByStudent = Object.fromEntries(
+									Object.entries(reportsData.reportsByStudent as Record<string, StudentDailyReport[]>).map(([currentStudentId, reports]) => [
+										currentStudentId,
+										reports.filter((report) => (savedReportDatesMap[currentStudentId] || []).includes(report.report_date)),
+									]),
+								)
+							}
+						} else {
+							const reportsResponse = await fetch(
+								`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
+								{ cache: "no-store" },
+							)
+							const reportsData = await reportsResponse.json()
+							if (reportsResponse.ok && reportsData.reportsByStudent) {
+								reportsByStudent = reportsData.reportsByStudent
+							}
+						}
+					} catch (reportsError) {
+						console.error(editMode ? "Error fetching edit-mode student reports:" : "Error fetching student daily reports:", reportsError)
+					}
+				}
 
 				const localStudentsMap = new Map(studentsRef.current.map((student) => [student.id, student] as const))
 
@@ -674,16 +927,17 @@ export default function HalaqahManagement() {
 							const planData = planMap.get(student.id)
 							const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.nextSessionNumber, planData?.failedSessionNumbers, planData?.progressedDays)
 					const localStudent = localStudentsMap.get(student.id)
-					const hasUnsavedLocalChanges = !!localStudent && !localStudent.savedToday
+					const latestSavedRecord = (savedRecordsByStudent[student.id] || [])[0]
+					const hasUnsavedLocalChanges = !editMode && !!localStudent && !localStudent.savedToday
 					const selfReports = (reportsByStudent[student.id] || []).filter((report) => report.memorization_done)
 					const savedReportDates = savedReportDatesMap[student.id] || []
-					const allReportDatesSaved = selfReports.length > 0 && selfReports.every((report) => savedReportDates.includes(report.report_date))
+					const allReportDatesSaved = selfReports.length > 0 ? selfReports.every((report) => savedReportDates.includes(report.report_date)) : !!latestSavedRecord
 					const baseReportEvaluations = hasUnsavedLocalChanges
 						? { ...(savedReportEvaluationMap[student.id] || {}), ...(localStudent.reportEvaluations || {}) }
 						: savedReportEvaluationMap[student.id] || {}
 					const reportEvaluations = { ...baseReportEvaluations }
 
-					return {
+					const baseStudent: StudentAttendance = {
 						id: student.id,
 						name: student.name,
 						halaqah: student.circle_name || halaqah,
@@ -704,11 +958,17 @@ export default function HalaqahManagement() {
 						notes: hasUnsavedLocalChanges ? localStudent.notes : undefined,
 						savedToday: allReportDatesSaved,
 					}
+
+					return editMode && latestSavedRecord ? mergeSavedAttendance(baseStudent, latestSavedRecord) : baseStudent
 				})
-				const nextStudents = (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
-				const eligibleStudents = nextStudents.filter(
-					(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
-				)
+				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
+				const eligibleStudents = nextStudents.filter((student) => {
+					if (editMode) {
+						return (student.selfReports || []).length > 0 || (student.savedToday && isEvaluatedAttendance(student.attendance))
+					}
+
+					return isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0
+				})
 				studentsRef.current = eligibleStudents
 				setStudents(eligibleStudents)
 				setHasSavedToday(eligibleStudents.some((student) => student.savedToday))
@@ -767,7 +1027,7 @@ export default function HalaqahManagement() {
 
 	const toggleAttendance = (id: string, status: AttendanceStatus) => {
 		const student = students.find((s) => s.id === id)
-		if (student?.savedToday || !student?.hasPlan) return
+		if ((student?.savedToday && !isEditMode) || !student?.hasPlan) return
 
 		updateStudentsState((current) =>
 			current.map((s) =>
@@ -790,7 +1050,7 @@ export default function HalaqahManagement() {
 
 	const setEvaluation = (studentId: string, type: EvaluationType, level: EvaluationLevel) => {
 		const student = students.find((s) => s.id === studentId)
-		if (student?.savedToday || (type === "hafiz" && !student?.hasPlan)) return
+		if ((student?.savedToday && !isEditMode) || (type === "hafiz" && !student?.hasPlan)) return
 
 		updateStudentsState((current) =>
 			current.map((s) =>
@@ -828,7 +1088,7 @@ export default function HalaqahManagement() {
 	const handleReset = () => {
 		updateStudentsState((current) =>
 			current.map((s) =>
-				s.savedToday
+				s.savedToday && !isEditMode
 					? s
 					: {
 							...s,
@@ -984,7 +1244,7 @@ export default function HalaqahManagement() {
 				throw new Error(blockingError.data?.error || "حدث خطأ أثناء حفظ البيانات")
 			}
 
-			await fetchStudents(teacherHalaqah)
+			await fetchStudents(teacherHalaqah, isEditMode)
 
 			const successfulSavesCount = saveResults.filter((result) => result.ok).length
 			const duplicateSavesCount = saveResults.filter((result) => result.status === 409).length
@@ -1016,7 +1276,7 @@ export default function HalaqahManagement() {
 	const markAllPresent = () => {
 		updateStudentsState((current) =>
 			current.map((s) =>
-				s.savedToday
+				s.savedToday && !isEditMode
 					? s
 					: !s.hasPlan
 						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
@@ -1028,7 +1288,7 @@ export default function HalaqahManagement() {
 	const markAllAbsent = () => {
 		updateStudentsState((current) =>
 			current.map((s) =>
-				s.savedToday
+				s.savedToday && !isEditMode
 					? s
 					: !s.hasPlan
 						? { ...s, attendance: null, evaluation: {}, readingDetails: s.planReadingDetails || {} }
@@ -1039,7 +1299,7 @@ export default function HalaqahManagement() {
 
 	const openNotesDialog = (studentId: string) => {
 		const student = students.find((s) => s.id === studentId)
-		if (student?.savedToday) return
+		if (student?.savedToday && !isEditMode) return
 		setNotesStudentId(studentId)
 		setNotesText(student?.notes || "")
 		setIsNotesDialogOpen(true)
@@ -1055,6 +1315,11 @@ export default function HalaqahManagement() {
 	const halaqahName = teacherHalaqah || teacherData?.halaqah || "الحلقة"
 	const savedStudentsCount = students.filter((student) => student.savedToday).length
 	const hasPendingStudents = students.some(isStudentReadyToSave)
+	const getDirectTodayEvaluationOptions = (student: StudentAttendance) =>
+		appendCurrentEvaluationOption(
+			getMemorizationEvaluationOptions(!!student.failedSessionNumbers?.length),
+			student.evaluation?.hafiz,
+		)
 
 	const EvaluationOption = ({
 		studentId,
@@ -1081,7 +1346,7 @@ export default function HalaqahManagement() {
 				: type === "rabet"
 					? "لا يوجد لديه ربط لليوم"
 					: "لا يوجد لديه حفظ لليوم"
-		const isSavedLocked = !!student?.savedToday
+		const isSavedLocked = !!student?.savedToday && !isEditMode
 		const isHafizLocked = type === "hafiz" && !student?.hasPlan
 		const isDisabled = isSavedLocked || isHafizLocked
 		const currentLevelValue = currentLevel ? normalizeEvaluationLevel(currentLevel) : undefined
@@ -1150,12 +1415,20 @@ export default function HalaqahManagement() {
 								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">إدارة الحلقة</p>
 								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
+							<Button
+								type="button"
+								variant={isEditMode ? "default" : "outline"}
+								className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
+								onClick={() => setIsEditMode((current) => !current)}
+							>
+								تعديل
+							</Button>
 						</div>
 					</section>
 
 					{students.length === 0 ? (
 						<div className="rounded-[28px] border border-[#3453a7]/15 bg-white/90 px-6 py-12 text-center shadow-sm">
-							<p className="text-lg font-bold text-[#1a2332]">لا توجد تقارير تنفيذ معلقة للتسميع بعد اعتماد حضورهم اليوم</p>
+							<p className="text-lg font-bold text-[#1a2332]">{isEditMode ? "لا توجد بيانات محفوظة لليوم يمكن تعديلها" : "لا توجد تقارير تنفيذ معلقة للتسميع بعد اعتماد حضورهم اليوم"}</p>
 						</div>
 					) : (
 						<>
@@ -1163,10 +1436,16 @@ export default function HalaqahManagement() {
 								{students.map((student) => {
 									const isNoPlanLocked = !student.savedToday && !student.hasPlan
 									const shouldShowReportEvaluations = (student.selfReports || []).length > 0
+									const shouldShowDirectTodayEvaluation =
+										isEditMode &&
+										student.savedToday &&
+										!shouldShowReportEvaluations &&
+										isEvaluatedAttendance(student.attendance)
 									const shouldExpandCard =
 										student.savedToday ||
 										student.attendance !== null ||
 										shouldShowReportEvaluations ||
+										shouldShowDirectTodayEvaluation ||
 										Boolean(student.notes) ||
 										isNoPlanLocked
 
@@ -1174,7 +1453,7 @@ export default function HalaqahManagement() {
 										<Card
 											key={student.id}
 											className={`overflow-hidden rounded-[20px] border shadow-[0_18px_42px_-34px_rgba(52,83,167,0.24)] transition-all ${
-												student.savedToday
+												student.savedToday && !isEditMode
 													? "border-[#3453a7]/25 bg-[#eef4ff]/90 opacity-80 pointer-events-none select-none"
 													: isNoPlanLocked
 														? "border-[#3453a7]/18 bg-[#f5f8ff] opacity-75"
@@ -1192,7 +1471,7 @@ export default function HalaqahManagement() {
 																variant="outline"
 																onClick={() => openNotesDialog(student.id)}
 																title="الملاحظات"
-																disabled={student.savedToday}
+																disabled={student.savedToday && !isEditMode}
 																className={`h-6.5 w-6.5 rounded-full ${
 																	student.notes
 																		? "border-[#3453a7] bg-[#3453a7]/12 text-[#1a2332]"
@@ -1232,31 +1511,109 @@ export default function HalaqahManagement() {
 																			<p className="mb-1 text-right text-[10px] font-bold tracking-[0.06em] text-[#3453a7]">التقييم</p>
 																			{(() => {
 																				const reportEvaluationOptions = getReportEvaluationOptions(student, report.report_date, student.reportEvaluations?.[report.report_date])
+																				const reportKey = getReportSaveKey(student.id, report.report_date)
+																				const isReportSaving = savingReportKeys.includes(reportKey)
+																				const isReportRecentlySaved = recentlySavedReportKeys.includes(reportKey)
 																				return (
-																			<Select
-																				value={student.reportEvaluations?.[report.report_date] ?? UNSET_REPORT_EVALUATION}
-																				onValueChange={(value) => setReportEvaluation(student.id, report.report_date, value === UNSET_REPORT_EVALUATION ? undefined : value as EvaluationLevel)}
-																				disabled={(student.savedReportDates || []).includes(report.report_date)}
-																			>
-																				<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
-																					<SelectValue />
-																				</SelectTrigger>
-																				<SelectContent dir="rtl">
-																					<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
-																						لم يقيم
-																					</SelectItem>
-																						{reportEvaluationOptions.map((option) => (
-																						<SelectItem key={`${report.id}-${option.level}`} value={option.level} className="text-right text-sm">
-																							{option.label}
+																			<div className={`relative transition-all duration-200 ${isReportRecentlySaved ? "animate-pulse" : ""}`}>
+																				<Select
+																					value={student.reportEvaluations?.[report.report_date] ?? UNSET_REPORT_EVALUATION}
+																					onValueChange={(value) => {
+																						void handleReportEvaluationChange(
+																							student.id,
+																							report.report_date,
+																							value === UNSET_REPORT_EVALUATION ? undefined : (value as EvaluationLevel),
+																						)
+																					}}
+																					disabled={isReportSaving || ((student.savedReportDates || []).includes(report.report_date) && !isEditMode)}
+																				>
+																					<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
+																						<SelectValue />
+																					</SelectTrigger>
+																					<SelectContent dir="rtl">
+																						<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
+																							لم يقيم
 																						</SelectItem>
-																					))}
-																				</SelectContent>
-																			</Select>
+																							{reportEvaluationOptions.map((option) => (
+																							<SelectItem key={`${report.id}-${option.level}`} value={option.level} className="text-right text-sm">
+																								{option.label}
+																							</SelectItem>
+																						))}
+																					</SelectContent>
+																				</Select>
+																				{isReportRecentlySaved ? (
+																					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-white/88">
+																						<Check className="h-5 w-5 text-[#3453a7]" />
+																					</div>
+																				) : null}
+																			</div>
 																				)
 																			})()}
 																		</div>
 																	</div>
 																	))}
+															</div>
+														</div>
+													) : shouldExpandCard && !isNoPlanLocked && shouldShowDirectTodayEvaluation ? (
+														<div className="rounded-[18px] bg-[#f7fbff] px-2 py-2 sm:px-2.5">
+															<div className="grid gap-2 rounded-[16px] bg-white px-2.5 py-2 shadow-sm ring-1 ring-[#3453a7]/10 md:grid-cols-[minmax(0,1fr)_102px] md:items-center">
+																<div className="min-w-0 text-right">
+																	<p className="text-[13px] leading-5 font-semibold text-[#0f766e]">
+																		{formatReadingDetails(student.readingDetails?.hafiz) || student.readingDetails?.hafiz?.text || "لا يوجد مقطع حفظ محفوظ لليوم"}
+																	</p>
+																</div>
+																<div className="rounded-[14px] border border-[#3453a7]/15 bg-[#f5f9ff] px-2 py-1.5">
+																	<p className="mb-1 text-right text-[10px] font-bold tracking-[0.06em] text-[#3453a7]">تقييم اليوم</p>
+																	{(() => {
+																		const directSaveKey = getReportSaveKey(student.id, todayKsaDate)
+																		const directEvaluationOptions = getDirectTodayEvaluationOptions(student)
+																		const currentLevelValue = student.evaluation?.hafiz ? normalizeEvaluationLevel(student.evaluation.hafiz) : UNSET_REPORT_EVALUATION
+																		const isDirectSaving = savingReportKeys.includes(directSaveKey)
+																		const isDirectRecentlySaved = recentlySavedReportKeys.includes(directSaveKey)
+																		return (
+																			<div className={`relative transition-all duration-200 ${isDirectRecentlySaved ? "animate-pulse" : ""}`}>
+																				<Select
+																					value={currentLevelValue}
+																					onValueChange={(value) => {
+																						const nextLevel = value === UNSET_REPORT_EVALUATION ? undefined : (value as EvaluationLevel)
+																						if (!nextLevel) {
+																							return
+																						}
+
+																						updateStudentsState((current) =>
+																							current.map((entry) =>
+																								entry.id === student.id
+																									? { ...entry, evaluation: { ...(entry.evaluation || {}), hafiz: nextLevel } }
+																									: entry,
+																							),
+																						)
+																						void saveTodayEvaluation(student.id, nextLevel)
+																					}}
+																					disabled={isDirectSaving}
+																				>
+																					<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
+																						<SelectValue />
+																					</SelectTrigger>
+																					<SelectContent dir="rtl">
+																						<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
+																							لم يقيم
+																						</SelectItem>
+																						{directEvaluationOptions.map((option) => (
+																							<SelectItem key={`${student.id}-direct-${option.level}`} value={option.level} className="text-right text-sm">
+																								{option.label}
+																							</SelectItem>
+																						))}
+																					</SelectContent>
+																				</Select>
+																				{isDirectRecentlySaved ? (
+																					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-white/88">
+																						<Check className="h-5 w-5 text-[#3453a7]" />
+																					</div>
+																				) : null}
+																			</div>
+																		)
+																	})()}
+																</div>
 															</div>
 														</div>
 													) : null}

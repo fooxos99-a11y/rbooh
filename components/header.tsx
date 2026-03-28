@@ -1,11 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { useState, useEffect } from "react";
 
 import Image from "next/image";
-import { StudentDailyExecutionDialog } from "@/components/student-daily-execution-dialog";
 
 import {
   ChevronLeft,
@@ -40,7 +40,6 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
-import { GlobalAddStudentDialog } from "@/components/global-add-student-dialog";
 import { createClient } from "@/lib/supabase/client";
 
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
@@ -55,6 +54,16 @@ import {
 import { SiteLoader } from "@/components/ui/site-loader";
 import { getClientAuthHeaders } from "@/lib/client-auth";
 
+const StudentDailyExecutionDialog = dynamic(
+  () => import("@/components/student-daily-execution-dialog").then((mod) => mod.StudentDailyExecutionDialog),
+  { ssr: false, loading: () => null },
+);
+
+const GlobalAddStudentDialog = dynamic(
+  () => import("@/components/global-add-student-dialog").then((mod) => mod.GlobalAddStudentDialog),
+  { ssr: false, loading: () => null },
+);
+
 interface Circle {
   name: string;
 
@@ -68,6 +77,23 @@ type IdleWindow = Window & {
 
 const CIRCLES_CACHE_DURATION = 5 * 60 * 1000;
 const ROLE_CACHE_DURATION = 5 * 60 * 1000;
+const CONTACT_REPORTS_CACHE_DURATION = 60 * 1000;
+
+const scheduleIdleTask = (callback: () => void, timeout = 1200) => {
+  const idleWindow = window as IdleWindow;
+
+  if (typeof idleWindow.requestIdleCallback === "function") {
+    const handle = idleWindow.requestIdleCallback(callback, { timeout });
+    return () => {
+      if (typeof idleWindow.cancelIdleCallback === "function") {
+        idleWindow.cancelIdleCallback(handle);
+      }
+    };
+  }
+
+  const handle = window.setTimeout(callback, 120);
+  return () => window.clearTimeout(handle);
+};
 
 function NavItem({
   icon: Icon,
@@ -83,6 +109,8 @@ function NavItem({
   strong,
 
   disabled,
+
+  badgeCount,
 }: {
   icon: React.ElementType;
 
@@ -97,6 +125,8 @@ function NavItem({
   strong?: boolean;
 
   disabled?: boolean;
+
+  badgeCount?: number;
 }) {
   return (
     <button
@@ -119,6 +149,12 @@ function NavItem({
       />
 
       <span className={`flex-1 text-right leading-tight ${strong ? "font-extrabold" : ""}`}>{label}</span>
+
+      {badgeCount && badgeCount > 0 ? (
+        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#3453a7] px-1.5 py-0.5 text-[11px] font-extrabold leading-none text-white">
+          {badgeCount > 99 ? "99+" : badgeCount}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -138,6 +174,8 @@ function CollapseSection({
 
   label,
 
+  badgeCount,
+
   isOpen,
 
   onToggle,
@@ -147,6 +185,8 @@ function CollapseSection({
   icon: React.ElementType;
 
   label: string;
+
+  badgeCount?: number;
 
   isOpen: boolean;
 
@@ -169,6 +209,12 @@ function CollapseSection({
         />
 
         <span className="flex-1 text-right leading-tight">{label}</span>
+
+        {badgeCount && badgeCount > 0 ? (
+          <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#3453a7] px-1.5 py-0.5 text-[11px] font-extrabold leading-none text-white">
+            {badgeCount > 99 ? "99+" : badgeCount}
+          </span>
+        ) : null}
 
         <ChevronLeft
           size={14}
@@ -231,6 +277,7 @@ export function Header() {
   const [userAccountNumber, setUserAccountNumber] = useState<number | null>(null);
   const [notificationStartAt, setNotificationStartAt] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [contactReportsUnreadCount, setContactReportsUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<{id:string;message:string;is_read:boolean;created_at:string}[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [sidebarPlanProgress, setSidebarPlanProgress] = useState<number | null>(null);
@@ -247,6 +294,29 @@ export function Header() {
   const hasPermission = (key: string) => isFullAccess || userPermissions.includes(key);
 
   const router = useRouter();
+
+  const hydrateCirclesFromCache = () => {
+    const cachedCircles = localStorage.getItem("circlesCache");
+    const circlesCacheTime = localStorage.getItem("circlesCacheTime");
+    const hasFreshCirclesCache = Boolean(
+      cachedCircles &&
+      circlesCacheTime &&
+      Date.now() - Number(circlesCacheTime) < CIRCLES_CACHE_DURATION
+    );
+
+    if (!hasFreshCirclesCache) {
+      return false;
+    }
+
+    try {
+      const parsedCircles = JSON.parse(cachedCircles || "[]");
+      setCircles(parsedCircles);
+      setCirclesLoaded(true);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const confirmDialog = useConfirmDialog();
 
@@ -273,6 +343,20 @@ export function Header() {
     }
   };
 
+  const fetchContactReportsUnreadCount = async () => {
+    try {
+      const response = await fetch("/api/contact", { cache: "no-store" });
+      const data = await response.json();
+      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const nextUnreadCount = messages.filter((message) => message?.status === "unread").length;
+      setContactReportsUnreadCount(nextUnreadCount);
+      localStorage.setItem("contactReportsUnreadCount", String(nextUnreadCount));
+      localStorage.setItem("contactReportsUnreadCountAt", Date.now().toString());
+    } catch {
+      setContactReportsUnreadCount(0);
+    }
+  };
+
   const openDailyExecution = () => {
     setIsMobileMenuOpen(false);
     scrollToTop();
@@ -282,7 +366,7 @@ export function Header() {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: "instant" });
 
   useEffect(() => {
-      let cleanup: (() => void) | undefined;
+      const cleanups: Array<() => void> = [];
         // جلب الترتيب العام للطالب عند تحميل القائمة الجانبية
         const fetchGlobalRank = async () => {
           const accNum = localStorage.getItem("accountNumber");
@@ -328,7 +412,9 @@ export function Header() {
             }
           }
         };
-        fetchGlobalRank();
+        cleanups.push(scheduleIdleTask(() => {
+          void fetchGlobalRank();
+        }));
     const loggedIn = localStorage.getItem("isLoggedIn") === "true";
 
     const role = localStorage.getItem("userRole");
@@ -345,6 +431,17 @@ export function Header() {
 
     const accNumStr = localStorage.getItem("accountNumber");
     if (accNumStr) setUserAccountNumber(Number(accNumStr));
+
+    const hasCachedCircles = hydrateCirclesFromCache();
+    if (!hasCachedCircles) {
+      cleanups.push(scheduleIdleTask(() => {
+        void fetchCircles();
+      }));
+    }
+
+    cleanups.push(scheduleIdleTask(() => {
+      void router.prefetch("/students/all?scope=all");
+    }));
 
     if (accNumStr) {
       const cachedUnread = localStorage.getItem(`unreadCount_${accNumStr}`);
@@ -368,40 +465,11 @@ export function Header() {
             setIsSidebarStudentStatsLoading(false);
           } catch {}
         }
-        fetchSidebarPlan(accNum);
+        cleanups.push(scheduleIdleTask(() => {
+          void fetchSidebarPlan(accNum);
+        }));
       }
       else setIsSidebarStudentStatsLoading(false);
-
-      const cachedCircles = localStorage.getItem("circlesCache");
-      const circlesCacheTime = localStorage.getItem("circlesCacheTime");
-      const hasFreshCirclesCache = Boolean(
-        cachedCircles &&
-        circlesCacheTime &&
-        Date.now() - Number(circlesCacheTime) < CIRCLES_CACHE_DURATION
-      );
-
-      if (hasFreshCirclesCache) {
-        try {
-          const parsedCircles = JSON.parse(cachedCircles || "[]");
-          setCircles(parsedCircles);
-          setCirclesLoaded(true);
-        } catch {}
-      } else {
-        const idleWindow = window as IdleWindow;
-        const loadCachedCirclesInBackground = () => loadCircles();
-
-        if (typeof idleWindow.requestIdleCallback === "function") {
-          const idleId = idleWindow.requestIdleCallback(loadCachedCirclesInBackground, { timeout: 2000 });
-          cleanup = () => {
-            if (typeof idleWindow.cancelIdleCallback === "function") {
-              idleWindow.cancelIdleCallback(idleId);
-            }
-          };
-        } else {
-          const timeoutId = window.setTimeout(loadCachedCirclesInBackground, 1200);
-          cleanup = () => window.clearTimeout(timeoutId);
-        }
-      }
     } else {
       setIsSidebarStudentStatsLoading(false);
     }
@@ -420,13 +488,54 @@ export function Header() {
         }
 
         if (Date.now() - cachedRoleAt > ROLE_CACHE_DURATION) {
-          verifyFreshRole(accountNumber);
+          cleanups.push(scheduleIdleTask(() => {
+            void verifyFreshRole(accountNumber);
+          }));
         }
       }
     }
 
-    return () => cleanup?.();
+    return () => cleanups.forEach((cleanup) => cleanup());
   }, []);
+
+  useEffect(() => {
+    if (!authResolved || !hasPermission("التقارير")) {
+      setContactReportsUnreadCount(0);
+      return;
+    }
+
+    const cachedUnreadCount = Number(localStorage.getItem("contactReportsUnreadCount") || "0");
+    const cachedUnreadAt = Number(localStorage.getItem("contactReportsUnreadCountAt") || "0");
+    const hasFreshUnreadCache = Date.now() - cachedUnreadAt < CONTACT_REPORTS_CACHE_DURATION;
+
+    if (hasFreshUnreadCache) {
+      setContactReportsUnreadCount(cachedUnreadCount);
+    } else {
+      void fetchContactReportsUnreadCount();
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchContactReportsUnreadCount();
+    }, CONTACT_REPORTS_CACHE_DURATION);
+
+    return () => window.clearInterval(intervalId);
+  }, [authResolved, userPermissions, userRole, userAccountNumber]);
+
+  useEffect(() => {
+    const handleContactMessagesChanged = () => {
+      if (!authResolved || !hasPermission("التقارير")) {
+        return;
+      }
+
+      void fetchContactReportsUnreadCount();
+    };
+
+    window.addEventListener("contactMessages:changed", handleContactMessagesChanged);
+
+    return () => {
+      window.removeEventListener("contactMessages:changed", handleContactMessagesChanged);
+    };
+  }, [authResolved, userPermissions, userRole, userAccountNumber]);
 
   const verifyFreshRole = async (accountNumber: string) => {
     try {
@@ -517,6 +626,7 @@ export function Header() {
       if (data.circles) {
         setCircles(data.circles);
         setCirclesLoaded(true);
+        void router.prefetch("/students/all?scope=all");
 
         localStorage.setItem("circlesCache", JSON.stringify(data.circles));
 
@@ -1442,6 +1552,7 @@ export function Header() {
                 <CollapseSection
                   icon={FileText}
                   label="التقارير"
+                  badgeCount={contactReportsUnreadCount}
                   isOpen={isAdminReportsOpen}
                   onToggle={() => setIsAdminReportsOpen(!isAdminReportsOpen)}
                 >
@@ -1492,6 +1603,7 @@ export function Header() {
                       label={label}
                       onClick={() => handleNav(path)}
                       indent
+                      badgeCount={label === "تقارير الرسائل" ? contactReportsUnreadCount : undefined}
                     />
                   ))}
                 </CollapseSection>

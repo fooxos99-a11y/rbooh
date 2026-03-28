@@ -10,6 +10,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
 
+    const respond = (payload: Record<string, unknown>) => {
+      const response = NextResponse.json(payload)
+      response.headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600")
+      return response
+    }
+
     if (studentId) {
       const { data, error } = await supabase
         .from("students")
@@ -18,9 +24,9 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (error || !data) {
-        return NextResponse.json({ theme: null })
+        return respond({ theme: null })
       }
-      return NextResponse.json({ theme: data.preferred_theme || null })
+      return respond({ theme: data.preferred_theme || null })
     }
 
     // جلب كل المظاهر
@@ -29,7 +35,7 @@ export async function GET(request: NextRequest) {
       .select("id, preferred_theme")
 
     if (error || !data) {
-      return NextResponse.json({ themes: {} })
+      return respond({ themes: {} })
     }
 
     const themes: Record<string, string> = {}
@@ -37,11 +43,13 @@ export async function GET(request: NextRequest) {
       if (row.preferred_theme) themes[row.id] = row.preferred_theme
     }
 
-    return NextResponse.json({ themes })
+    return respond({ themes })
   } catch (error: any) {
     console.error("[themes] Error fetching themes:", error)
     const studentId = new URL(request.url).searchParams.get("studentId")
-    return NextResponse.json(studentId ? { theme: null } : { themes: {} })
+    const response = NextResponse.json(studentId ? { theme: null } : { themes: {} })
+    response.headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120")
+    return response
   }
 }
 

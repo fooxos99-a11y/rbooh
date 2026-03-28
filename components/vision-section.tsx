@@ -8,8 +8,8 @@ export function VisionSection() {
         <div className="max-w-4xl mx-auto">
           <div className="bg-white border border-[#d7e4fb] rounded-lg p-6 sm:p-8 md:p-10 lg:p-12 shadow-[0_10px_30px_rgba(15,47,109,0.04)]">
             <p className="text-base sm:text-lg md:text-xl text-[#24406f] leading-relaxed text-center">
-              أن تكون الدورة بيئةً مثالية في تعليم كتاب الله تعالى، وتربية الطلاب على العلم والعمل والخلق، بما يسهم في
-              صناعة جيل قرآني متميز علمًا وسلوكًا وعطاءً.
+              أن تكون الدورة بيئةً مثالية في تعليم كتاب الله تعالى، بما يسهم في صناعة جيل قرآني متميز علمًا وسلوكًا
+              وعطاءً.
             </p>
           </div>
         </div>

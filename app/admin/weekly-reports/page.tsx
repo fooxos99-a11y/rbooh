@@ -26,7 +26,7 @@ export default function AdminWeeklyReportsPage() {
         setIsLoading(true)
         setError("")
 
-        const response = await fetch(`/api/circles?t=${Date.now()}`, { cache: "no-store" })
+        const response = await fetch("/api/circles")
         const data = await response.json()
 
         if (!response.ok) {

@@ -1,13 +1,12 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Cairo, Readex_Pro } from "next/font/google"
+import { Cairo, Readex_Pro } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ConfirmDialogProvider } from "@/hooks/use-confirm-dialog"
 import { GlobalAdminModals } from '@/components/global-admin-modals'
 import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
-const geist = Geist({ subsets: ["latin"] })
 const cairo = Cairo({ subsets: ["arabic"], variable: "--font-cairo" })
 const readexPro = Readex_Pro({ subsets: ["arabic", "latin"], variable: "--font-display" })
 

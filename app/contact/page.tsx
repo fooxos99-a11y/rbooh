@@ -44,6 +44,7 @@ export default function ContactPage() {
       const data = await response.json()
 
       if (response.ok) {
+        window.dispatchEvent(new Event("contactMessages:changed"))
         await showAlert("تم إرسال رسالتك بنجاح!", "نجاح")
         setFormData({ name: "", subject: "", message: "" })
       } else {

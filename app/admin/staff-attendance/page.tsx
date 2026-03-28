@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +11,7 @@ import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { getSaudiDateString, getSaudiTimeString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
-import { Calendar as CalendarIcon } from "lucide-react"
+import { Calendar as CalendarIcon, Check } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 
@@ -45,6 +45,13 @@ interface TeacherAttendanceRecord {
   status: AttendanceStatus
 }
 
+interface TeacherAttendanceApiRecord {
+  id: string
+  teacher_id: string
+  attendance_date: string
+  status: AttendanceStatus
+}
+
 const STATUS_OPTIONS: Array<{ value: Exclude<AttendanceStatus, null>; label: string; className: string }> = [
   {
     value: "present",
@@ -75,6 +82,7 @@ function buildAttendanceTimestamp(date: string) {
 export default function StaffAttendancePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير")
   const showAlert = useAlertDialog()
+  const todaySaudiDate = getSaudiDateString()
 
   const [studentRecords, setStudentRecords] = useState<StudentAttendanceRecord[]>([])
   const [teacherRecords, setTeacherRecords] = useState<TeacherAttendanceRecord[]>([])
@@ -82,18 +90,33 @@ export default function StaffAttendancePage() {
   const [selectedCircle, setSelectedCircle] = useState("all")
   const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
   const [activeGroup, setActiveGroup] = useState<StaffGroup>("students")
+  const [isEditMode, setIsEditMode] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [timeTick, setTimeTick] = useState(() => Date.now())
   const [savingStudentIds, setSavingStudentIds] = useState<string[]>([])
   const [savingTeacherIds, setSavingTeacherIds] = useState<string[]>([])
+  const [recentlySavedStudentIds, setRecentlySavedStudentIds] = useState<string[]>([])
+  const studentSuccessTimersRef = useRef<Record<string, number>>({})
 
   const filteredStudentRecords = useMemo(() => {
     const base = selectedCircle === "all"
       ? studentRecords
       : studentRecords.filter((record) => record.halaqah === selectedCircle)
 
-    const pendingRecords = base.filter((record) => !record.isEvaluated && record.status === null)
+    const pendingRecords = isEditMode && selectedDate === todaySaudiDate
+      ? base.filter((record) => !record.isEvaluated)
+      : base.filter((record) => {
+        if (record.isEvaluated) {
+          return false
+        }
+
+        if (record.status === null) {
+          return true
+        }
+
+        return recentlySavedStudentIds.includes(record.student_id)
+      })
 
     return [...pendingRecords].sort((first, second) => {
       const firstNumber = first.account_number || 0
@@ -103,7 +126,7 @@ export default function StaffAttendancePage() {
       }
       return first.student_name.localeCompare(second.student_name, "ar")
     })
-  }, [selectedCircle, studentRecords])
+  }, [isEditMode, recentlySavedStudentIds, selectedCircle, selectedDate, studentRecords, todaySaudiDate])
 
   const filteredTeacherRecords = useMemo(() => {
     const base = selectedCircle === "all"
@@ -123,6 +146,7 @@ export default function StaffAttendancePage() {
   const isAttendanceDateAllowed = isSaudiAttendanceDateAllowed(selectedDate)
   const isAttendanceWindowOpen = isSaudiAttendanceWindowOpen(new Date(timeTick))
   const saudiTimeLabel = getSaudiTimeString(new Date(timeTick))
+  const isTodaySelected = selectedDate === todaySaudiDate
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -130,6 +154,14 @@ export default function StaffAttendancePage() {
     }, 60_000)
 
     return () => window.clearInterval(intervalId)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      Object.values(studentSuccessTimersRef.current).forEach((timerId) => {
+        window.clearTimeout(timerId)
+      })
+    }
   }, [])
 
   useEffect(() => {
@@ -153,24 +185,10 @@ export default function StaffAttendancePage() {
   }, [circles, selectedCircle])
 
   useEffect(() => {
-    if (authLoading || !authVerified) {
-      return
+    if (!isTodaySelected && isEditMode) {
+      setIsEditMode(false)
     }
-
-    const refreshRecords = () => {
-      if (document.visibilityState === "visible" && isAttendanceWindowOpen) {
-        void fetchRecords(selectedDate)
-      }
-    }
-
-    window.addEventListener("focus", refreshRecords)
-    document.addEventListener("visibilitychange", refreshRecords)
-
-    return () => {
-      window.removeEventListener("focus", refreshRecords)
-      document.removeEventListener("visibilitychange", refreshRecords)
-    }
-  }, [authLoading, authVerified, isAttendanceWindowOpen, selectedDate])
+  }, [isEditMode, isTodaySelected])
 
   const fetchRecords = async (date: string) => {
     const isFirstLoad = isLoading
@@ -205,8 +223,12 @@ export default function StaffAttendancePage() {
 
       const nextStudentRecords = Array.isArray(studentsData.records) ? studentsData.records : []
       const teachers: TeacherRecord[] = Array.isArray(teachersData.teachers) ? teachersData.teachers : []
+      const teacherAttendanceRecords: TeacherAttendanceApiRecord[] = Array.isArray(teacherAttendanceData.records)
+        ? teacherAttendanceData.records
+        : []
+
       const teacherAttendanceMap = new Map(
-        (Array.isArray(teacherAttendanceData.records) ? teacherAttendanceData.records : [])
+        teacherAttendanceRecords
           .filter((record) => record.attendance_date === date)
           .map((record) => [record.teacher_id, record] as const),
       )
@@ -262,6 +284,22 @@ export default function StaffAttendancePage() {
     )))
   }
 
+  const flashStudentSaved = (studentId: string) => {
+    const activeTimer = studentSuccessTimersRef.current[studentId]
+    if (activeTimer) {
+      window.clearTimeout(activeTimer)
+    }
+
+    setRecentlySavedStudentIds((current) => (
+      current.includes(studentId) ? current : [...current, studentId]
+    ))
+
+    studentSuccessTimersRef.current[studentId] = window.setTimeout(() => {
+      setRecentlySavedStudentIds((current) => current.filter((id) => id !== studentId))
+      delete studentSuccessTimersRef.current[studentId]
+    }, 850)
+  }
+
   const saveStudentStatus = async (studentId: string, status: AttendanceStatus) => {
     if (!status) {
       return
@@ -269,6 +307,7 @@ export default function StaffAttendancePage() {
 
     const previousStatus = studentRecords.find((record) => record.student_id === studentId)?.status ?? null
     setStudentStatus(studentId, status)
+    flashStudentSaved(studentId)
     setSavingStudentIds((current) => [...current, studentId])
 
     try {
@@ -340,7 +379,7 @@ export default function StaffAttendancePage() {
     }
   }
 
-  const isFutureDate = selectedDate > getSaudiDateString()
+  const isFutureDate = selectedDate > todaySaudiDate
 
   if (isLoading || authLoading) {
     return (
@@ -368,7 +407,7 @@ export default function StaffAttendancePage() {
             <h1 className="text-3xl md:text-4xl font-black text-[#1a2332]">التحضير</h1>
           </section>
 
-          <Card className="border border-[#003f55]/15 shadow-sm">
+          <Card className="border border-[#003f55]/15 shadow-sm transition-all duration-200 hover:shadow-md">
             <CardContent className="pt-6">
               <div className="grid gap-4 lg:grid-cols-[220px_240px_1fr] lg:items-end">
                 <div className="space-y-2 text-right">
@@ -382,7 +421,7 @@ export default function StaffAttendancePage() {
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
-                        className={`w-full justify-start gap-2 text-right font-normal flex-row-reverse ${!selectedDate ? "text-muted-foreground" : ""}`}
+                        className={`w-full justify-start gap-2 text-right font-normal flex-row-reverse transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm ${!selectedDate ? "text-muted-foreground" : ""}`}
                       >
                         <span className="flex-1 text-right" dir="ltr">{selectedDate || "اختر تاريخاً"}</span>
                         <CalendarIcon className="h-4 w-4" />
@@ -406,32 +445,45 @@ export default function StaffAttendancePage() {
                   </Popover>
                 </div>
                 <div className="space-y-2 text-right">
-                  <Label className="text-sm font-semibold text-[#1a2332]">الحلقة</Label>
-                  <Select value={selectedCircle} onValueChange={setSelectedCircle}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="اختر الحلقة" />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      <SelectItem value="all">كل الحلقات</SelectItem>
-                      {circles.map((circle) => (
-                        <SelectItem key={circle} value={circle}>{circle}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-end gap-0.5">
+                    <div className="w-[150px] shrink-0">
+                      <Select value={selectedCircle} onValueChange={setSelectedCircle}>
+                        <SelectTrigger className="transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm">
+                          <SelectValue placeholder="اختر الحلقة" />
+                        </SelectTrigger>
+                        <SelectContent dir="rtl">
+                          <SelectItem value="all">كل الحلقات</SelectItem>
+                          {circles.map((circle) => (
+                            <SelectItem key={circle} value={circle}>{circle}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {activeGroup === "students" && isTodaySelected ? (
+                      <Button
+                        type="button"
+                        variant={isEditMode ? "default" : "outline"}
+                        className={isEditMode ? "bg-[#3453a7] text-white transition-all duration-200 hover:bg-[#2d4691] hover:shadow-sm" : "border-[#003f55]/20 text-[#1a2332] transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm"}
+                        onClick={() => setIsEditMode((current) => !current)}
+                      >
+                        تعديل
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-3">
                   <div className="inline-flex rounded-2xl border border-[#003f55]/15 bg-[#f4fafb] p-1">
                     <button
                       type="button"
                       onClick={() => setActiveGroup("students")}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "students" ? "bg-[#3453a7] text-white" : "text-[#4d6b76] hover:text-[#3453a7]"}`}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-all duration-200 ${activeGroup === "students" ? "bg-[#3453a7] text-white shadow-sm" : "text-[#4d6b76] hover:bg-white hover:text-[#3453a7]"}`}
                     >
                       طلاب
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveGroup("teachers")}
-                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-colors ${activeGroup === "teachers" ? "bg-[#3453a7] text-white" : "text-[#4d6b76] hover:text-[#3453a7]"}`}
+                      className={`rounded-xl px-4 py-2 text-sm font-bold transition-all duration-200 ${activeGroup === "teachers" ? "bg-[#3453a7] text-white shadow-sm" : "text-[#4d6b76] hover:bg-white hover:text-[#3453a7]"}`}
                     >
                       معلمين
                     </button>
@@ -442,9 +494,11 @@ export default function StaffAttendancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border border-[#003f55]/15 shadow-sm">
+          <Card className="border border-[#003f55]/15 shadow-sm transition-all duration-200 hover:shadow-md">
             <CardHeader>
-              <CardTitle className="text-right text-[#1a2332]">{activeGroup === "students" ? "قائمة الطلاب" : "قائمة المعلمين"}</CardTitle>
+              <div className="flex flex-wrap items-center justify-start gap-3">
+                <CardTitle className="text-left text-[#1a2332]">{activeGroup === "students" ? "قائمة الطلاب" : "قائمة المعلمين"}</CardTitle>
+              </div>
             </CardHeader>
             <CardContent>
               {isFutureDate ? (
@@ -462,35 +516,47 @@ export default function StaffAttendancePage() {
               ) : activeGroup === "students" ? (
                 filteredStudentRecords.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
-                    لا يوجد طلاب ضمن الفلترة الحالية.
+                    {isEditMode && isTodaySelected ? "لا يوجد طلاب قابلون للتعديل ضمن الفلترة الحالية." : "لا يوجد طلاب ضمن الفلترة الحالية."}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2.5">
                     {filteredStudentRecords.map((record) => (
-                      <Card key={record.student_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm">
-                        <CardContent className="p-2.5" dir="rtl">
-                          <div className="mb-2 flex justify-start">
-                            <p className="text-base font-black text-[#1a2332] text-left">{record.student_name}</p>
-                          </div>
-                          <Select
-                            value={record.status ?? undefined}
-                            onValueChange={(value) => {
-                              void saveStudentStatus(record.student_id, value as Exclude<AttendanceStatus, null>)
-                            }}
-                            disabled={!isAttendanceDateAllowed || savingStudentIds.includes(record.student_id)}
-                          >
-                            <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] [&>span]:flex-1 [&>span]:text-right">
-                              <SelectValue placeholder="اختيار" />
-                            </SelectTrigger>
-                            <SelectContent dir="rtl">
-                              {STATUS_OPTIONS.map((option) => (
-                                <SelectItem key={`${record.student_id}-${option.value}`} value={option.value} className={`text-base ${option.className}`}>
-                                  {option.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </CardContent>
+                      <Card
+                        key={record.student_id}
+                        className={`relative w-full md:max-w-[200px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${recentlySavedStudentIds.includes(record.student_id) ? "border border-[#003f55]/12 bg-white/95 animate-pulse" : "border border-[#003f55]/12 bg-white/95"}`}
+                      >
+                        {recentlySavedStudentIds.includes(record.student_id) ? (
+                          <CardContent className="flex min-h-[102px] items-center justify-center p-2.5" dir="rtl">
+                            <div className="flex flex-col items-center justify-center gap-2 text-center">
+                              <Check className="h-10 w-10 text-[#3453a7]" />
+                              <span className="text-sm font-bold text-[#3453a7]">تم الحفظ</span>
+                            </div>
+                          </CardContent>
+                        ) : (
+                          <CardContent className="p-2.5" dir="rtl">
+                            <div className="mb-2 flex justify-start">
+                              <p className="text-base font-black text-[#1a2332] text-left">{record.student_name}</p>
+                            </div>
+                            <Select
+                              value={record.status ?? undefined}
+                              onValueChange={(value) => {
+                                void saveStudentStatus(record.student_id, value as Exclude<AttendanceStatus, null>)
+                              }}
+                              disabled={!isAttendanceDateAllowed || savingStudentIds.includes(record.student_id)}
+                            >
+                              <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] transition-all duration-200 hover:border-[#3453a7]/30 hover:shadow-sm [&>span]:flex-1 [&>span]:text-right">
+                                <SelectValue placeholder="اختيار" />
+                              </SelectTrigger>
+                              <SelectContent dir="rtl">
+                                {STATUS_OPTIONS.map((option) => (
+                                  <SelectItem key={`${record.student_id}-${option.value}`} value={option.value} className={`text-base ${option.className}`}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </CardContent>
+                        )}
                       </Card>
                     ))}
                   </div>
@@ -502,7 +568,7 @@ export default function StaffAttendancePage() {
               ) : (
                 <div className="flex flex-wrap gap-2.5">
                   {filteredTeacherRecords.map((record) => (
-                    <Card key={record.teacher_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm">
+                    <Card key={record.teacher_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                       <CardContent className="p-2.5" dir="rtl">
                         <div className="mb-2 flex justify-start">
                           <p className="text-base font-black text-[#1a2332] text-left">{record.teacher_name}</p>
@@ -514,7 +580,7 @@ export default function StaffAttendancePage() {
                           }}
                           disabled={!isAttendanceDateAllowed || savingTeacherIds.includes(record.teacher_id)}
                         >
-                          <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] [&>span]:flex-1 [&>span]:text-right">
+                          <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] transition-all duration-200 hover:border-[#3453a7]/30 hover:shadow-sm [&>span]:flex-1 [&>span]:text-right">
                             <SelectValue placeholder="اختيار" />
                           </SelectTrigger>
                           <SelectContent dir="rtl">

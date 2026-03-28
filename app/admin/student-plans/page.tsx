@@ -586,7 +586,7 @@ export default function StudentPlansPage() {
   useEffect(() => {
     if (isLoading) return;
     setIsCirclesLoading(true);
-    fetch("/api/circles", { cache: "no-store" })
+    fetch("/api/circles")
       .then((r) => r.json())
       .then((d) => {
         const loadedCircles = d.circles || [];

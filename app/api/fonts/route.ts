@@ -7,6 +7,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const studentId = searchParams.get("studentId")
 
+    const respond = (payload: Record<string, unknown>, status = 200) => {
+      const response = NextResponse.json(payload, { status })
+      response.headers.set("Cache-Control", "public, max-age=300, stale-while-revalidate=600")
+      return response
+    }
+
     if (studentId) {
       const { data, error } = await supabase
         .from("student_preferences")
@@ -15,11 +21,11 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (error || !data) {
-        return NextResponse.json({ fonts: {} })
+        return respond({ fonts: {} })
       }
       const fonts: Record<string, string> = {}
       if (data.active_font) fonts[studentId] = data.active_font
-      return NextResponse.json({ fonts })
+      return respond({ fonts })
     }
 
     // جلب كل الخطوط
@@ -28,7 +34,7 @@ export async function GET(request: NextRequest) {
       .select("student_id, active_font")
 
     if (error || !data) {
-      return NextResponse.json({ fonts: {} })
+      return respond({ fonts: {} })
     }
 
     const fonts: Record<string, string> = {}
@@ -36,10 +42,12 @@ export async function GET(request: NextRequest) {
       if (row.active_font) fonts[row.student_id] = row.active_font
     }
 
-    return NextResponse.json({ fonts })
+    return respond({ fonts })
   } catch (error) {
     console.error("[fonts] Error fetching fonts:", error)
-    return NextResponse.json({ fonts: {} })
+    const response = NextResponse.json({ fonts: {} })
+    response.headers.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120")
+    return response
   }
 }
 

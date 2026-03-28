@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Facebook, Twitter, Instagram, Phone, Mail, MapPin } from "lucide-react"
+import { Phone, Mail, MapPin } from "lucide-react"
 
 export function Footer() {
   return (
@@ -18,10 +18,8 @@ export function Footer() {
           <div>
             <h3 className="mb-6 inline-block bg-gradient-to-r from-[#0f2f6d] via-[#1f4d9a] to-[#3667b2] bg-clip-text text-2xl font-bold text-transparent">من نحن</h3>
             <p className="text-base leading-relaxed">
-              مجمع حلقات الحبيب هو مجمع تعليمي متخصص في تحفيظ القرآن الكريم وتعليم علومه، يسعى لتقديم بيئة تربوية متميزة
-              تجمع بين الأصالة والمعاصرة. نهدف إلى تخريج جيل قرآني متقن لكتاب الله، ملتزم بتعاليمه، قادر على خدمة دينه
-              ومجتمعه. نوفر برامج تعليمية متنوعة تناسب جميع الأعمار والمستويات، مع التركيز على الجودة والإتقان والمتابعة
-              المستمرة لكل طالب.
+              برنامج نوعي يُعنى بحفظ القرآن الكريم وإتقانه، وفق مسارات تعليمية مدروسة وخطط مرحلية دقيقة، بإشراف نخبة من
+              المقرئين والمشرفين المتخصصين؛ لضمان بناء حافظٍ متقن وتحقيق مخرجات عالية الجودة.
             </p>
           </div>
 
@@ -66,29 +64,9 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-3">
                 <MapPin className="w-5 h-5 text-[#1f4d9a]" />
-                <span>السعودية، بريدة، الهلال</span>
+                <span>السعودية، بريدة، الربوة</span>
               </li>
             </ul>
-            <div className="flex gap-4 mt-6">
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#1f4d9a]/35 text-[#1f4d9a] transition-colors hover:bg-[linear-gradient(135deg,#0f2f6d_0%,#1f4d9a_55%,#3667b2_100%)] hover:text-white"
-              >
-                <Instagram className="w-5 h-5" />
-              </Link>
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#1f4d9a]/35 text-[#1f4d9a] transition-colors hover:bg-[linear-gradient(135deg,#0f2f6d_0%,#1f4d9a_55%,#3667b2_100%)] hover:text-white"
-              >
-                <Twitter className="w-5 h-5" />
-              </Link>
-              <Link
-                href="#"
-                className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-[#1f4d9a]/35 text-[#1f4d9a] transition-colors hover:bg-[linear-gradient(135deg,#0f2f6d_0%,#1f4d9a_55%,#3667b2_100%)] hover:text-white"
-              >
-                <Facebook className="w-5 h-5" />
-              </Link>
-            </div>
           </div>
         </div>
       </div>

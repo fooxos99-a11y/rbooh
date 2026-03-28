@@ -1,5 +1,5 @@
 const RIYADH_TIME_ZONE = "Asia/Riyadh"
-const MANUALLY_ALLOWED_ATTENDANCE_DATES = ["2026-03-27"]
+const MANUALLY_ALLOWED_ATTENDANCE_DATES = ["2026-03-27", "2026-03-28"]
 
 export function getSaudiDateString(date = new Date()) {
 	const formatter = new Intl.DateTimeFormat("en-CA", {

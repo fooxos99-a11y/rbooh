@@ -5,17 +5,32 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const date = searchParams.get("date")
+    const savedOn = searchParams.get("saved_on")
     const circle = searchParams.get("circle")
 
-    if (!date) {
-      return NextResponse.json({ error: "Date is required" }, { status: 400 })
+    if (!date && !savedOn) {
+      return NextResponse.json({ error: "date أو saved_on مطلوب" }, { status: 400 })
     }
 
-    console.log("[v0] Fetching attendance records for date:", date, "circle:", circle)
+    console.log("[v0] Fetching attendance records for date:", date, "saved_on:", savedOn, "circle:", circle)
 
     const supabase = await createClient()
 
-    let query = supabase.from("attendance_records").select("id, student_id, status, date").eq("date", date)
+    let query = supabase.from("attendance_records").select("id, student_id, status, date, created_at, updated_at")
+
+    if (date) {
+      query = query.eq("date", date)
+    }
+
+    if (savedOn) {
+      const dayStart = new Date(`${savedOn}T00:00:00+03:00`)
+      const dayEnd = new Date(dayStart)
+      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+
+      query = query.or(
+        `and(created_at.gte.${dayStart.toISOString()},created_at.lt.${dayEnd.toISOString()}),and(updated_at.gte.${dayStart.toISOString()},updated_at.lt.${dayEnd.toISOString()})`,
+      )
+    }
 
     if (circle) {
       query = query.eq("halaqah", circle)
@@ -44,6 +59,8 @@ export async function GET(request: NextRequest) {
           student_id: record.student_id,
           student_name: student?.name || "Unknown",
           date: record.date,
+          created_at: record.created_at || null,
+          updated_at: record.updated_at || null,
           status: record.status,
           hafiz_level: evaluations?.hafiz_level || null,
           tikrar_level: evaluations?.tikrar_level || null,
@@ -65,7 +82,7 @@ export async function GET(request: NextRequest) {
       }),
     )
 
-    console.log("[v0] Found", formattedRecords.length, "records for date:", date, "circle:", circle)
+    console.log("[v0] Found", formattedRecords.length, "records for date:", date, "saved_on:", savedOn, "circle:", circle)
 
     const response = NextResponse.json({ records: formattedRecords, count: formattedRecords.length })
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
