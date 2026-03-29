@@ -10,12 +10,15 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SiteLoader } from "@/components/ui/site-loader"
 import {
+  EnrollmentPartialJuzRange,
   EnrollmentJuzReviewStatus,
   EnrollmentJuzTestStatus,
   formatEnrollmentMemorizedAmount,
+  formatTestableMemorizedLabel,
   getNeedsMasteryJuzNumbers,
   getPassedJuzNumbers,
   getReviewRequestedJuzNumbers,
+  normalizeEnrollmentPartialJuzRanges,
   normalizeSelectedJuzs,
   normalizeEnrollmentReviewResults,
   normalizeEnrollmentTestResults,
@@ -27,6 +30,7 @@ interface EnrollmentRequestWithTests {
   educational_stage: string
   memorized_amount?: string | null
   selected_juzs?: number[]
+  partial_juz_ranges?: EnrollmentPartialJuzRange[]
   created_at: string
   test_reviewed?: boolean | null
   juz_test_results?: Record<number, EnrollmentJuzTestStatus>
@@ -52,7 +56,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
         setIsLoading(true)
         const { data, error } = await supabase
           .from("enrollment_requests")
-          .select("id, full_name, educational_stage, memorized_amount, selected_juzs, created_at, test_reviewed, juz_test_results, juz_review_results")
+          .select("id, full_name, educational_stage, memorized_amount, selected_juzs, partial_juz_ranges, created_at, test_reviewed, juz_test_results, juz_review_results")
           .order("created_at", { ascending: false })
 
         if (error) throw error
@@ -60,6 +64,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
         const normalizedRequests = (data || []).map((request: any) => ({
           ...request,
           selected_juzs: normalizeSelectedJuzs(request.selected_juzs),
+          partial_juz_ranges: normalizeEnrollmentPartialJuzRanges(request.partial_juz_ranges),
           test_reviewed: Boolean(request.test_reviewed),
           juz_test_results: normalizeEnrollmentTestResults(request.juz_test_results),
           juz_review_results: normalizeEnrollmentReviewResults(request.juz_review_results),
@@ -166,7 +171,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-[92vw] md:max-w-[980px] w-full min-h-[65vh] max-h-[88vh] flex flex-col bg-white rounded-2xl p-0 overflow-hidden" dir="rtl">
-        <DialogHeader className="px-5 py-4 border-b border-[#D4AF37]/30 bg-gradient-to-r from-[#D4AF37]/8 to-transparent text-right shrink-0">
+        <DialogHeader className="px-5 py-4 border-b border-[#8fb1ff]/25 bg-gradient-to-r from-[#eef4ff] to-transparent text-right shrink-0">
           <DialogTitle className="flex w-full justify-start pr-8 text-right text-lg font-bold text-[#1a2332]">
             <span className="inline-flex items-center gap-2">
               <span className="w-8 h-8 rounded-lg bg-[#003f55]/10 border border-[#003f55]/20 flex items-center justify-center text-[#003f55]">
@@ -191,8 +196,8 @@ export function GlobalTestedEnrollmentReviewDialog() {
           </div>
         ) : (
           <div className="grid flex-1 min-h-0 lg:grid-cols-[280px,1fr]">
-            <div className="border-l border-[#D4AF37]/20 overflow-y-auto p-4 space-y-3 bg-[#fcfbf9]">
-              <div className="rounded-2xl border border-[#D4AF37]/20 bg-white px-4 py-3 text-right">
+            <div className="border-l border-[#8fb1ff]/20 overflow-y-auto p-4 space-y-3 bg-[#f7faff]">
+              <div className="rounded-2xl border border-[#8fb1ff]/20 bg-white px-4 py-3 text-right">
                 <p className="text-sm font-bold text-[#1a2332]">اختر الطالب</p>
                 <p className="mt-1 text-xs text-neutral-500">سيظهر هنا فقط الطلاب الذين لديهم أجزاء تم تحويلها إلى العرض.</p>
               </div>
@@ -206,11 +211,11 @@ export function GlobalTestedEnrollmentReviewDialog() {
                   <button
                     key={request.id}
                     onClick={() => setSelectedRequestId(request.id)}
-                    className={`w-full rounded-2xl border p-4 text-right transition-colors ${selectedRequestId === request.id ? "border-[#D4AF37] bg-white shadow-sm" : "border-[#D4AF37]/20 bg-white hover:border-[#D4AF37]/45"}`}
+                    className={`w-full rounded-2xl border p-4 text-right transition-colors ${selectedRequestId === request.id ? "border-[#3453a7] bg-white shadow-sm" : "border-[#8fb1ff]/20 bg-white hover:border-[#8fb1ff]"}`}
                   >
                     <p className="font-bold text-[#1a2332]">{request.full_name}</p>
                     <p className="mt-1 text-xs text-neutral-500">{request.educational_stage}</p>
-                    <p className="mt-2 text-xs text-neutral-600">{formatEnrollmentMemorizedAmount(request.memorized_amount || undefined, request.selected_juzs)}</p>
+                    <p className="mt-2 text-xs text-neutral-600">{formatEnrollmentMemorizedAmount(request.memorized_amount || undefined, request.selected_juzs, request.partial_juz_ranges)}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
                         ناجح: {passedCount}
@@ -230,22 +235,22 @@ export function GlobalTestedEnrollmentReviewDialog() {
             <div className="min-h-0 overflow-y-auto p-5 space-y-4">
               {selectedRequest ? (
                 <>
-                  <div className="rounded-2xl border border-[#D4AF37]/25 bg-white p-4">
+                  <div className="rounded-2xl border border-[#8fb1ff]/25 bg-white p-4">
                     <h3 className="text-lg font-bold text-[#1a2332]">{selectedRequest.full_name}</h3>
                     <p className="mt-1 text-sm text-neutral-500">{selectedRequest.educational_stage}</p>
-                    <p className="mt-3 text-sm text-neutral-700">المحفوظ المصرح به: {formatEnrollmentMemorizedAmount(selectedRequest.memorized_amount || undefined, selectedRequest.selected_juzs)}</p>
+                    <p className="mt-3 text-sm text-neutral-700">المحفوظ المصرح به: {formatEnrollmentMemorizedAmount(selectedRequest.memorized_amount || undefined, selectedRequest.selected_juzs, selectedRequest.partial_juz_ranges)}</p>
                   </div>
 
-                  <div className="rounded-2xl border border-[#D4AF37]/25 bg-white p-4 space-y-3">
+                  <div className="rounded-2xl border border-[#8fb1ff]/25 bg-white p-4 space-y-3">
                     <div>
                       <h4 className="font-bold text-[#1a2332]">تقييم الأجزاء المحوّلة إلى العرض</h4>
                       <p className="mt-1 text-xs text-neutral-500">هذه الأجزاء تم اختيار "عرض" لها من نافذة قبول الطالب.</p>
                     </div>
 
                     {passedJuzs.map((juzNumber) => (
-                      <div key={juzNumber} className="flex items-center justify-between gap-3 rounded-xl border border-[#D4AF37]/20 px-3 py-3">
+                      <div key={juzNumber} className="flex items-center justify-between gap-3 rounded-xl border border-[#8fb1ff]/20 bg-[#f7faff] px-3 py-3">
                         <div>
-                          <p className="font-semibold text-[#1a2332]">الجزء {juzNumber}</p>
+                          <p className="font-semibold leading-7 text-[#1a2332]">{formatTestableMemorizedLabel(juzNumber, selectedRequest.partial_juz_ranges)}</p>
                         </div>
                         <Select
                           value={reviewResults[juzNumber] || "pass"}
@@ -264,7 +269,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
                     ))}
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#D4AF37]/20 bg-[#fcfbf9] px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 rounded-2xl border border-[#8fb1ff]/20 bg-[#f7faff] px-4 py-3">
                     <div className="flex flex-wrap gap-2 text-xs">
                       <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
                         محفوظ: {getPassedJuzNumbers(selectedRequest.juz_test_results, reviewResults).length}
@@ -283,7 +288,7 @@ export function GlobalTestedEnrollmentReviewDialog() {
                   </div>
                 </>
               ) : (
-                <div className="flex min-h-full items-center justify-center rounded-2xl border border-dashed border-[#D4AF37]/30 bg-[#fcfbf9] px-6 py-10 text-center">
+                <div className="flex min-h-full items-center justify-center rounded-2xl border border-dashed border-[#8fb1ff]/30 bg-[#f7faff] px-6 py-10 text-center">
                   <div>
                     <p className="text-lg font-bold text-[#1a2332]">اختر الطالب</p>
                     <p className="mt-2 text-sm text-neutral-500">اختر أحد الطلاب الذين لديهم عرض، ثم ستظهر لك الأجزاء المحوّلة لتقييمها إلى ناجح أو راسب أو اتقان.</p>

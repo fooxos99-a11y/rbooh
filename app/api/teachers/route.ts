@@ -4,6 +4,10 @@ import { NextResponse } from "next/server"
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
+function normalizeHalaqahName(value?: string | null) {
+  return (value || "").trim().toLowerCase()
+}
+
 function normalizeAccountNumber(rawValue: string | null) {
   if (!rawValue) return null
 
@@ -55,7 +59,7 @@ export async function GET(request: Request) {
     // Fetch all users with role 'teacher' or 'deputy_teacher'
     const { data: teachers, error } = await supabase
       .from("users")
-      .select("*")
+      .select("id, name, role, account_number, id_number, halaqah, phone_number")
       .in("role", ["teacher", "deputy_teacher"])
       .order("created_at", { ascending: false })
 
@@ -64,34 +68,35 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "فشل في جلب المعلمين" }, { status: 500 })
     }
 
-    // For each teacher, count their students (ignore case and trim spaces)
-    const teachersWithStudentCount = await Promise.all(
-      (teachers || []).map(async (teacher) => {
-        // جلب جميع الطلاب ثم العد برمجياً مع التطبيع
-        const { data: students, error: studentsError } = await supabase
-          .from("students")
-          .select("halaqah")
+    const { data: students, error: studentsError } = await supabase
+      .from("students")
+      .select("halaqah")
 
-        let count = 0;
-        if (students && Array.isArray(students)) {
-          const teacherHalaqah = (teacher.halaqah || "").trim().toLowerCase();
-          count = students.filter(
-            (student) => (student.halaqah || "").trim().toLowerCase() === teacherHalaqah
-          ).length;
-        }
+    if (studentsError) {
+      console.error("[v0] Error fetching students for teacher counts:", studentsError)
+    }
 
-        return {
-          id: teacher.id,
-          name: teacher.name,
-          accountNumber: teacher.account_number?.toString() || "",
-          idNumber: teacher.id_number || "",
-          halaqah: teacher.halaqah || "",
-          studentCount: count || 0,
-          phoneNumber: teacher.phone_number || "",
-          role: teacher.role || "teacher",
-        }
-      })
-    );
+    const studentCountByHalaqah = new Map<string, number>()
+    ;(students || []).forEach((student) => {
+      const normalizedHalaqah = normalizeHalaqahName(student.halaqah)
+      if (!normalizedHalaqah) return
+      studentCountByHalaqah.set(normalizedHalaqah, (studentCountByHalaqah.get(normalizedHalaqah) || 0) + 1)
+    })
+
+    const teachersWithStudentCount = (teachers || []).map((teacher) => {
+      const teacherHalaqah = normalizeHalaqahName(teacher.halaqah)
+
+      return {
+        id: teacher.id,
+        name: teacher.name,
+        accountNumber: teacher.account_number?.toString() || "",
+        idNumber: teacher.id_number || "",
+        halaqah: teacher.halaqah || "",
+        studentCount: studentCountByHalaqah.get(teacherHalaqah) || 0,
+        phoneNumber: teacher.phone_number || "",
+        role: teacher.role || "teacher",
+      }
+    })
 
     return NextResponse.json({ teachers: teachersWithStudentCount }, { status: 200 })
   } catch (error) {

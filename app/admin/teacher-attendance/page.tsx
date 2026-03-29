@@ -13,7 +13,13 @@ import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { SiteLoader } from "@/components/ui/site-loader"
-import { formatSaudiTimeWithPeriod, getSaudiDateString } from "@/lib/saudi-time"
+import { useResumeRefresh } from "@/hooks/use-resume-refresh"
+import { formatSaudiTimeWithPeriod, getSaudiAttendanceAnchorDate, getSaudiDateString, getSaudiWeekday } from "@/lib/saudi-time"
+
+function getAttendanceAnchorLabel(date: string) {
+  const effectiveDate = getSaudiAttendanceAnchorDate(date)
+  return getSaudiWeekday(effectiveDate) === 0 ? "الأحد" : "الأربعاء"
+}
 
 interface AttendanceRecord {
   id: string
@@ -45,6 +51,8 @@ export default function TeacherAttendancePage() {
   const [filteredRecords, setFilteredRecords] = useState<AttendanceRecord[]>([])
   const [selectedDate, setSelectedDate] = useState(getSaudiDateString())
   const router = useRouter()
+  const effectiveSelectedDate = getSaudiAttendanceAnchorDate(selectedDate)
+  const attendanceAnchorLabel = getAttendanceAnchorLabel(selectedDate)
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -57,29 +65,21 @@ export default function TeacherAttendancePage() {
     }
   }, [router])
 
-  useEffect(() => {
-    const refreshData = () => {
+  useResumeRefresh(
+    () => {
       void fetchAttendanceRecords()
-    }
+    },
+    { minIntervalMs: 180000 },
+  )
 
-    const refreshOnVisibility = () => {
-      if (document.visibilityState === "visible") {
-        refreshData()
-      }
-    }
-
+  useEffect(() => {
     const refreshInterval = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        refreshData()
+        void fetchAttendanceRecords()
       }
-    }, 60000)
-
-    window.addEventListener("focus", refreshData)
-    document.addEventListener("visibilitychange", refreshOnVisibility)
+    }, 180000)
 
     return () => {
-      window.removeEventListener("focus", refreshData)
-      document.removeEventListener("visibilitychange", refreshOnVisibility)
       window.clearInterval(refreshInterval)
     }
   }, [])
@@ -90,7 +90,7 @@ export default function TeacherAttendancePage() {
 
   const fetchAttendanceRecords = async () => {
     try {
-      const response = await fetch("/api/teacher-attendance/all")
+      const response = await fetch(`/api/teacher-attendance/all?date=${selectedDate}`)
       const data = await response.json()
 
       if (data.records) {
@@ -107,7 +107,7 @@ export default function TeacherAttendancePage() {
     let filtered = attendanceRecords
     // Filter by date only
     if (selectedDate) {
-      filtered = filtered.filter((record) => record.attendance_date === selectedDate)
+      filtered = filtered.filter((record) => record.attendance_date === effectiveSelectedDate)
     }
     setFilteredRecords(filtered)
   }
@@ -213,11 +213,12 @@ export default function TeacherAttendancePage() {
                                 setSelectedDate(val);
                               }
                             }}
-                            disabled={(date) => date.getDay() !== 0 && date.getDay() !== 3}
+                            disabled={(date) => date > new Date()}
                             initialFocus
                           />
                         </PopoverContent>
                       </Popover>
+                    <p className="text-sm text-[#4d6b76]">يُحتسب هذا التاريخ على {attendanceAnchorLabel} ({effectiveSelectedDate})</p>
                   </div>
                 </div>
               </CardContent>

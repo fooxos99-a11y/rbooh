@@ -1146,11 +1146,11 @@ export default function TeacherStudentPlansPage() {
                                   className="h-full rounded-full transition-all duration-500"
                                   style={{
                                     width: `${progress}%`,
-                                    background: "linear-gradient(to right, #D4AF37, #C9A961)",
+                                    background: "linear-gradient(270deg, #8fb1ff 0%, #3453a7 55%, #27428d 100%)",
                                   }}
                                 />
                               </div>
-                              <span className="text-[10px] font-bold text-[#D4AF37] w-8 text-left">{progress}%</span>
+                              <span className="text-[10px] font-bold text-[#3453a7] w-8 text-left">{progress}%</span>
                             </div>
                           </div>
                         ) : (
@@ -1536,8 +1536,8 @@ export default function TeacherStudentPlansPage() {
                 : SURAHS.find((surah) => surah.number === Math.min(parseInt(startSurah), parseInt(endSurah)))
 
               return (
-                <div className="rounded-xl bg-[#3453a7]/4 border border-[#3453a7]/18 p-4 space-y-3">
-                  <p className="text-xs font-bold text-[#D4AF37]">معاينة الخطة</p>
+                <div className="rounded-xl border border-[#8fb1ff]/25 bg-[linear-gradient(135deg,#f8fbff_0%,#eef4ff_58%,#ffffff_100%)] p-4 space-y-3 shadow-[0_16px_36px_-28px_rgba(52,83,167,0.34)]">
+                  <p className="text-xs font-bold text-[#3453a7]">معاينة الخطة</p>
                   <div className="flex items-center gap-2 text-sm">
                     <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-lg font-semibold text-xs">تبدأ من</span>
                     <span className="font-bold text-[#1a2332]">

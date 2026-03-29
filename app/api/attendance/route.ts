@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { canAccessStudent, canManageHalaqah, getRequestActor, isTeacherRole } from "@/lib/request-auth"
+import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
 import {
   applyAttendancePointsAdjustment,
   calculateEvaluationLevelPoints,
@@ -214,7 +215,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get today's date in YYYY-MM-DD format (Asia/Riyadh timezone)
-    const targetDate = typeof report_date === "string" && report_date.trim() ? report_date.trim() : getKsaDateString()
+    const reportDateInput = typeof report_date === "string" && report_date.trim() ? report_date.trim() : getKsaDateString()
+    const targetDate = getSaudiAttendanceAnchorDate(reportDateInput)
     console.log("[DEBUG] تاريخ الحفظ في السيرفر (Asia/Riyadh):", targetDate)
     if (debug_today) {
       console.log("[DEBUG] debug_today من المتصفح:", debug_today)

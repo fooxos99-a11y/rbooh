@@ -9,6 +9,7 @@ import { ArrowRight } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
+import { useResumeRefresh } from "@/hooks/use-resume-refresh"
 
 interface Student {
   id: string
@@ -40,6 +41,15 @@ export default function CircleAttendancePage() {
   const [showAttendance, setShowAttendance] = useState(false)
   const [selectedDate, setSelectedDate] = useState("")
 
+  useResumeRefresh(
+    () => {
+      if (circleName) {
+        void fetchStudents(circleName)
+      }
+    },
+    { enabled: Boolean(circleName), minIntervalMs: 180000, includePageShow: false },
+  )
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -58,13 +68,7 @@ export default function CircleAttendancePage() {
       }
     }
     fetchData()
-    // إعادة تحميل البيانات عند العودة للصفحة (focus)
-    const handleFocus = () => {
-      if (circleName) fetchStudents(circleName)
-    }
-    window.addEventListener("focus", handleFocus)
-    return () => window.removeEventListener("focus", handleFocus)
-  }, [circleId, circleName])
+  }, [circleId])
 
   const handleDateSubmit = () => {
     if (selectedDate) {

@@ -4,11 +4,18 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { ensureStudentPathwayLevels } from "@/lib/pathway-levels"
 import { getSiteSetting } from "@/lib/site-settings"
+import { buildPlanSessionProgress } from "@/lib/plan-session-progress"
 import {
   applyPathwayJuzTestResult,
   getAvailablePathwayJuzNumbers,
   type PathwayJuzTestStatus,
 } from "@/lib/pathway-juz-tests"
+import {
+  getJuzCoverageFromRange,
+  getNormalizedCompletedJuzs,
+  getPlanMemorizedRange,
+  hasScatteredCompletedJuzs,
+} from "@/lib/quran-data"
 import {
   calculatePathwayTestScore,
   DEFAULT_PATHWAY_TEST_SCORING_SETTINGS,
@@ -21,6 +28,15 @@ import {
 
 type ActivePlanSnapshot = {
   id?: string
+  start_date?: string | null
+  start_surah_number?: number | null
+  start_verse?: number | null
+  end_surah_number?: number | null
+  end_verse?: number | null
+  direction?: "asc" | "desc" | null
+  total_pages?: number | null
+  total_days?: number | null
+  daily_pages?: number | null
   has_previous?: boolean | null
   prev_start_surah?: number | null
   prev_start_verse?: number | null
@@ -72,13 +88,97 @@ async function getStudentSnapshot(supabase: Awaited<ReturnType<typeof createClie
 async function getActivePlanSnapshot(supabase: Awaited<ReturnType<typeof createClient>>, studentId: string) {
   const { data, error } = await supabase
     .from("student_plans")
-    .select("id, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, created_at")
+    .select("id, start_date, start_surah_number, start_verse, end_surah_number, end_verse, direction, total_pages, total_days, daily_pages, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, created_at")
     .eq("student_id", studentId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle<ActivePlanSnapshot & { created_at?: string | null }>()
 
   return { plan: data, error }
+}
+
+async function getActivePlanCompletedDays(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  studentId: string,
+  plan?: ActivePlanSnapshot | null,
+) {
+  if (!plan) {
+    return 0
+  }
+
+  let reportsQuery = supabase
+    .from("student_daily_reports")
+    .select("report_date, plan_session_number")
+    .eq("student_id", studentId)
+    .order("report_date", { ascending: true })
+
+  let attendanceQuery = supabase
+    .from("attendance_records")
+    .select("date, status, evaluations(hafiz_level, tikrar_level, samaa_level, rabet_level)")
+    .eq("student_id", studentId)
+    .order("date", { ascending: true })
+
+  if (plan.start_date) {
+    reportsQuery = reportsQuery.gte("report_date", plan.start_date)
+    attendanceQuery = attendanceQuery.gte("date", plan.start_date)
+  }
+
+  const [{ data: reports }, { data: attendanceRecords }] = await Promise.all([
+    reportsQuery,
+    attendanceQuery,
+  ])
+
+  return buildPlanSessionProgress({
+    reports: reports || [],
+    attendanceRecords: attendanceRecords || [],
+    totalDays: Number(plan.total_days) || 0,
+  }).completedDays
+}
+
+function buildEffectiveStudentPathwaySnapshot(
+  student: StudentSnapshot,
+  plan: ActivePlanSnapshot | null | undefined,
+  completedDays: number,
+) {
+  const mergedStudent = mergeStudentMemorizationSnapshot(student, plan)
+  const normalizedCompletedJuzs = getNormalizedCompletedJuzs(student.completed_juzs)
+
+  if (!plan || hasScatteredCompletedJuzs(normalizedCompletedJuzs)) {
+    return mergedStudent
+  }
+
+  const normalizedPlan = {
+    ...plan,
+    completed_juzs: normalizedCompletedJuzs,
+    has_previous: Boolean(plan.has_previous || plan.prev_start_surah || student.memorized_start_surah),
+    prev_start_surah: plan.prev_start_surah || student.memorized_start_surah || null,
+    prev_start_verse: plan.prev_start_verse || student.memorized_start_verse || null,
+    prev_end_surah: plan.prev_end_surah || student.memorized_end_surah || null,
+    prev_end_verse: plan.prev_end_verse || student.memorized_end_verse || null,
+  }
+
+  const memorizedRange = getPlanMemorizedRange(normalizedPlan, completedDays)
+  if (!memorizedRange) {
+    return mergedStudent
+  }
+
+  const coveredJuzs = getJuzCoverageFromRange(memorizedRange)
+
+  return {
+    ...mergedStudent,
+    completed_juzs: Array.from(new Set([
+      ...getNormalizedCompletedJuzs(mergedStudent.completed_juzs),
+      ...Array.from(coveredJuzs.completedJuzs),
+    ])).sort((left, right) => left - right),
+    current_juzs: Array.from(new Set([
+      ...getNormalizedCompletedJuzs(mergedStudent.current_juzs),
+      ...Array.from(coveredJuzs.currentJuzs),
+    ])).sort((left, right) => left - right),
+    memorized_start_surah: memorizedRange.startSurahNumber,
+    memorized_start_verse: memorizedRange.startVerseNumber,
+    memorized_end_surah: memorizedRange.endSurahNumber,
+    memorized_end_verse: memorizedRange.endVerseNumber,
+  }
 }
 
 function mergeStudentMemorizationSnapshot(student: StudentSnapshot, plan?: ActivePlanSnapshot | null): StudentSnapshot {
@@ -190,7 +290,8 @@ export async function GET(request: Request) {
     }
 
     const { plan } = await getActivePlanSnapshot(adminSupabase, student.id)
-    const effectiveStudent = mergeStudentMemorizationSnapshot(student, plan)
+    const completedDays = await getActivePlanCompletedDays(adminSupabase, student.id, plan)
+    const effectiveStudent = buildEffectiveStudentPathwaySnapshot(student, plan, completedDays)
 
     const [{ levels, error: levelsError }, { data: testRows, error: testsError }] = await Promise.all([
       ensureStudentPathwayLevels(adminSupabase, student.id, effectiveStudent.halaqah),
@@ -227,6 +328,7 @@ export async function GET(request: Request) {
       displayJuzs: displayJuzs.map((juzNumber) => ({
         juzNumber,
         isCurrentlyMemorized: availableJuzs.includes(juzNumber),
+        hasHistoricalResult: Boolean(resultsByJuz[String(juzNumber)]),
         latestResult: resultsByJuz[String(juzNumber)]
           ? {
               status: resultsByJuz[String(juzNumber)].status,
@@ -274,7 +376,8 @@ export async function POST(request: Request) {
     }
 
     const { plan } = await getActivePlanSnapshot(adminSupabase, student.id)
-    const effectiveStudent = mergeStudentMemorizationSnapshot(student, plan)
+    const completedDays = await getActivePlanCompletedDays(adminSupabase, student.id, plan)
+    const effectiveStudent = buildEffectiveStudentPathwaySnapshot(student, plan, completedDays)
 
     const { error: ensureLevelsError } = await ensureStudentPathwayLevels(adminSupabase, student.id, effectiveStudent.halaqah)
     if (ensureLevelsError) {
@@ -363,6 +466,10 @@ export async function POST(request: Request) {
 
     const wasPreviouslyTested = Boolean(existingHistoricalRows && existingHistoricalRows.length > 0)
     const isKnownJuz = isCurrentlyMemorized || wasPreviouslyTested
+
+    if (wasPreviouslyTested) {
+      return NextResponse.json({ error: "تم اختبار هذا الجزء سابقًا، ولا يمكن إعادة الاختبار مرة أخرى." }, { status: 409 })
+    }
 
     if (!isKnownJuz) {
       return NextResponse.json({ error: "هذا الجزء غير موجود حاليًا في محفوظ الطالب" }, { status: 400 })

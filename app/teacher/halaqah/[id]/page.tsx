@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
+import { useResumeRefresh } from "@/hooks/use-resume-refresh"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
-import { isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
 	type AttendanceStatus,
 	type EvaluationLevelValue,
@@ -473,6 +474,11 @@ const getUnsavedSelfReports = (student: StudentAttendance) => {
 	return (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
 }
 
+const getAttendanceAnchorLabel = (date: string) => {
+	const effectiveDate = getSaudiAttendanceAnchorDate(date)
+	return getSaudiWeekday(effectiveDate) === 0 ? "الأحد" : "الأربعاء"
+}
+
 const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
 	const selectedLevel = student.reportEvaluations?.[reportDate]
 	return selectedLevel !== null && selectedLevel !== undefined && selectedLevel !== UNSET_REPORT_EVALUATION
@@ -497,10 +503,13 @@ const buildAutoSupportEvaluation = (reports?: StudentDailyReport[]) => {
 
 export default function HalaqahManagement() {
 	const [isLoading, setIsLoading] = useState(true)
+	const [isModeSwitchLoading, setIsModeSwitchLoading] = useState(false)
 	const router = useRouter()
 	const params = useParams()
 	const isAttendanceEntryAllowedToday = isSaudiAttendanceWindowOpen()
 	const todayKsaDate = getKsaDateString()
+	const todayAttendanceAnchorDate = getSaudiAttendanceAnchorDate(todayKsaDate)
+	const todayAttendanceAnchorLabel = getAttendanceAnchorLabel(todayKsaDate)
 
 	const [teacherData, setTeacherData] = useState<any>(null)
 	const [teacherHalaqah, setTeacherHalaqah] = useState("")
@@ -517,6 +526,10 @@ export default function HalaqahManagement() {
 	const [recentlySavedReportKeys, setRecentlySavedReportKeys] = useState<string[]>([])
 	const studentsRef = useRef<StudentAttendance[]>([])
 	const reportSuccessTimersRef = useRef<Record<string, number>>({})
+	const fetchStudentsRequestIdRef = useRef(0)
+	const cachedBaseStudentsRef = useRef<any[]>([])
+	const cachedPlanMapRef = useRef<Map<string, PlanProgressResponse>>(new Map())
+	const cachedHalaqahRef = useRef("")
 
 	const showAlert = useAlertDialog()
 
@@ -541,36 +554,16 @@ export default function HalaqahManagement() {
 
 	useEffect(() => {
 		if (!teacherHalaqah) return
-		void fetchStudents(teacherHalaqah, isEditMode)
+		void fetchStudents(teacherHalaqah, isEditMode, { preferCachedBaseData: true })
 	}, [teacherHalaqah, isEditMode])
 
-	useEffect(() => {
-		if (!teacherHalaqah) return
-
-		const refreshStudentsState = () => {
+	useResumeRefresh(
+		() => {
+			if (!teacherHalaqah) return
 			void fetchStudents(teacherHalaqah, isEditMode)
-		}
-
-		const handlePageShow = () => {
-			refreshStudentsState()
-		}
-
-		const handleVisibilityChange = () => {
-			if (document.visibilityState === "visible") {
-				refreshStudentsState()
-			}
-		}
-
-		window.addEventListener("focus", refreshStudentsState)
-		window.addEventListener("pageshow", handlePageShow)
-		document.addEventListener("visibilitychange", handleVisibilityChange)
-
-		return () => {
-			window.removeEventListener("focus", refreshStudentsState)
-			window.removeEventListener("pageshow", handlePageShow)
-			document.removeEventListener("visibilitychange", handleVisibilityChange)
-		}
-	}, [teacherHalaqah, isEditMode])
+		},
+		{ enabled: Boolean(teacherHalaqah), minIntervalMs: 120000 },
+	)
 
 	useEffect(() => {
 		studentsRef.current = students
@@ -798,8 +791,8 @@ export default function HalaqahManagement() {
 	const loadSavedStudentsForToday = async (halaqah: string, baseStudents?: StudentAttendance[]) => {
 		try {
 			const response = await fetch(
-				`/api/attendance-by-date?date=${getKsaDateString()}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
-				{ cache: "no-store" },
+				`/api/attendance-by-date?date=${getKsaDateString()}&circle=${encodeURIComponent(halaqah)}`,
+				{ cache: "no-store", headers: getClientAuthHeaders() },
 			)
 			const data = await response.json()
 			const records: SavedAttendanceRecord[] = Array.isArray(data.records) ? data.records : []
@@ -808,26 +801,33 @@ export default function HalaqahManagement() {
 			const applySavedState = (list: StudentAttendance[]) =>
 				list.map((student) => mergeSavedAttendance(student, savedMap.get(student.id)))
 
-			const nextStudents = applySavedState(baseStudents ?? studentsRef.current)
-			studentsRef.current = nextStudents
-			setStudents(nextStudents)
-			setHasSavedToday(nextStudents.some((student) => student.savedToday))
-			return nextStudents
+			return applySavedState(baseStudents ?? studentsRef.current)
 		} catch (error) {
 			console.error("Error loading saved attendance for today:", error)
 		}
 	}
 
-	const fetchStudents = async (halaqah: string, editMode = isEditMode) => {
+	const fetchStudents = async (halaqah: string, editMode = isEditMode, options?: { preferCachedBaseData?: boolean }) => {
+		const requestId = ++fetchStudentsRequestIdRef.current
 		try {
-			const response = await fetch(`/api/students?circle=${encodeURIComponent(halaqah)}`)
-			const data = await response.json()
+			const shouldUseCachedBaseData =
+				options?.preferCachedBaseData === true &&
+				cachedHalaqahRef.current === halaqah &&
+				cachedBaseStudentsRef.current.length > 0
+
+			const data = shouldUseCachedBaseData
+				? { students: cachedBaseStudentsRef.current }
+				: await (async () => {
+					const response = await fetch(`/api/students?circle=${encodeURIComponent(halaqah)}`)
+					return response.json()
+				})()
 
 			if (data.students) {
-				const studentIds = data.students.map((student: any) => student.id).filter(Boolean)
-				let planMap = new Map<string, PlanProgressResponse>()
+				const rawStudents = data.students as any[]
+				const studentIds = rawStudents.map((student: any) => student.id).filter(Boolean)
+				let planMap = shouldUseCachedBaseData ? new Map(cachedPlanMapRef.current) : new Map<string, PlanProgressResponse>()
 
-				if (studentIds.length > 0) {
+				if (!shouldUseCachedBaseData && studentIds.length > 0) {
 					try {
 						const planResponse = await fetch(
 							`/api/student-plans?student_ids=${encodeURIComponent(studentIds.join(","))}`,
@@ -839,10 +839,17 @@ export default function HalaqahManagement() {
 							planMap = new Map<string, PlanProgressResponse>(
 								Object.entries(planJson.plansByStudent as Record<string, PlanProgressResponse>),
 							)
+							cachedBaseStudentsRef.current = rawStudents
+							cachedPlanMapRef.current = new Map(planMap)
+							cachedHalaqahRef.current = halaqah
 						}
 					} catch (planError) {
 						console.error("Error fetching batched student plans:", planError)
 					}
+				} else if (!shouldUseCachedBaseData) {
+					cachedBaseStudentsRef.current = rawStudents
+					cachedPlanMapRef.current = new Map(planMap)
+					cachedHalaqahRef.current = halaqah
 				}
 				let reportsByStudent: Record<string, StudentDailyReport[]> = {}
 				let savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
@@ -858,8 +865,8 @@ export default function HalaqahManagement() {
 									{ cache: "no-store" },
 								),
 								fetch(
-									`/api/attendance-by-date?saved_on=${todayKsaDate}&circle=${encodeURIComponent(halaqah)}&t=${Date.now()}`,
-									{ cache: "no-store" },
+									`/api/attendance-by-date?date=${todayKsaDate}&circle=${encodeURIComponent(halaqah)}`,
+									{ cache: "no-store", headers: getClientAuthHeaders() },
 								),
 							])
 
@@ -880,27 +887,47 @@ export default function HalaqahManagement() {
 								return acc
 							}, {})
 
-							savedReportDatesMap = Object.fromEntries(
-								Object.entries(savedRecordsByStudent).map(([currentStudentId, records]) => [
-									currentStudentId,
-									Array.from(new Set(records.map((record) => record.date).filter((value): value is string => !!value))).sort((left, right) => left.localeCompare(right)),
-								]),
-							)
-
-							savedReportEvaluationMap = Object.fromEntries(
-								Object.entries(savedRecordsByStudent).map(([currentStudentId, records]) => [
-									currentStudentId,
-									Object.fromEntries(
-										records
-											.filter((record) => !!record.date && !!record.hafiz_level)
-											.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel]),
-									),
-								]),
-							)
-
 							if (reportsResponse.ok && reportsData.reportsByStudent) {
+								const rawReportsByStudent = reportsData.reportsByStudent as Record<string, StudentDailyReport[]>
+
+								savedReportDatesMap = Object.fromEntries(
+									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
+										const savedAnchorDates = new Set(
+											(savedRecordsByStudent[currentStudentId] || [])
+												.map((record) => record.date)
+												.filter((value): value is string => !!value),
+										)
+										return [
+											currentStudentId,
+											reports
+												.filter((report) => savedAnchorDates.has(getSaudiAttendanceAnchorDate(report.report_date)))
+												.map((report) => report.report_date)
+												.sort((left, right) => left.localeCompare(right)),
+										]
+									}),
+								)
+
+								savedReportEvaluationMap = Object.fromEntries(
+									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
+										const recordsByAnchorDate = new Map(
+											(savedRecordsByStudent[currentStudentId] || [])
+												.filter((record) => !!record.date && !!record.hafiz_level)
+												.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel] as const),
+										)
+
+										return [
+											currentStudentId,
+											Object.fromEntries(
+												reports
+													.map((report) => [report.report_date, recordsByAnchorDate.get(getSaudiAttendanceAnchorDate(report.report_date))] as const)
+													.filter((entry): entry is [string, EvaluationLevel] => !!entry[1]),
+											),
+										]
+									}),
+								)
+
 								reportsByStudent = Object.fromEntries(
-									Object.entries(reportsData.reportsByStudent as Record<string, StudentDailyReport[]>).map(([currentStudentId, reports]) => [
+									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => [
 										currentStudentId,
 										reports.filter((report) => (savedReportDatesMap[currentStudentId] || []).includes(report.report_date)),
 									]),
@@ -923,7 +950,7 @@ export default function HalaqahManagement() {
 
 				const localStudentsMap = new Map(studentsRef.current.map((student) => [student.id, student] as const))
 
-				const mappedStudents: StudentAttendance[] = data.students.map((student: any) => {
+				const mappedStudents: StudentAttendance[] = rawStudents.map((student: any) => {
 							const planData = planMap.get(student.id)
 							const planReadingDetails = getPlanReadingDetails(planData?.plan ?? null, planData?.completedDays ?? 0, planData?.nextSessionNumber, planData?.failedSessionNumbers, planData?.progressedDays)
 					const localStudent = localStudentsMap.get(student.id)
@@ -969,18 +996,32 @@ export default function HalaqahManagement() {
 
 					return isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0
 				})
+				if (requestId !== fetchStudentsRequestIdRef.current) {
+					return
+				}
 				studentsRef.current = eligibleStudents
 				setStudents(eligibleStudents)
 				setHasSavedToday(eligibleStudents.some((student) => student.savedToday))
 			}
-			setIsLoading(false)
+			if (requestId === fetchStudentsRequestIdRef.current) {
+				setIsLoading(false)
+				setIsModeSwitchLoading(false)
+			}
 		} catch (error) {
 			console.error("Error fetching students:", error)
-			setIsLoading(false)
+			if (requestId === fetchStudentsRequestIdRef.current) {
+				setIsLoading(false)
+				setIsModeSwitchLoading(false)
+			}
 		}
 	}
 
-	if (isLoading) {
+	const handleToggleEditMode = () => {
+		setIsModeSwitchLoading(true)
+		setIsEditMode((current) => !current)
+	}
+
+	if (isLoading || isModeSwitchLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<SiteLoader size="lg" />
@@ -1409,6 +1450,9 @@ export default function HalaqahManagement() {
 			<Header />
 			<main className="flex-1 py-4 px-4">
 				<div className="container mx-auto max-w-7xl space-y-6">
+					<div className="rounded-2xl border border-[#3453a7]/12 bg-white/85 px-4 py-3 text-right text-sm font-semibold text-[#4d6b76] shadow-sm">
+						تقييم اليوم يُحتسب على {todayAttendanceAnchorLabel} ({todayAttendanceAnchorDate}).
+					</div>
 					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 							<div className="text-right">
@@ -1419,16 +1463,17 @@ export default function HalaqahManagement() {
 								type="button"
 								variant={isEditMode ? "default" : "outline"}
 								className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
-								onClick={() => setIsEditMode((current) => !current)}
+								onClick={handleToggleEditMode}
+								disabled={isModeSwitchLoading}
 							>
-								تعديل
+								{isModeSwitchLoading ? "جاري التحميل..." : isEditMode ? "إلغاء التعديل" : "تعديل"}
 							</Button>
 						</div>
 					</section>
 
 					{students.length === 0 ? (
 						<div className="rounded-[28px] border border-[#3453a7]/15 bg-white/90 px-6 py-12 text-center shadow-sm">
-							<p className="text-lg font-bold text-[#1a2332]">{isEditMode ? "لا توجد بيانات محفوظة لليوم يمكن تعديلها" : "لا توجد تقارير تنفيذ معلقة للتسميع بعد اعتماد حضورهم اليوم"}</p>
+							<p className="text-lg font-bold text-[#1a2332]">{isEditMode ? "لاتوجد تقارير للتسميع" : "لا توجد مقاطع للتسميع"}</p>
 						</div>
 					) : (
 						<>
@@ -1625,29 +1670,6 @@ export default function HalaqahManagement() {
 								})}
 							</div>
 
-							<div className="mt-8 flex justify-center gap-4">
-								<Button
-									onClick={handleReset}
-									variant="outline"
-									className="text-base h-12 px-8 rounded-lg border-[#3453a7]/45 bg-white/90 text-neutral-600 transition-all hover:bg-[#3453a7]/8 hover:border-[#3453a7] hover:text-neutral-800 focus-visible:border-[#3453a7] focus-visible:ring-[#3453a7]/25 active:bg-[#3453a7]/12"
-									disabled={isSaving}
-								>
-									<RotateCcw className="w-4 h-4 ml-2" />
-									إعادة تعيين
-								</Button>
-								<Button
-									onClick={handleSave}
-									variant="outline"
-									className="text-base h-12 px-8 rounded-lg border-[#3453a7] bg-[#3453a7] text-white hover:border-[#27428d] hover:bg-[#27428d] hover:text-white focus-visible:text-white active:text-white"
-									disabled={isSaving || !hasPendingStudents}
-								>
-									{saveStatus === "saving"
-										? "جاري الحفظ..."
-										: saveStatus === "success"
-											? "تم الحفظ!"
-											: "حفظ"}
-								</Button>
-							</div>
 						</>
 					)}
 				</div>

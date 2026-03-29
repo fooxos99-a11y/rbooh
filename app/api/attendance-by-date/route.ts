@@ -1,5 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
+import { getRequestActor } from "@/lib/request-auth"
+import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
+
+function isMissingUpdatedAtColumn(error: { code?: string | null; message?: string | null } | null) {
+  if (!error) return false
+  return error.code === "42703" && /updated_at/i.test(error.message || "")
+}
+
+function getSavedOnRange(savedOn: string) {
+  const dayStart = new Date(`${savedOn}T00:00:00+03:00`)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+
+  return {
+    dayStartIso: dayStart.toISOString(),
+    dayEndIso: dayEnd.toISOString(),
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,83 +31,128 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "date أو saved_on مطلوب" }, { status: 400 })
     }
 
-    console.log("[v0] Fetching attendance records for date:", date, "saved_on:", savedOn, "circle:", circle)
+    const authClient = await createClient()
+    const actor = await getRequestActor(request, authClient)
 
-    const supabase = await createClient()
-
-    let query = supabase.from("attendance_records").select("id, student_id, status, date, created_at, updated_at")
-
-    if (date) {
-      query = query.eq("date", date)
+    if (!actor) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 })
     }
 
-    if (savedOn) {
-      const dayStart = new Date(`${savedOn}T00:00:00+03:00`)
-      const dayEnd = new Date(dayStart)
-      dayEnd.setUTCDate(dayEnd.getUTCDate() + 1)
+    const supabase = createAdminClient()
 
-      query = query.or(
-        `and(created_at.gte.${dayStart.toISOString()},created_at.lt.${dayEnd.toISOString()}),and(updated_at.gte.${dayStart.toISOString()},updated_at.lt.${dayEnd.toISOString()})`,
-      )
+    const runAttendanceQuery = async (includeUpdatedAt: boolean) => {
+      let query = supabase
+        .from("attendance_records")
+        .select(includeUpdatedAt ? "id, student_id, status, date, created_at, updated_at" : "id, student_id, status, date, created_at")
+
+      if (date) {
+        query = query.eq("date", getSaudiAttendanceAnchorDate(date))
+      }
+
+      if (savedOn) {
+        const { dayStartIso, dayEndIso } = getSavedOnRange(savedOn)
+
+        query = includeUpdatedAt
+          ? query.or(
+              `and(created_at.gte.${dayStartIso},created_at.lt.${dayEndIso}),and(updated_at.gte.${dayStartIso},updated_at.lt.${dayEndIso})`,
+            )
+          : query.gte("created_at", dayStartIso).lt("created_at", dayEndIso)
+      }
+
+      if (circle) {
+        query = query.eq("halaqah", circle)
+      }
+
+      return query.order("id", { ascending: true })
     }
 
-    if (circle) {
-      query = query.eq("halaqah", circle)
-    }
+    let { data: records, error } = await runAttendanceQuery(true)
 
-    const { data: records, error } = await query.order("id", { ascending: true })
+    if (isMissingUpdatedAtColumn(error)) {
+      console.warn("[attendance-by-date] updated_at column not found, falling back to created_at only")
+      const fallbackResult = await runAttendanceQuery(false)
+      records = fallbackResult.data
+      error = fallbackResult.error
+    }
 
     if (error) {
-      console.error("[v0] Error fetching attendance records:", error)
+      console.error("[attendance-by-date] Error fetching attendance records:", error)
       return NextResponse.json({ error: "Failed to fetch attendance records" }, { status: 500 })
     }
 
-    const formattedRecords = await Promise.all(
-      (records || []).map(async (record: any) => {
-        // جلب بيانات الطالب
-        const { data: student } = await supabase.from("students").select("name").eq("id", record.student_id).single()
+    const attendanceRecords = records || []
+    if (attendanceRecords.length === 0) {
+      const response = NextResponse.json({ records: [], count: 0 })
+      response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+      return response
+    }
 
-        // جلب بيانات التقييم
-        const { data: evaluations } = await supabase
-          .from("evaluations")
-          .select("hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
-          .eq("attendance_record_id", record.id)
-          .single()
+    const studentIds = Array.from(new Set(attendanceRecords.map((record: any) => record.student_id).filter(Boolean)))
+    const attendanceRecordIds = attendanceRecords.map((record: any) => record.id).filter(Boolean)
 
-        return {
-          student_id: record.student_id,
-          student_name: student?.name || "Unknown",
-          date: record.date,
-          created_at: record.created_at || null,
-          updated_at: record.updated_at || null,
-          status: record.status,
-          hafiz_level: evaluations?.hafiz_level || null,
-          tikrar_level: evaluations?.tikrar_level || null,
-          samaa_level: evaluations?.samaa_level || null,
-          rabet_level: evaluations?.rabet_level || null,
-          hafiz_from_surah: evaluations?.hafiz_from_surah || null,
-          hafiz_from_verse: evaluations?.hafiz_from_verse || null,
-          hafiz_to_surah: evaluations?.hafiz_to_surah || null,
-          hafiz_to_verse: evaluations?.hafiz_to_verse || null,
-          samaa_from_surah: evaluations?.samaa_from_surah || null,
-          samaa_from_verse: evaluations?.samaa_from_verse || null,
-          samaa_to_surah: evaluations?.samaa_to_surah || null,
-          samaa_to_verse: evaluations?.samaa_to_verse || null,
-          rabet_from_surah: evaluations?.rabet_from_surah || null,
-          rabet_from_verse: evaluations?.rabet_from_verse || null,
-          rabet_to_surah: evaluations?.rabet_to_surah || null,
-          rabet_to_verse: evaluations?.rabet_to_verse || null,
-        }
-      }),
-    )
+    const [{ data: students }, { data: evaluations, error: evaluationsError }] = await Promise.all([
+      studentIds.length > 0
+        ? supabase.from("students").select("id, name").in("id", studentIds)
+        : Promise.resolve({ data: [], error: null }),
+      attendanceRecordIds.length > 0
+        ? supabase
+            .from("evaluations")
+            .select("attendance_record_id, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
+            .in("attendance_record_id", attendanceRecordIds)
+        : Promise.resolve({ data: [], error: null }),
+    ])
 
-    console.log("[v0] Found", formattedRecords.length, "records for date:", date, "saved_on:", savedOn, "circle:", circle)
+    if (evaluationsError) {
+      console.error("[attendance-by-date] Error fetching evaluations:", evaluationsError)
+    }
+
+    const studentNameById = new Map((students || []).map((student: any) => [student.id, student.name] as const))
+    const evaluationByAttendanceId = new Map<string, any>()
+
+    ;(evaluations || []).forEach((evaluation: any) => {
+      if (!evaluation?.attendance_record_id) {
+        return
+      }
+
+      if (!evaluationByAttendanceId.has(evaluation.attendance_record_id)) {
+        evaluationByAttendanceId.set(evaluation.attendance_record_id, evaluation)
+      }
+    })
+
+    const formattedRecords = attendanceRecords.map((record: any) => {
+      const evaluation = evaluationByAttendanceId.get(record.id)
+
+      return {
+        student_id: record.student_id,
+        student_name: studentNameById.get(record.student_id) || "Unknown",
+        date: record.date,
+        created_at: record.created_at || null,
+        updated_at: record.updated_at || null,
+        status: record.status,
+        hafiz_level: evaluation?.hafiz_level || null,
+        tikrar_level: evaluation?.tikrar_level || null,
+        samaa_level: evaluation?.samaa_level || null,
+        rabet_level: evaluation?.rabet_level || null,
+        hafiz_from_surah: evaluation?.hafiz_from_surah || null,
+        hafiz_from_verse: evaluation?.hafiz_from_verse || null,
+        hafiz_to_surah: evaluation?.hafiz_to_surah || null,
+        hafiz_to_verse: evaluation?.hafiz_to_verse || null,
+        samaa_from_surah: evaluation?.samaa_from_surah || null,
+        samaa_from_verse: evaluation?.samaa_from_verse || null,
+        samaa_to_surah: evaluation?.samaa_to_surah || null,
+        samaa_to_verse: evaluation?.samaa_to_verse || null,
+        rabet_from_surah: evaluation?.rabet_from_surah || null,
+        rabet_from_verse: evaluation?.rabet_from_verse || null,
+        rabet_to_surah: evaluation?.rabet_to_surah || null,
+        rabet_to_verse: evaluation?.rabet_to_verse || null,
+      }
+    })
 
     const response = NextResponse.json({ records: formattedRecords, count: formattedRecords.length })
     response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
     return response
   } catch (error) {
-    console.error("[v0] Error in attendance-by-date API:", error)
+    console.error("[attendance-by-date] Error in API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

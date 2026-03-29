@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, BellRing, Calendar, Eye, ShieldAlert } from "lucide-react"
+import { BellRing, Eye, Pencil, ShieldAlert, Trash2 } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useToast } from "@/hooks/use-toast"
@@ -36,7 +36,7 @@ const TEMPLATE_VARIABLE_HELP_ITEMS = [
 ] as const
 
 type IssueSeverity = "warning" | "alert"
-type IssueScope = "today" | "total_with_today"
+type IssueScope = "today" | "total"
 
 type StudentIssueReason = {
 	code: string
@@ -66,6 +66,18 @@ type StudentIssueRow = {
 	recommendedAction: IssueSeverity
   warningCount: number
   alertCount: number
+  manualActions: Array<{
+    id: string
+    type: IssueSeverity
+    source: "manual" | "automatic"
+    issueDate: string
+    issueSummary: string | null
+    message: string
+    sentAt: string
+    updatedAt: string | null
+    sentByAccountNumber: string | null
+    sentByRole: string | null
+  }>
   lastAction: {
     type: IssueSeverity
     message: string
@@ -127,7 +139,7 @@ function getIssueReasonSummary(row: StudentIssueRow) {
 }
 
 function getIssueCountColumnTitle(scope: IssueScope) {
-  return scope === "today" ? "مشاكل اليوم" : "المجموع مع اليوم"
+  return scope === "today" ? "مشاكل اليوم" : "المشكلات المحتسبة"
 }
 
 function getIssueCountValue(row: StudentIssueRow, scope: IssueScope) {
@@ -135,7 +147,15 @@ function getIssueCountValue(row: StudentIssueRow, scope: IssueScope) {
     return row.issuesCount
   }
 
-  return row.alertCount + row.warningCount + row.issuesCount
+  return row.issuesCount + row.alertCount + row.warningCount
+}
+
+function getHistoryColumnTitle(scope: IssueScope) {
+  return scope === "today" ? "السجل" : "المجموع"
+}
+
+function getHistoryCountValue(row: StudentIssueRow) {
+  return row.alertCount + row.warningCount
 }
 
 function formatActionDate(value: string) {
@@ -164,14 +184,22 @@ export default function StudentDailyAttendancePage() {
   const [issueRows, setIssueRows] = useState<StudentIssueRow[]>([])
   const [circles, setCircles] = useState<string[]>([])
   const [selectedCircle, setSelectedCircle] = useState("all")
-  const [selectedIssueScope, setSelectedIssueScope] = useState<IssueScope>("today")
+  const [rangeStartDate, setRangeStartDate] = useState("")
+  const [rangeEndDate, setRangeEndDate] = useState("")
   const [dailyReportsAvailable, setDailyReportsAvailable] = useState(true)
   const [templates, setTemplates] = useState<StudentIssueNotificationTemplates>(DEFAULT_STUDENT_ISSUE_NOTIFICATION_TEMPLATES)
   const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false)
   const [detailsRow, setDetailsRow] = useState<StudentIssueRow | null>(null)
   const [actionRow, setActionRow] = useState<StudentIssueRow | null>(null)
+  const [editingActionId, setEditingActionId] = useState<string | null>(null)
   const [actionType, setActionType] = useState<IssueSeverity>("warning")
   const [actionMessage, setActionMessage] = useState("")
+  const [actionDate, setActionDate] = useState("")
+  const [deleteActionTarget, setDeleteActionTarget] = useState<{
+    actionId: string
+    studentName: string
+    type: IssueSeverity
+  } | null>(null)
 
   const getSaudiDate = () => {
     return new Intl.DateTimeFormat('en-CA', {
@@ -182,7 +210,14 @@ export default function StudentDailyAttendancePage() {
     }).format(new Date());
   }
 
-  const [selectedDate, setSelectedDate] = useState(getSaudiDate())
+  useEffect(() => {
+    const today = getSaudiDate()
+    setRangeStartDate(today)
+    setRangeEndDate(today)
+  }, [])
+
+  const effectiveSelectedDate = rangeEndDate || rangeStartDate || getSaudiDate()
+  const effectiveScope: IssueScope = rangeStartDate && rangeEndDate && rangeStartDate !== rangeEndDate ? "total" : "today"
 
   useEffect(() => {
     if (!authLoading && authVerified) {
@@ -194,12 +229,26 @@ export default function StudentDailyAttendancePage() {
     if (!authLoading && authVerified) {
       void fetchIssueRows()
     }
-  }, [authLoading, authVerified, selectedDate, selectedCircle, selectedIssueScope])
+  }, [authLoading, authVerified, selectedCircle, rangeStartDate, rangeEndDate])
 
   const fetchIssueRows = async () => {
     setIsFetchingRecords(true)
     try {
-      const response = await fetch(`/api/student-issues?date=${selectedDate}&circle=${encodeURIComponent(selectedCircle)}&scope=${selectedIssueScope}`, {
+      const searchParams = new URLSearchParams({
+        date: effectiveSelectedDate,
+        circle: selectedCircle,
+        scope: effectiveScope,
+      })
+
+      if (rangeStartDate) searchParams.set("from", rangeStartDate)
+      if (rangeEndDate) searchParams.set("to", rangeEndDate)
+
+      if (effectiveScope === "today") {
+        searchParams.set("from", effectiveSelectedDate)
+        searchParams.set("to", effectiveSelectedDate)
+      }
+
+      const response = await fetch(`/api/student-issues?${searchParams.toString()}`, {
         cache: "no-store",
       })
       if (!response.ok) throw new Error("فشل في جلب مشاكل الطلاب")
@@ -265,7 +314,9 @@ export default function StudentDailyAttendancePage() {
   const openActionDialog = (row: StudentIssueRow, type: IssueSeverity) => {
     const template = templates[type]
     setActionRow(row)
+    setEditingActionId(null)
     setActionType(type)
+    setActionDate(row.selectedDate)
     setActionMessage(
       formatStudentIssueNotificationMessage(template, {
         studentName: row.studentName,
@@ -280,8 +331,16 @@ export default function StudentDailyAttendancePage() {
     )
   }
 
-  const handleSendNotification = async () => {
-    if (!actionRow?.accountNumber) {
+  const openEditActionDialog = (row: StudentIssueRow, action: StudentIssueRow["manualActions"][number]) => {
+    setActionRow(row)
+    setEditingActionId(action.id)
+    setActionType(action.type)
+    setActionDate(action.issueDate)
+    setActionMessage(action.message)
+  }
+
+  const handleSubmitAction = async () => {
+    if (!editingActionId && !actionRow?.accountNumber) {
       toast({ title: "تعذر الإرسال", description: "لا يوجد رقم حساب مرتبط بالطالب", variant: "destructive" })
       return
     }
@@ -293,24 +352,27 @@ export default function StudentDailyAttendancePage() {
 
     try {
       setIsSendingNotification(true)
-      const senderAccountNumber = typeof window !== "undefined"
-        ? (localStorage.getItem("accountNumber") || localStorage.getItem("account_number") || "").trim()
-        : ""
-      const senderRole = typeof window !== "undefined" ? (localStorage.getItem("userRole") || "").trim() : ""
       const response = await fetch("/api/student-issues", {
-        method: "POST",
+        method: editingActionId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          actionId: editingActionId,
           accountNumber: actionRow.accountNumber,
           studentId: actionRow.studentId,
           circleName: actionRow.circleName,
           issueSummary: buildIssueSummary(actionRow),
           issueReasons: actionRow.reasons,
           message: actionMessage.trim(),
-          date: selectedDate,
+          date: actionDate || effectiveSelectedDate,
           actionType,
-          sentByAccountNumber: senderAccountNumber,
-          sentByRole: senderRole,
+          sentByAccountNumber: editingActionId
+            ? undefined
+            : (typeof window !== "undefined"
+                ? (localStorage.getItem("accountNumber") || localStorage.getItem("account_number") || "").trim()
+                : ""),
+          sentByRole: editingActionId
+            ? undefined
+            : (typeof window !== "undefined" ? (localStorage.getItem("userRole") || "").trim() : ""),
         }),
       })
       const data = await response.json()
@@ -319,16 +381,50 @@ export default function StudentDailyAttendancePage() {
       }
 
       toast({
-        title: data.skipped ? "تم التجاهل" : "تم الإرسال",
-        description: data.skipped ? "تم إرسال نفس الرسالة اليوم مسبقًا" : "تم إرسال الإشعار للطالب بنجاح",
+        title: editingActionId ? "تم التحديث" : data.skipped ? "تم التجاهل" : "تم الإرسال",
+        description: editingActionId
+          ? "تم تحديث السجل اليدوي بنجاح"
+          : data.skipped
+            ? "تم إرسال نفس الرسالة اليوم مسبقًا"
+            : "تم إرسال الإشعار للطالب بنجاح",
       })
       await fetchIssueRows()
       setActionRow(null)
+      setEditingActionId(null)
       setActionMessage("")
+      setActionDate("")
     } catch (error) {
       toast({
         title: "خطأ",
         description: error instanceof Error ? error.message : "تعذر إرسال الإشعار",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSendingNotification(false)
+    }
+  }
+
+  const handleDeleteAction = async (actionId: string) => {
+    try {
+      setIsSendingNotification(true)
+      const response = await fetch("/api/student-issues", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "تعذر حذف السجل اليدوي")
+      }
+
+      toast({ title: "تم الحذف", description: "تم حذف السجل اليدوي بنجاح" })
+      await fetchIssueRows()
+      setDetailsRow(null)
+      setDeleteActionTarget(null)
+    } catch (error) {
+      toast({
+        title: "خطأ",
+        description: error instanceof Error ? error.message : "تعذر حذف السجل اليدوي",
         variant: "destructive",
       })
     } finally {
@@ -345,7 +441,7 @@ export default function StudentDailyAttendancePage() {
   }
 
   const isFuture = (() => {
-    return selectedDate > getSaudiDate()
+    return effectiveSelectedDate > getSaudiDate()
   })()
 
   if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>)
@@ -366,16 +462,39 @@ export default function StudentDailyAttendancePage() {
 
           <Card className="border border-[#3453a7]/20 shadow-sm transition-shadow duration-300 hover:shadow-md animate-in fade-in slide-in-from-top-3 duration-500">
             <CardContent className="pt-5 pb-4">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center justify-end gap-4">
-                  <div className="flex min-w-[240px] items-center gap-3">
-                  <Calendar className="w-4 h-4 text-[#003f55] flex-shrink-0" />
-                  <Input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="text-base border-[#8fb1ff] focus-visible:ring-[#3453a7]/25 transition-all duration-200"
-                  />
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="order-1 flex flex-wrap items-center justify-end gap-4">
+                  <div className="flex flex-wrap items-center justify-end gap-3 rounded-2xl border border-[#d9e1f7] bg-[#f8fbff] px-3 py-3">
+                    <div className="flex min-w-[220px] items-center gap-2">
+                      <span className="text-sm font-semibold text-[#3453a7]">من</span>
+                      <Input
+                        type="date"
+                        value={rangeStartDate}
+                        onChange={(e) => {
+                          const nextValue = e.target.value
+                          setRangeStartDate(nextValue)
+                          if (!rangeEndDate || rangeStartDate === rangeEndDate) {
+                            setRangeEndDate(nextValue)
+                          }
+                        }}
+                        className="text-base border-[#8fb1ff] focus-visible:ring-[#3453a7]/25 transition-all duration-200"
+                      />
+                    </div>
+                    <div className="flex min-w-[220px] items-center gap-2">
+                      <span className="text-sm font-semibold text-[#3453a7]">إلى</span>
+                      <Input
+                        type="date"
+                        value={rangeEndDate}
+                        onChange={(e) => {
+                          const nextValue = e.target.value
+                          setRangeEndDate(nextValue)
+                          if (!rangeStartDate) {
+                            setRangeStartDate(nextValue)
+                          }
+                        }}
+                        className="text-base border-[#8fb1ff] focus-visible:ring-[#3453a7]/25 transition-all duration-200"
+                      />
+                    </div>
                   </div>
                   <div className="min-w-[160px]">
                     <Select value={selectedCircle} onValueChange={setSelectedCircle}>
@@ -390,22 +509,13 @@ export default function StudentDailyAttendancePage() {
                     </SelectContent>
                     </Select>
                   </div>
-                  <div className="min-w-[140px]">
-                    <Select value={selectedIssueScope} onValueChange={(value) => setSelectedIssueScope(value as IssueScope)}>
-                    <SelectTrigger className="text-base border-[#8fb1ff] focus:ring-[#3453a7]/25">
-                      <SelectValue placeholder="نطاق العرض" />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      <SelectItem value="today">اليوم</SelectItem>
-                      <SelectItem value="total_with_today">المجموع مع اليوم</SelectItem>
-                    </SelectContent>
-                    </Select>
-                  </div>
                 </div>
-                <Button onClick={() => setIsTemplatesDialogOpen(true)} className="h-11 rounded-xl bg-[#3453a7] px-6 text-white hover:bg-[#27428d]">
-                  <BellRing className="h-4 w-4" />
-                  قوالب التنبيه والإنذار
-                </Button>
+                <div className="order-2 lg:mr-auto">
+                  <Button onClick={() => setIsTemplatesDialogOpen(true)} className="h-11 rounded-xl bg-[#3453a7] px-6 text-white hover:bg-[#27428d]">
+                    <BellRing className="h-4 w-4" />
+                    قوالب التنبيه والإنذار
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -419,8 +529,8 @@ export default function StudentDailyAttendancePage() {
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">السبب</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">{getIssueCountColumnTitle(selectedIssueScope)}</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">السجل السابق</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">{getIssueCountColumnTitle(effectiveScope)}</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">{getHistoryColumnTitle(effectiveScope)}</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -446,21 +556,21 @@ export default function StudentDailyAttendancePage() {
                         style={{ animationDelay: `${i * 30}ms` }}
                       >
                         <TableCell className="text-base">
-                          <span className="inline-flex rounded-full border border-[#8fb1ff] bg-[#eaf1ff] px-3 py-1 font-medium text-[#27428d]">
+                            <span className="font-medium text-[#27428d]">
                             {row.circleName}
                           </span>
                         </TableCell>
                         <TableCell className="text-base">
-                          <span className="inline-flex rounded-full border border-[#3453a7]/20 bg-[#f3f7ff] px-3 py-1 font-semibold text-[#1a2332]">
+                            <span className="font-semibold text-[#1a2332]">
                             {row.studentName}
                           </span>
                         </TableCell>
                         <TableCell className="text-center">
-                          <span className="inline-flex rounded-full border border-[#8fb1ff] bg-[#eaf1ff] px-3 py-1 font-semibold text-[#27428d]">{getIssueReasonSummary(row)}</span>
+                            <span className="font-semibold text-[#27428d]">{getIssueReasonSummary(row)}</span>
                         </TableCell>
-                        <TableCell className="text-center font-black text-[#1a2332]">{getIssueCountValue(row, selectedIssueScope)}</TableCell>
+                        <TableCell className="text-center font-black text-[#1a2332]">{getIssueCountValue(row, effectiveScope)}</TableCell>
                         <TableCell className="text-center text-sm leading-6">
-                          {row.lastAction ? (
+                          {getHistoryCountValue(row) > 0 ? (
                             <div className="space-y-1 text-[#4b5563]">
                               <div className="font-bold text-[#1a2332]">{row.alertCount} إنذار / {row.warningCount} تنبيه</div>
                             </div>
@@ -562,13 +672,51 @@ export default function StudentDailyAttendancePage() {
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
-                  <p className="text-sm font-bold text-[#3453a7]">التنبيهات السابقة</p>
+                  <p className="text-sm font-bold text-[#3453a7]">{effectiveScope === "today" ? "تنبيهات اليوم" : "مجموع التنبيهات"}</p>
                   <p className="mt-2 font-black text-[#1a2332]">{detailsRow.warningCount}</p>
                 </div>
                 <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
-                  <p className="text-sm font-bold text-[#3453a7]">الإنذارات السابقة</p>
+                  <p className="text-sm font-bold text-[#3453a7]">{effectiveScope === "today" ? "إنذارات اليوم" : "مجموع الإنذارات"}</p>
                   <p className="mt-2 font-black text-[#1a2332]">{detailsRow.alertCount}</p>
                 </div>
+              </div>
+
+              <div className="space-y-3 rounded-3xl border border-[#3453a7]/15 bg-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-black text-[#1a2332]">{getHistoryColumnTitle(effectiveScope)}</h3>
+                </div>
+                {detailsRow.manualActions.length > 0 ? (
+                  <div className="space-y-3">
+                    {detailsRow.manualActions.map((action) => (
+                      <div key={action.id} className="rounded-2xl border border-[#3453a7]/10 bg-[#f8fbff] p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <SeverityBadge severity={action.type} />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEditActionDialog(detailsRow, action)}>
+                              <Pencil className="h-4 w-4" />
+                              تعديل
+                            </Button>
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => setDeleteActionTarget({ actionId: action.id, studentName: detailsRow.studentName, type: action.type })}>
+                              <Trash2 className="h-4 w-4" />
+                              حذف
+                            </Button>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-7 text-[#4b5563]">{action.message}</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[#6b7280]">
+                          <span>أُرسل: {formatActionDate(action.sentAt)}</span>
+                          {action.sentByRole ? <span>بواسطة: {action.sentByRole}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-[#3453a7]/20 bg-[#f8fbff] px-4 py-8 text-center text-sm text-[#6b7280]">
+                    لا توجد سجلات يدوية ضمن النطاق الحالي.
+                  </div>
+                )}
               </div>
 
               <div className="space-y-3 rounded-3xl border border-[#3453a7]/15 bg-white p-5">
@@ -622,17 +770,26 @@ export default function StudentDailyAttendancePage() {
       </Dialog>
 
       <Dialog open={Boolean(actionRow)} onOpenChange={(open) => !open && setActionRow(null)}>
-        <DialogContent className="max-w-2xl border border-[#3453a7]/20 bg-[#fbfdff]" dir="rtl" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-black text-[#1a2332]">{actionType === "alert" ? "إرسال إنذار" : "إرسال تنبيه"}</DialogTitle>
+        <DialogContent className="max-w-2xl overflow-hidden border border-[#d9e1f7] bg-white p-0 shadow-[0_28px_70px_-40px_rgba(52,83,167,0.45)]" dir="rtl" showCloseButton={false}>
+          <DialogHeader className="border-b border-[#d9e1f7] bg-[linear-gradient(135deg,#f7faff_0%,#eef4ff_55%,#ffffff_100%)] px-6 py-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="text-2xl font-black text-[#1a2332]">
+              {editingActionId ? (actionType === "alert" ? "تعديل الإنذار" : "تعديل التنبيه") : actionType === "alert" ? "إرسال إنذار" : "إرسال تنبيه"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm text-[#5f6b7a]">
+                  راجع النص ثم أرسل الإشعار مباشرة للطالب.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           {actionRow ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-[#3453a7]/15 bg-white p-4">
+            <div className="space-y-5 px-6 py-6">
+              <div className="rounded-[24px] border border-[#d9e1f7] bg-[linear-gradient(135deg,#fbfdff_0%,#f4f8ff_100%)] p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="font-black text-[#1a2332]">{actionRow.studentName}</p>
-                    <p className="mt-1 text-sm text-[#3453a7]">{actionRow.circleName}</p>
+                    <p className="mt-1 text-sm font-semibold text-[#3453a7]">{actionRow.circleName}</p>
                   </div>
                   <SeverityBadge severity={actionType} />
                 </div>
@@ -642,10 +799,49 @@ export default function StudentDailyAttendancePage() {
                   لا يمكن الإرسال لأن الطالب لا يملك رقم حساب مرتبطًا.
                 </div>
               ) : null}
-              <div className="flex justify-end gap-3">
-                <Button variant="outline" onClick={() => setActionRow(null)} className="border-[#003f55]/20">إلغاء</Button>
-                <Button onClick={handleSendNotification} disabled={isSendingNotification || !actionRow.accountNumber} className={actionType === "alert" ? "bg-red-500 text-white hover:bg-red-600" : "bg-[#3453a7] text-white hover:bg-[#27428d]"}>
-                  {isSendingNotification ? "جاري الإرسال..." : actionType === "alert" ? "إرسال الإنذار" : "إرسال التنبيه"}
+              <div className="space-y-3">
+                <label className="block text-right font-bold text-[#1a2332]">نص الرسالة</label>
+                <Textarea
+                  value={actionMessage}
+                  onChange={(event) => setActionMessage(event.target.value)}
+                  className="min-h-[180px] rounded-[22px] border-[#cfdcff] bg-[#fcfdff] px-4 py-3 text-right leading-8 focus-visible:ring-[#3453a7]/25"
+                />
+              </div>
+              <div className="flex justify-end gap-3 border-t border-[#e9eefb] pt-4">
+                <Button variant="outline" onClick={() => { setActionRow(null); setEditingActionId(null) }} className="rounded-xl border-[#d5deef] bg-white px-5 text-[#4b5563] hover:bg-[#f8fbff]">إلغاء</Button>
+                <Button onClick={handleSubmitAction} disabled={isSendingNotification || (!editingActionId && !actionRow.accountNumber)} className={actionType === "alert" ? "bg-red-500 text-white hover:bg-red-600" : "bg-[#3453a7] text-white hover:bg-[#27428d]"}>
+                  {isSendingNotification ? (editingActionId ? "جاري التحديث..." : "جاري الإرسال...") : editingActionId ? "حفظ التعديل" : actionType === "alert" ? "إرسال الإنذار" : "إرسال التنبيه"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteActionTarget)} onOpenChange={(open) => !open && setDeleteActionTarget(null)}>
+        <DialogContent className="max-w-md overflow-hidden border border-[#d9e1f7] bg-white p-0 shadow-[0_28px_70px_-40px_rgba(52,83,167,0.45)]" dir="rtl" showCloseButton={false}>
+          <DialogHeader className="border-b border-[#f3d4d4] bg-[linear-gradient(135deg,#fff8f8_0%,#fff1f1_100%)] px-5 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="text-xl font-black text-[#1a2332]">حذف السجل</DialogTitle>
+                <DialogDescription className="mt-1 text-sm text-[#6b7280]">
+                  سيتم حذف السجل اليدوي والإشعار المرتبط به نهائيًا.
+                </DialogDescription>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                <Trash2 className="h-5 w-5" />
+              </div>
+            </div>
+          </DialogHeader>
+          {deleteActionTarget ? (
+            <div className="space-y-5 px-5 py-5">
+              <div className="rounded-[20px] border border-[#f3d4d4] bg-[#fffafa] p-4 text-sm leading-7 text-[#4b5563]">
+                سيتم حذف {deleteActionTarget.type === "alert" ? "الإنذار" : "التنبيه"} الخاص بالطالب {deleteActionTarget.studentName}.
+              </div>
+              <div className="flex justify-end gap-3 border-t border-[#f0f2f7] pt-4">
+                <Button variant="outline" onClick={() => setDeleteActionTarget(null)} className="rounded-xl border-[#d5deef] bg-white px-5 text-[#4b5563] hover:bg-[#f8fbff]">إلغاء الأمر</Button>
+                <Button className="rounded-xl bg-red-500 px-5 text-white hover:bg-red-600" disabled={isSendingNotification} onClick={() => void handleDeleteAction(deleteActionTarget.actionId)}>
+                  {isSendingNotification ? "جاري الحذف..." : "حذف السجل"}
                 </Button>
               </div>
             </div>

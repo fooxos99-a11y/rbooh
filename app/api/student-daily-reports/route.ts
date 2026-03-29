@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { buildPlanSessionProgress, deriveReportSessionNumbersByDate, isMemorizationOffDay } from "@/lib/plan-session-progress"
+import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
+import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
+import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 
 const SELF_REPORT_REWARD_POINTS = {
   memorization_done: 10,
@@ -52,6 +55,12 @@ function isMissingPlanSessionNumberColumn(error: { message?: string | null; deta
   if (!error) return false
   const content = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
   return /plan_session_number|column .* does not exist/i.test(content)
+}
+
+function isMissingExecutionPageCountColumns(error: { message?: string | null; details?: string | null; hint?: string | null } | null) {
+  if (!error) return false
+  const content = `${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
+  return /memorization_pages_count|tikrar_pages_count|review_pages_count|linking_pages_count|column .* does not exist/i.test(content)
 }
 
 function isDuplicateDailyReportError(error: { message?: string | null; details?: string | null; hint?: string | null; code?: string | null } | null) {
@@ -119,6 +128,75 @@ async function resolvePlanSessionNumber(params: {
   return reportSessionNumbersByDate[reportDate] || progress.nextSessionNumber || null
 }
 
+function normalizePageCount(value: number) {
+  return Math.max(0, Math.round(value * 100) / 100)
+}
+
+async function resolveExecutionPageCounts(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  studentId: string
+  reportDate: string
+  hasMemorizationDone: boolean
+  hasTikrarDone: boolean
+  hasReviewDone: boolean
+  hasLinkingDone: boolean
+  isReviewOnlyDay: boolean
+}) {
+  const { supabase, studentId, reportDate, hasMemorizationDone, hasTikrarDone, hasReviewDone, hasLinkingDone, isReviewOnlyDay } = params
+  const { data: plan } = await supabase
+    .from("student_plans")
+    .select("start_date, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode")
+    .eq("student_id", studentId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const dailyPages = normalizePageCount(Number(plan?.daily_pages) || 0)
+
+  if (!plan) {
+    return {
+      memorizationPagesCount: hasMemorizationDone && !isReviewOnlyDay ? dailyPages : 0,
+      tikrarPagesCount: hasTikrarDone && !isReviewOnlyDay ? dailyPages : 0,
+      reviewPagesCount: 0,
+      linkingPagesCount: 0,
+    }
+  }
+
+  let attendanceQuery = supabase
+    .from("attendance_records")
+    .select("date, evaluations(hafiz_level)")
+    .eq("student_id", studentId)
+    .lte("date", reportDate)
+    .order("date", { ascending: true })
+
+  if (plan.start_date) {
+    attendanceQuery = attendanceQuery.gte("date", plan.start_date)
+  }
+
+  const { data: attendanceRecords } = await attendanceQuery
+  const successfulMemorizationCount = (attendanceRecords || []).filter((record) => {
+    const evaluations = Array.isArray(record.evaluations)
+      ? record.evaluations
+      : record.evaluations
+        ? [record.evaluations]
+        : []
+    const latestLevel = evaluations.length > 0 ? evaluations[evaluations.length - 1]?.hafiz_level ?? null : null
+    return isPassingMemorizationLevel(latestLevel)
+  }).length
+
+  const memorizedPoolPages = calculatePreviousMemorizedPages(plan) + successfulMemorizationCount * dailyPages
+  const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages)
+
+  return {
+    memorizationPagesCount: hasMemorizationDone && !isReviewOnlyDay ? dailyPages : 0,
+    tikrarPagesCount: hasTikrarDone && !isReviewOnlyDay ? dailyPages : 0,
+    reviewPagesCount: hasReviewDone ? normalizePageCount(resolvePlanReviewPagesPreference(plan, reviewPoolPages)) : 0,
+    linkingPagesCount: hasLinkingDone && !isReviewOnlyDay
+      ? normalizePageCount(Math.min(Number(plan.rabt_pages ?? 10), Math.max(0, memorizedPoolPages)))
+      : 0,
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -145,7 +223,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("student_daily_reports")
-      .select("id, student_id, report_date, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, notes, created_at, updated_at")
+      .select("id, student_id, report_date, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, memorization_pages_count, tikrar_pages_count, review_pages_count, linking_pages_count, notes, created_at, updated_at")
       .lte("report_date", queryEndDate)
       .order("report_date", { ascending: false })
 
@@ -171,6 +249,8 @@ export async function GET(request: NextRequest) {
             ? "يلزم تنفيذ ملف scripts/048_add_tikrar_to_student_daily_reports.sql قبل عرض التنفيذ اليومي."
             : isMissingPlanSessionNumberColumn(error)
             ? "يلزم تنفيذ ملف scripts/047_add_plan_session_number_to_student_daily_reports.sql قبل عرض التنفيذ اليومي."
+            : isMissingExecutionPageCountColumns(error)
+            ? "يلزم تنفيذ ملف scripts/060_add_execution_page_counts_to_student_daily_reports.sql قبل عرض التنفيذ اليومي."
             : "تعذر جلب تقارير التنفيذ اليومية",
           details: error.details ?? null,
           hint: error.hint ?? null,
@@ -242,7 +322,7 @@ export async function GET(request: NextRequest) {
       finalReportsByStudent = Object.fromEntries(
         Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
           currentStudentId,
-          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(report.report_date)),
+          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(getSaudiAttendanceAnchorDate(report.report_date))),
         ]),
       )
     } else {
@@ -294,7 +374,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existingReport, error: existingReportError } = await supabase
       .from("student_daily_reports")
-      .select("id, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, memorization_reward_claimed, tikrar_reward_claimed, review_reward_claimed, linking_reward_claimed")
+      .select("id, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, memorization_pages_count, tikrar_pages_count, review_pages_count, linking_pages_count, memorization_reward_claimed, tikrar_reward_claimed, review_reward_claimed, linking_reward_claimed")
       .eq("student_id", studentId)
       .eq("report_date", reportDate)
       .maybeSingle()
@@ -309,6 +389,8 @@ export async function POST(request: NextRequest) {
             ? "يلزم تنفيذ ملف scripts/047_add_plan_session_number_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
             : isMissingRewardClaimedColumns(existingReportError)
             ? "يلزم تنفيذ ملف scripts/046_add_reward_claimed_flags_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
+            : isMissingExecutionPageCountColumns(existingReportError)
+            ? "يلزم تنفيذ ملف scripts/060_add_execution_page_counts_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
             : isDuplicateDailyReportError(existingReportError)
             ? "يوجد أكثر من تقرير تنفيذ يومي لهذا الطالب في نفس التاريخ داخل قاعدة البيانات، ويجب حذف التكرار والإبقاء على سجل واحد فقط."
             : "تعذر التحقق من تقرير التنفيذ اليومي الحالي",
@@ -364,6 +446,16 @@ export async function POST(request: NextRequest) {
       studentId,
       reportDate,
     }))
+    const executionPageCounts = await resolveExecutionPageCounts({
+      supabase,
+      studentId,
+      reportDate,
+      hasMemorizationDone: nextMemorizationDone,
+      hasTikrarDone: nextTikrarDone,
+      hasReviewDone: nextReviewDone,
+      hasLinkingDone: nextLinkingDone,
+      isReviewOnlyDay,
+    })
 
     const newlyCompletedFields = [
       !isReviewOnlyDay && !memorizationRewardClaimed && nextMemorizationDone ? "memorization_done" : null,
@@ -383,6 +475,10 @@ export async function POST(request: NextRequest) {
           tikrar_done: nextTikrarDone,
           review_done: nextReviewDone,
           linking_done: nextLinkingDone,
+          memorization_pages_count: executionPageCounts.memorizationPagesCount,
+          tikrar_pages_count: executionPageCounts.tikrarPagesCount,
+          review_pages_count: executionPageCounts.reviewPagesCount,
+          linking_pages_count: executionPageCounts.linkingPagesCount,
           memorization_reward_claimed: nextMemorizationRewardClaimed,
           tikrar_reward_claimed: nextTikrarRewardClaimed,
           review_reward_claimed: nextReviewRewardClaimed,
@@ -392,7 +488,7 @@ export async function POST(request: NextRequest) {
         },
         { onConflict: "student_id,report_date" },
       )
-      .select("id, student_id, report_date, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, notes, created_at, updated_at")
+      .select("id, student_id, report_date, plan_session_number, memorization_done, tikrar_done, review_done, linking_done, memorization_pages_count, tikrar_pages_count, review_pages_count, linking_pages_count, notes, created_at, updated_at")
       .single()
 
     if (error) {
@@ -405,6 +501,8 @@ export async function POST(request: NextRequest) {
             ? "يلزم تنفيذ ملف scripts/048_add_tikrar_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
             : isMissingRewardClaimedColumns(error)
             ? "يلزم تنفيذ ملف scripts/046_add_reward_claimed_flags_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
+            : isMissingExecutionPageCountColumns(error)
+            ? "يلزم تنفيذ ملف scripts/060_add_execution_page_counts_to_student_daily_reports.sql قبل حفظ التنفيذ اليومي."
             : isMissingReportsTable(error)
             ? "جدول تقارير تنفيذ الطالب غير موجود بعد. نفذ ملف scripts/045_create_student_daily_reports.sql ثم أعد المحاولة."
             : "تعذر حفظ تقرير التنفيذ اليومي",

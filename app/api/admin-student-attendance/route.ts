@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { getSiteSetting } from "@/lib/site-settings"
-import { isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
   DEFAULT_ABSENCE_ALERT_TEMPLATES,
   calculateEffectiveAbsenceCount,
@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 })
     }
 
+    const effectiveDate = getSaudiAttendanceAnchorDate(date)
+
     let studentsQuery = supabase
       .from("students")
       .select("id, name, account_number, halaqah")
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
     let attendanceQuery = supabase
       .from("attendance_records")
       .select("id, student_id, status, teacher_id, halaqah")
-      .eq("date", date)
+      .eq("date", effectiveDate)
 
     if (circle?.trim()) {
       attendanceQuery = attendanceQuery.eq("halaqah", circle.trim())
@@ -124,6 +126,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 11:59 مساءً بتوقيت السعودية" }, { status: 400 })
     }
 
+    const effectiveDate = getSaudiAttendanceAnchorDate(date)
+
     if (updates.length === 0) {
       return NextResponse.json({ error: "لا توجد بيانات للتحضير" }, { status: 400 })
     }
@@ -180,7 +184,7 @@ export async function POST(request: NextRequest) {
     const { data: existingRecords, error: existingError } = await supabase
       .from("attendance_records")
       .select("id, student_id, status, teacher_id")
-      .eq("date", date)
+      .eq("date", effectiveDate)
       .in("student_id", studentIds)
 
     if (existingError) {
@@ -326,7 +330,7 @@ export async function POST(request: NextRequest) {
           teacher_id: teacherId,
           halaqah,
           status: update.status,
-          date,
+          date: effectiveDate,
         })
 
       if (insertError) {

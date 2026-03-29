@@ -1,5 +1,4 @@
 const RIYADH_TIME_ZONE = "Asia/Riyadh"
-const MANUALLY_ALLOWED_ATTENDANCE_DATES = ["2026-03-27", "2026-03-28"]
 
 export function getSaudiDateString(date = new Date()) {
 	const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -42,18 +41,25 @@ export function getSaudiWeekday(dateString: string) {
 	return new Date(`${dateString}T12:00:00+03:00`).getUTCDay()
 }
 
-export function isSaudiAttendanceDateAllowed(dateString: string) {
-	if (MANUALLY_ALLOWED_ATTENDANCE_DATES.includes(dateString)) {
-		return true
-	}
+function shiftSaudiDateString(dateString: string, offsetDays: number) {
+	const date = new Date(`${dateString}T12:00:00+03:00`)
+	date.setUTCDate(date.getUTCDate() + offsetDays)
+	return getSaudiDateString(date)
+}
 
+export function getSaudiAttendanceAnchorDate(dateString: string) {
 	const weekday = getSaudiWeekday(dateString)
-	return weekday === 0 || weekday === 3
+	const offsetDays = weekday <= 2 ? -weekday : -(weekday - 3)
+	return shiftSaudiDateString(dateString, offsetDays)
+}
+
+export function isSaudiAttendanceDateAllowed(dateString: string) {
+	return Boolean(dateString)
 }
 
 export function isSaudiAttendanceWindowOpen(date = new Date()) {
-	const saudiDate = getSaudiDateString(date)
-	return isSaudiAttendanceDateAllowed(saudiDate)
+	void date
+	return true
 }
 
 export function formatSaudiTimeWithPeriod(timeValue: string) {

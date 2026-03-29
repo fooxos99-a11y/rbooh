@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart, BookMarked, CheckCircle2, Clock, BookOpen, Library, Check, Lock } from "lucide-react"
-import { getActivePlanDayNumber, getJuzCoverageFromRange, getJuzProgressDetailsFromRange, getPlanMemorizedRange, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, getStoredMemorizedRange, hasScatteredCompletedJuzs, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
+import { calculatePreviousMemorizedPages, getActivePlanDayNumber, getJuzCoverageFromRange, getJuzProgressDetailsFromRange, getPlanMemorizedRange, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, getStoredMemorizedRange, hasScatteredCompletedJuzs, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -18,6 +18,7 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAuthHeaders } from "@/lib/client-auth"
 import { getEvaluationLevelLabel, isEvaluatedAttendance } from "@/lib/student-attendance"
+import { useResumeRefresh } from "@/hooks/use-resume-refresh"
 
 interface StudentData {
   id: string
@@ -243,20 +244,17 @@ function ProfilePage() {
     }
   }
 
-  // تحديث تلقائي عند العودة للصفحة
-  useEffect(() => {
-    const handleFocus = () => {
-      if (studentData?.id) {
-        fetchAttendanceRecords(studentData.id)
-        fetchPassedPathwayJuzs(studentData.id)
-        if (!isSavingDailyReport && !isDailyExecutionDirty) {
-          fetchDailyReports(studentData.id)
-        }
+  useResumeRefresh(
+    () => {
+      if (!studentData?.id) return
+      fetchAttendanceRecords(studentData.id)
+      fetchPassedPathwayJuzs(studentData.id)
+      if (!isSavingDailyReport && !isDailyExecutionDirty) {
+        fetchDailyReports(studentData.id)
       }
-    }
-    window.addEventListener("focus", handleFocus)
-    return () => window.removeEventListener("focus", handleFocus)
-  }, [studentData?.id, isDailyExecutionDirty, isSavingDailyReport])
+    },
+    { enabled: Boolean(studentData?.id), minIntervalMs: 180000, includePageShow: false },
+  )
 
   useEffect(() => {
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
@@ -710,6 +708,16 @@ function ProfilePage() {
     return "-"
   }
 
+  function formatPageCountLabel(value: number) {
+    const normalizedValue = Math.max(0, Math.round(value * 100) / 100)
+    if (normalizedValue === 0.25) return "ربع وجه"
+    if (normalizedValue === 0.5) return "نصف وجه"
+    if (normalizedValue === 1) return "وجه واحد"
+    if (normalizedValue === 2) return "وجهان"
+    if (normalizedValue <= 10 && Number.isInteger(normalizedValue)) return `${normalizedValue} أوجه`
+    return `${normalizedValue} وجه`
+  }
+
   const normalizedPlanData = planData
     ? {
         ...planData,
@@ -810,6 +818,11 @@ function ProfilePage() {
       : { muraajaa: null, rabt: null }
     const hasReviewContent = Boolean(muraajaaContent)
     const hasLinkingContent = !todayIsReviewOnlyDay && Boolean(rabtContent)
+    const dailyPagesCount = Math.max(0, Number(planData?.daily_pages ?? 0))
+    const memorizedPoolPages = normalizedPlanData ? calculatePreviousMemorizedPages(normalizedPlanData) + planCompletedDays * dailyPagesCount : 0
+    const reviewPoolPages = normalizedPlanData ? resolvePlanReviewPoolPages(normalizedPlanData, memorizedPoolPages) : 0
+    const reviewPagesCount = normalizedPlanData ? resolvePlanReviewPagesPreference(normalizedPlanData, reviewPoolPages) : 0
+    const linkingPagesCount = normalizedPlanData ? Math.min(Number(normalizedPlanData.rabt_pages ?? 10), Math.max(0, memorizedPoolPages)) : 0
     const hasSavableSelection = [
       !todayIsReviewOnlyDay && !isMemorizationLocked && typeof dailyExecutionForm.memorization_done === "boolean",
       !todayIsReviewOnlyDay && !isTikrarLocked && typeof dailyExecutionForm.tikrar_done === "boolean",
@@ -830,6 +843,7 @@ function ProfilePage() {
               currentSessionContent.text,
             )
             : "لا يوجد حفظ اليوم",
+          countLabel: dailyPagesCount > 0 ? formatPageCountLabel(dailyPagesCount) : null,
           isLocked: isMemorizationLocked,
         }, {
           key: "tikrar_done" as const,
@@ -843,6 +857,7 @@ function ProfilePage() {
               currentSessionContent.text,
             )
             : "لا يوجد تكرار اليوم",
+          countLabel: dailyPagesCount > 0 ? formatPageCountLabel(dailyPagesCount) : null,
           isLocked: isTikrarLocked,
         }] : []),
       {
@@ -857,6 +872,7 @@ function ProfilePage() {
             muraajaaContent.text,
           )
           : "لا توجد مراجعة اليوم",
+        countLabel: hasReviewContent && reviewPagesCount > 0 ? formatPageCountLabel(reviewPagesCount) : null,
         isLocked: isReviewLocked,
         isUnavailable: !hasReviewContent,
       },
@@ -872,6 +888,7 @@ function ProfilePage() {
             rabtContent.text,
           )
           : "لا يوجد ربط اليوم",
+        countLabel: hasLinkingContent && linkingPagesCount > 0 ? formatPageCountLabel(linkingPagesCount) : null,
         isLocked: isLinkingLocked,
         isUnavailable: !hasLinkingContent,
       }] : []),
@@ -891,6 +908,7 @@ function ProfilePage() {
                     <div className="flex flex-col gap-2.5 md:grid md:grid-cols-[92px_minmax(0,1fr)_120px] md:items-center md:gap-3">
                       <div>
                         <p className="text-sm font-black text-[#1a2332] md:text-base">{item.title}</p>
+                        {item.countLabel ? <p className="mt-1 text-[11px] font-bold text-[#3453a7] md:text-xs">{item.countLabel}</p> : null}
                       </div>
                       <p className="text-xs leading-5 text-[#1a2332]/58 md:min-w-0 md:text-sm">{item.description}</p>
                       <div className="md:w-[120px]">

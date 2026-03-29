@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 
 import { isMemorizationOffDay } from "@/lib/plan-session-progress"
+import { getSaudiAttendanceAnchorDate, getSaudiWeekday } from "@/lib/saudi-time"
 import { createClient } from "@/lib/supabase/server"
 import { countAbsenceStatuses } from "@/lib/student-absence"
 
 type IssueSeverity = "warning" | "alert"
 type IssueCategory = "attendance" | "execution"
+type IssueScope = "today" | "total"
 
 type DailyReportRow = {
 	student_id: string
@@ -35,10 +37,19 @@ type StudentIssueReason = {
 }
 
 type StudentIssueActionRow = {
+	id: string
 	student_id: string | null
+	student_account_number: string | null
+	notification_id: string | null
+	circle_name: string | null
+	issue_date: string
 	action_type: IssueSeverity
+	action_source: "manual" | "automatic"
+	issue_summary: string | null
+	issue_reasons: StudentIssueReason[] | null
 	message: string
 	sent_at: string
+	updated_at: string | null
 	sent_by_account_number: string | null
 	sent_by_role: string | null
 }
@@ -58,20 +69,54 @@ function getKsaDateString(baseDate = new Date()) {
 	return `${year}-${month}-${day}`
 }
 
-function isFriday(dateValue: string) {
-	return new Date(`${dateValue}T12:00:00+03:00`).getUTCDay() === 5
+function isAttendanceAnchorDay(dateValue: string) {
+	const weekday = getSaudiWeekday(dateValue)
+	return weekday === 0 || weekday === 3
+}
+
+function addSaudiDays(dateValue: string, days: number) {
+	const date = new Date(`${dateValue}T12:00:00+03:00`)
+	date.setUTCDate(date.getUTCDate() + days)
+	return date.toISOString().slice(0, 10)
+}
+
+function getAnchorDatesInRange(startDate: string, endDate: string) {
+	const anchorDates = new Set<string>()
+	let currentDate = startDate
+
+	while (currentDate <= endDate) {
+		anchorDates.add(getSaudiAttendanceAnchorDate(currentDate))
+		currentDate = addSaudiDays(currentDate, 1)
+	}
+
+	return Array.from(anchorDates).sort((left, right) => left.localeCompare(right))
+}
+
+function uniqAttendanceByAnchorDate(records: AttendanceRow[]) {
+	const latestByDate = new Map<string, AttendanceRow>()
+
+	for (const record of records) {
+		if (!record.date) {
+			continue
+		}
+
+		if (!latestByDate.has(record.date)) {
+			latestByDate.set(record.date, record)
+		}
+	}
+
+	return Array.from(latestByDate.values())
 }
 
 function getMissingDailyTasks(report: DailyReportRow | null | undefined, date: string) {
-	const friday = isFriday(date)
 	const memorizationOffDay = isMemorizationOffDay(date)
 	const missingTasks: string[] = []
 
-	if (!friday && !report?.review_done) {
+	if (!report?.review_done) {
 		missingTasks.push("المراجعة")
 	}
 
-	if (!friday && !memorizationOffDay) {
+	if (!memorizationOffDay) {
 		if (!report?.memorization_done) {
 			missingTasks.push("الحفظ")
 		}
@@ -90,11 +135,57 @@ function getRecommendedAction(reasons: StudentIssueReason[]): IssueSeverity {
 	return reasons.some((reason) => reason.severity === "alert") ? "alert" : "warning"
 }
 
+function getIssueDateWindow(issueDate: string) {
+	return {
+		start: `${issueDate}T00:00:00+03:00`,
+		end: `${issueDate}T23:59:59.999+03:00`,
+	}
+}
+
+async function resolveLinkedNotificationId(supabase: Awaited<ReturnType<typeof createClient>>, action: Pick<StudentIssueActionRow, "notification_id" | "student_account_number" | "message" | "issue_date">) {
+	if (action.notification_id) {
+		return action.notification_id
+	}
+
+	if (!action.student_account_number) {
+		return null
+	}
+
+	const window = getIssueDateWindow(action.issue_date)
+	const { data, error } = await supabase
+		.from("notifications")
+		.select("id")
+		.eq("user_account_number", action.student_account_number)
+		.eq("message", action.message)
+		.gte("created_at", window.start)
+		.lte("created_at", window.end)
+		.order("created_at", { ascending: false })
+		.limit(1)
+
+	if (error) {
+		throw new Error("تعذر ربط السجل بالإشعار الحالي")
+	}
+
+	return data?.[0]?.id || null
+}
+
 export async function GET(request: NextRequest) {
 	try {
 		const date = request.nextUrl.searchParams.get("date")?.trim() || getKsaDateString()
+		const fromDate = request.nextUrl.searchParams.get("from")?.trim() || ""
+		const toDate = request.nextUrl.searchParams.get("to")?.trim() || ""
 		const selectedCircle = request.nextUrl.searchParams.get("circle")?.trim() || "all"
-		const scope = request.nextUrl.searchParams.get("scope") === "total_with_today" ? "total_with_today" : "today"
+		const scope: IssueScope = request.nextUrl.searchParams.get("scope") === "total" || request.nextUrl.searchParams.get("scope") === "total_with_today"
+			? "total"
+			: "today"
+		const rangeStart = scope === "total" ? (fromDate || date) : date
+		const rangeEnd = scope === "total" ? (toDate || date) : date
+		const selectedAnchorDate = getSaudiAttendanceAnchorDate(date)
+		const canFlagTodayAbsence = isAttendanceAnchorDay(date)
+
+		if (rangeStart > rangeEnd) {
+			return NextResponse.json({ error: "تاريخ البداية يجب أن يكون قبل تاريخ النهاية" }, { status: 400 })
+		}
 
 		const supabase = await createClient()
 
@@ -108,36 +199,55 @@ export async function GET(request: NextRequest) {
 			studentsQuery = studentsQuery.eq("halaqah", selectedCircle)
 		}
 
-		const [{ data: students, error: studentsError }, { data: attendanceRecords, error: attendanceError }, { data: dailyReports, error: dailyReportsError }] = await Promise.all([
-			studentsQuery,
-			supabase
-				.from("attendance_records")
-				.select("student_id, date, status, notes")
-				.lte("date", date),
-			supabase
-				.from("student_daily_reports")
-				.select("student_id, report_date, memorization_done, tikrar_done, review_done, linking_done, notes")
-				.eq("report_date", date),
-		])
+		const { data: students, error: studentsError } = await studentsQuery
 
 		if (studentsError) {
 			return NextResponse.json({ error: "تعذر جلب بيانات الطلاب" }, { status: 500 })
 		}
 
+		const studentIds = ((students || []) as Array<{ id: string }>).map((student) => student.id)
+		const attendanceAnchorDates = getAnchorDatesInRange(rangeStart, rangeEnd)
+
+		const [{ data: attendanceRecords, error: attendanceError }, { data: dailyReports, error: dailyReportsError }, { data: issueActions, error: issueActionsError }] = await Promise.all([
+			studentIds.length > 0 && attendanceAnchorDates.length > 0
+				? supabase
+					.from("attendance_records")
+					.select("student_id, date, status, notes")
+					.in("student_id", studentIds)
+					.in("date", attendanceAnchorDates)
+				: Promise.resolve({ data: [] as AttendanceRow[], error: null }),
+			studentIds.length > 0
+				? supabase
+					.from("student_daily_reports")
+					.select("student_id, report_date, memorization_done, tikrar_done, review_done, linking_done, notes")
+					.in("student_id", studentIds)
+					.eq("report_date", date)
+				: Promise.resolve({ data: [] as DailyReportRow[], error: null }),
+			studentIds.length > 0
+				? (() => {
+					let query = supabase
+						.from("student_issue_actions")
+						.select("id, student_id, student_account_number, notification_id, circle_name, issue_date, action_type, action_source, issue_summary, issue_reasons, message, sent_at, updated_at, sent_by_account_number, sent_by_role")
+						.in("student_id", studentIds)
+						.gte("issue_date", rangeStart)
+						.lte("issue_date", rangeEnd)
+						.order("sent_at", { ascending: false })
+
+					return query
+				})()
+				: Promise.resolve({ data: [] as StudentIssueActionRow[], error: null }),
+		])
+
 		if (attendanceError) {
 			return NextResponse.json({ error: "تعذر جلب بيانات الحضور" }, { status: 500 })
 		}
 
+		if (issueActionsError) {
+			return NextResponse.json({ error: "تعذر جلب سجل التنبيهات والإنذارات" }, { status: 500 })
+		}
+
 		const safeAttendance = (attendanceRecords || []) as AttendanceRow[]
 		const safeDailyReports = dailyReportsError ? [] : ((dailyReports || []) as DailyReportRow[])
-		const studentIds = ((students || []) as Array<{ id: string }>).map((student) => student.id)
-		const { data: issueActions } = studentIds.length > 0
-			? await supabase
-				.from("student_issue_actions")
-				.select("student_id, action_type, message, sent_at, sent_by_account_number, sent_by_role")
-				.in("student_id", studentIds)
-				.order("sent_at", { ascending: false })
-			: { data: [] as StudentIssueActionRow[] }
 		const circles = Array.from(
 			new Set(
 				((students || []) as Array<{ halaqah: string | null }>).map((student) => (student.halaqah || "").trim()).filter(Boolean),
@@ -165,10 +275,13 @@ export async function GET(request: NextRequest) {
 		const rows = (students || [])
 			.map((student) => {
 				const studentAttendance = attendanceByStudent.get(student.id) || []
-				const selectedAttendance = studentAttendance.find((record) => record.date === date) || null
+				const normalizedAttendance = uniqAttendanceByAnchorDate(studentAttendance)
+				const selectedAttendance = canFlagTodayAbsence
+					? normalizedAttendance.find((record) => record.date === selectedAnchorDate) || null
+					: null
 				const dailyReport = dailyReportsByStudent.get(student.id) || null
 				const { absentCount, excusedCount, effectiveAbsenceCount } = countAbsenceStatuses(
-					studentAttendance.map((record) => record.status),
+					normalizedAttendance.map((record) => record.status),
 				)
 				const studentActions = issueActionsByStudent.get(student.id) || []
 				const warningCount = studentActions.filter((action) => action.action_type === "warning").length
@@ -176,18 +289,18 @@ export async function GET(request: NextRequest) {
 				const lastAction = studentActions[0]
 				const reasons: StudentIssueReason[] = []
 
-				if (selectedAttendance?.status === "absent") {
+				if (canFlagTodayAbsence && selectedAttendance?.status === "absent") {
 					reasons.push({
 						code: "absence_today",
 						category: "attendance",
 						severity: "alert",
-						title: "غياب اليوم",
-						description: `الطالب غائب بتاريخ ${date}.`,
+						title: "غياب اليوم المحتسب",
+						description: `الطالب غائب على اليوم المحتسب ${selectedAnchorDate}.`,
 						date,
 					})
 				}
 
-				if (scope === "total_with_today" && effectiveAbsenceCount >= 1) {
+				if (scope === "total" && effectiveAbsenceCount >= 1) {
 					reasons.push({
 						code: "effective_absence_count",
 						category: "attendance",
@@ -198,7 +311,7 @@ export async function GET(request: NextRequest) {
 					})
 				}
 
-				if (scope === "total_with_today" && excusedCount >= 2) {
+				if (scope === "total" && excusedCount >= 2) {
 					reasons.push({
 						code: "repeated_excused",
 						category: "attendance",
@@ -222,11 +335,15 @@ export async function GET(request: NextRequest) {
 					})
 				}
 
-				if (reasons.length === 0) {
+				if (reasons.length === 0 && studentActions.length === 0) {
 					return null
 				}
 
-				const recommendedAction = getRecommendedAction(reasons)
+				const recommendedAction = reasons.length > 0
+					? getRecommendedAction(reasons)
+					: studentActions.some((action) => action.action_type === "alert")
+						? "alert"
+						: "warning"
 
 				return {
 					studentId: student.id,
@@ -246,6 +363,18 @@ export async function GET(request: NextRequest) {
 					recommendedAction,
 					warningCount,
 					alertCount,
+					manualActions: studentActions.map((action) => ({
+						id: action.id,
+						type: action.action_type,
+						source: action.action_source,
+						issueDate: action.issue_date,
+						issueSummary: action.issue_summary,
+						message: action.message,
+						sentAt: action.sent_at,
+						updatedAt: action.updated_at,
+						sentByAccountNumber: action.sent_by_account_number,
+						sentByRole: action.sent_by_role,
+					})),
 					lastAction: lastAction
 						? {
 							type: lastAction.action_type,
@@ -276,6 +405,8 @@ export async function GET(request: NextRequest) {
 
 		return NextResponse.json({
 			date,
+			fromDate: fromDate || null,
+			toDate: toDate || null,
 			scope,
 			circles,
 			rows,
@@ -284,6 +415,126 @@ export async function GET(request: NextRequest) {
 	} catch (error) {
 		console.error("[student-issues][GET]", error)
 		return NextResponse.json({ error: "حدث خطأ أثناء تجميع مشاكل الطلاب" }, { status: 500 })
+	}
+}
+
+export async function PATCH(request: NextRequest) {
+	try {
+		const body = await request.json()
+		const actionId = typeof body.actionId === "string" ? body.actionId.trim() : ""
+		const message = typeof body.message === "string" ? body.message.trim() : ""
+		const issueSummary = typeof body.issueSummary === "string" ? body.issueSummary.trim() : ""
+		const issueDate = typeof body.date === "string" && body.date.trim() ? body.date.trim() : ""
+		const actionType = body.actionType === "alert" ? "alert" : "warning"
+		const issueReasons = Array.isArray(body.issueReasons) ? body.issueReasons : []
+
+		if (!actionId) {
+			return NextResponse.json({ error: "معرف السجل مطلوب" }, { status: 400 })
+		}
+
+		if (!message) {
+			return NextResponse.json({ error: "نص الرسالة مطلوب" }, { status: 400 })
+		}
+
+		if (!issueDate) {
+			return NextResponse.json({ error: "التاريخ مطلوب" }, { status: 400 })
+		}
+
+		const supabase = await createClient()
+		const { data: existingAction, error: existingActionError } = await supabase
+			.from("student_issue_actions")
+			.select("id, notification_id, student_account_number, message, issue_date")
+			.eq("id", actionId)
+			.maybeSingle()
+
+		if (existingActionError || !existingAction) {
+			return NextResponse.json({ error: "تعذر العثور على السجل المطلوب" }, { status: 404 })
+		}
+
+		const { error } = await supabase
+			.from("student_issue_actions")
+			.update({
+				action_type: actionType,
+				issue_date: issueDate,
+				issue_summary: issueSummary || null,
+				issue_reasons: issueReasons,
+				message,
+				updated_at: new Date().toISOString(),
+			})
+			.eq("id", actionId)
+
+		if (error) {
+			return NextResponse.json({ error: "تعذر تحديث السجل الإداري" }, { status: 500 })
+		}
+
+		const notificationId = await resolveLinkedNotificationId(supabase, existingAction)
+		if (notificationId) {
+			const { error: notificationError } = await supabase
+				.from("notifications")
+				.update({ message })
+				.eq("id", notificationId)
+
+			if (notificationError) {
+				return NextResponse.json({ error: "تم تحديث السجل الإداري لكن تعذر تحديث الإشعار المرتبط" }, { status: 500 })
+			}
+
+			if (!existingAction.notification_id) {
+				await supabase
+					.from("student_issue_actions")
+					.update({ notification_id: notificationId, updated_at: new Date().toISOString() })
+					.eq("id", actionId)
+			}
+		}
+
+		return NextResponse.json({ success: true })
+	} catch (error) {
+		console.error("[student-issues][PATCH]", error)
+		return NextResponse.json({ error: "حدث خطأ أثناء تحديث السجل" }, { status: 500 })
+	}
+}
+
+export async function DELETE(request: NextRequest) {
+	try {
+		const body = await request.json()
+		const actionId = typeof body.actionId === "string" ? body.actionId.trim() : ""
+
+		if (!actionId) {
+			return NextResponse.json({ error: "معرف السجل مطلوب" }, { status: 400 })
+		}
+
+		const supabase = await createClient()
+		const { data: existingAction, error: existingActionError } = await supabase
+			.from("student_issue_actions")
+			.select("id, notification_id, student_account_number, message, issue_date")
+			.eq("id", actionId)
+			.maybeSingle()
+
+		if (existingActionError || !existingAction) {
+			return NextResponse.json({ error: "تعذر العثور على السجل المطلوب" }, { status: 404 })
+		}
+
+		const notificationId = await resolveLinkedNotificationId(supabase, existingAction)
+		if (notificationId) {
+			const { error: notificationError } = await supabase
+				.from("notifications")
+				.delete()
+				.eq("id", notificationId)
+
+			if (notificationError) {
+				return NextResponse.json({ error: "تعذر حذف الإشعار المرتبط" }, { status: 500 })
+			}
+		}
+
+		const { error } = await supabase.from("student_issue_actions").delete().eq("id", actionId)
+
+		if (error) {
+			return NextResponse.json({ error: "تعذر حذف السجل الإداري" }, { status: 500 })
+		}
+
+		return NextResponse.json({ success: true })
+	} catch (error) {
+		console.error("[student-issues][DELETE]", error)
+		return NextResponse.json({ error: "حدث خطأ أثناء حذف السجل" }, { status: 500 })
 	}
 }
 
@@ -310,13 +561,14 @@ export async function POST(request: NextRequest) {
 		}
 
 		const supabase = await createClient()
-		const todayStart = `${date}T00:00:00+03:00`
+		const issueDateWindow = getIssueDateWindow(date)
 		const { data: existingNotifications, error: existingError } = await supabase
 			.from("notifications")
 			.select("id")
 			.eq("user_account_number", accountNumber)
 			.eq("message", message)
-			.gte("created_at", todayStart)
+			.gte("created_at", issueDateWindow.start)
+			.lte("created_at", issueDateWindow.end)
 
 		if (existingError) {
 			return NextResponse.json({ error: "تعذر التحقق من الإشعارات السابقة" }, { status: 500 })
@@ -326,10 +578,10 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json({ success: true, skipped: true })
 		}
 
-		const { error } = await supabase.from("notifications").insert({
+		const { data: insertedNotification, error } = await supabase.from("notifications").insert({
 			user_account_number: accountNumber,
 			message,
-		})
+		}).select("id").single()
 
 		if (error) {
 			return NextResponse.json({ error: "تعذر إرسال الإشعار" }, { status: 500 })
@@ -339,6 +591,7 @@ export async function POST(request: NextRequest) {
 			const { error: actionError } = await supabase.from("student_issue_actions").insert({
 				student_id: studentId,
 				student_account_number: accountNumber,
+				notification_id: insertedNotification?.id || null,
 				circle_name: circleName || null,
 				issue_date: date,
 				action_type: actionType,

@@ -48,8 +48,11 @@ type DailyReportRow = {
   student_id: string;
   report_date: string;
   memorization_done: boolean;
+  memorization_pages_count?: number | null;
   review_done: boolean;
+  review_pages_count?: number | null;
   linking_done: boolean;
+  linking_pages_count?: number | null;
 };
 
 type DayStatus = "absent" | "late" | "present-only" | "memorized" | "review" | "tied" | "review-tied" | "complete" | "none";
@@ -117,7 +120,7 @@ function addDaysToSaudiDate(value: string, days: number) {
 function isStudyDay(dateValue: Date | string) {
   const date = typeof dateValue === "string" ? new Date(`${dateValue}T00:00:00`) : dateValue;
   const day = date.getDay();
-  return day !== 5;
+  return day !== 6;
 }
 
 function isAttendanceDay(dateValue: Date | string) {
@@ -152,7 +155,7 @@ function getStudyWeek(weekOffset: number) {
   const startDate = addDaysToSaudiDate(getCurrentStudyWeekStart(), -weekOffset * 7);
   const fullWeekDates = [0, 1, 2, 3, 4, 5, 6].map((offset) => addDaysToSaudiDate(startDate, offset));
   const endDate = weekOffset === 0
-    ? addDaysToSaudiDate(getSaudiDateString(), -1)
+    ? getSaudiDateString()
     : fullWeekDates[fullWeekDates.length - 1];
   const dates = fullWeekDates.filter((date) => date <= endDate);
 
@@ -374,7 +377,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
             .lte("date", studyWeek.endDate),
           supabase
             .from("student_daily_reports")
-            .select("student_id, report_date, memorization_done, review_done, linking_done")
+            .select("student_id, report_date, memorization_done, memorization_pages_count, review_done, review_pages_count, linking_done, linking_pages_count")
             .in("student_id", studentIds)
             .gte("report_date", studyWeek.startDate)
             .lte("report_date", studyWeek.endDate),
@@ -480,11 +483,11 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
                 const tiePages = Math.min(Number(plan.rabt_pages ?? 10), Math.max(0, memorizedPoolPages));
 
                 if (dailyReport?.review_done) {
-                  revised += reviewPages;
+                  revised += Math.max(Number(dailyReport.review_pages_count ?? reviewPages), 0);
                 }
 
                 if (dailyReport?.linking_done) {
-                  tied += tiePages;
+                  tied += Math.max(Number(dailyReport.linking_pages_count ?? tiePages), 0);
                 }
 
                 if (hasPassingMemorization(record)) {

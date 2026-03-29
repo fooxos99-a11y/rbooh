@@ -510,15 +510,16 @@
 }
 
 .surah-scroll::-webkit-scrollbar {
-  width: 2px;
+  width: 6px;
 }
 .surah-scroll::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(143, 177, 255, 0.14);
+  border-radius: 999px;
 }
 .surah-scroll::-webkit-scrollbar-thumb {
-  background: #d8a355;
+  background: linear-gradient(180deg, #8fb1ff 0%, #3453a7 100%);
   border-radius: 999px;
 }
 .surah-scroll::-webkit-scrollbar-thumb:hover {
-  background: #c99347;
+  background: linear-gradient(180deg, #7aa0f3 0%, #27428d 100%);
 }

@@ -47,6 +47,7 @@ type PathwayLevel = {
 type DisplayJuz = {
   juzNumber: number
   isCurrentlyMemorized: boolean
+  hasHistoricalResult: boolean
   latestResult: {
     status: "pass" | "fail"
     lastLevelNumber: number | null
@@ -476,20 +477,11 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
       return true
     }
 
-    const latestResult = item.latestResult
-    if (!latestResult) {
-      return item.isCurrentlyMemorized
+    if (item.hasHistoricalResult) {
+      return false
     }
 
-    if (latestResult.lastLevelNumber === selectedLevelNumber) {
-      return true
-    }
-
-    if (latestResult.status === "fail" && item.isCurrentlyMemorized) {
-      return (latestResult.lastLevelNumber ?? 0) < selectedLevelNumber
-    }
-
-    return false
+    return item.isCurrentlyMemorized
   })
 
   return (
@@ -721,7 +713,7 @@ export function PathwayTestsTab({ canManageSetup, canManageTests }: PathwayTests
           )}
           {selectedStudentId && !loadingData && canManageTests && visibleDisplayJuzs.length === 0 && (
             <div className="rounded-[30px] border border-[#3453a7]/18 bg-white px-6 py-12 text-center shadow-sm">
-              <p className="text-lg font-bold text-[#1a2332]">لا توجد أجزاء كاملة محفوظة</p>
+              <p className="text-lg font-bold text-[#1a2332]">لا توجد أجزاء غير مختبرة متاحة لهذا المستوى</p>
             </div>
           )}
           </div>

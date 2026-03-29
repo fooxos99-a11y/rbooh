@@ -66,7 +66,7 @@ export function GlobalEndSemesterDialog() {
             </span>
           </DialogTitle>
           <DialogDescription className="text-sm text-neutral-500">
-            هل تريد إنهاء الفصل؟ سيُصفّر هذا الإجراء نقاط الطلاب ويحفظ الخطط الحالية كمحفوظ سابق ثم يحذف الخطط النشطة.
+            هل تريد إنهاء الفصل؟ سيُصفّر هذا الإجراء نقاط الطلاب ويحفظ الخطط الحالية كمحفوظ سابق ثم يحذف الخطط النشطة، من دون حذف نتائج الاختبارات السابقة أو فتحها من جديد.
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-xl border border-[#8fb1ff] bg-[#f7faff] px-4 py-3 text-sm leading-7 text-[#1a2332]">
@@ -77,6 +77,8 @@ export function GlobalEndSemesterDialog() {
           2. نقل حدود كل خطة حالية إلى محفوظ الطالب الدائم.
           <br />
           3. حذف الخطط الحالية لبدء فصل جديد بخطط جديدة.
+          <br />
+          4. تبقى نتائج اختبارات المسار محفوظة كما هي، ولا تصبح قابلة للإعادة.
         </div>
         {message && (
           <div className={`rounded-xl px-4 py-3 text-sm ${message.type === "success" ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-red-200 bg-red-50 text-red-700"}`}>

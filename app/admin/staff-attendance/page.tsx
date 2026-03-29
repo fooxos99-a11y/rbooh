@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { getSaudiDateString, getSaudiTimeString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, getSaudiDateString, getSaudiTimeString, getSaudiWeekday, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import { Calendar as CalendarIcon, Check } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
@@ -77,6 +77,11 @@ const STATUS_OPTIONS: Array<{ value: Exclude<AttendanceStatus, null>; label: str
 
 function buildAttendanceTimestamp(date: string) {
   return new Date(`${date}T12:00:00+03:00`).toISOString()
+}
+
+function getAttendanceAnchorLabel(date: string) {
+  const effectiveDate = getSaudiAttendanceAnchorDate(date)
+  return getSaudiWeekday(effectiveDate) === 0 ? "الأحد" : "الأربعاء"
 }
 
 export default function StaffAttendancePage() {
@@ -147,6 +152,8 @@ export default function StaffAttendancePage() {
   const isAttendanceWindowOpen = isSaudiAttendanceWindowOpen(new Date(timeTick))
   const saudiTimeLabel = getSaudiTimeString(new Date(timeTick))
   const isTodaySelected = selectedDate === todaySaudiDate
+  const effectiveSelectedDate = getSaudiAttendanceAnchorDate(selectedDate)
+  const attendanceAnchorLabel = getAttendanceAnchorLabel(selectedDate)
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -200,9 +207,9 @@ export default function StaffAttendancePage() {
 
     try {
       const [studentsResponse, teachersResponse, teacherAttendanceResponse] = await Promise.all([
-        fetch(`/api/admin-student-attendance?date=${date}&t=${Date.now()}`, { cache: "no-store" }),
-        fetch(`/api/teachers?t=${Date.now()}`, { cache: "no-store" }),
-        fetch(`/api/teacher-attendance/all?t=${Date.now()}`, { cache: "no-store" }),
+        fetch(`/api/admin-student-attendance?date=${date}`, { cache: "no-store" }),
+        fetch("/api/teachers", { cache: "no-store" }),
+        fetch(`/api/teacher-attendance/all?date=${date}`, { cache: "no-store" }),
       ])
 
       const studentsData = await studentsResponse.json()
@@ -229,7 +236,7 @@ export default function StaffAttendancePage() {
 
       const teacherAttendanceMap = new Map(
         teacherAttendanceRecords
-          .filter((record) => record.attendance_date === date)
+          .filter((record) => record.attendance_date === effectiveSelectedDate)
           .map((record) => [record.teacher_id, record] as const),
       )
 
@@ -348,7 +355,7 @@ export default function StaffAttendancePage() {
     }
 
     const previousStatus = teacherRecord.status
-    const timestamp = buildAttendanceTimestamp(selectedDate)
+    const timestamp = buildAttendanceTimestamp(effectiveSelectedDate)
     setTeacherStatus(teacherId, status)
     setSavingTeacherIds((current) => [...current, teacherId])
 
@@ -438,7 +445,7 @@ export default function StaffAttendancePage() {
                             setSelectedDate(nextDate)
                           }
                         }}
-                        disabled={(date) => date.getDay() !== 0 && date.getDay() !== 3}
+                        disabled={(date) => date > new Date()}
                         initialFocus
                       />
                     </PopoverContent>
@@ -472,6 +479,9 @@ export default function StaffAttendancePage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-3">
+                  <span className="text-sm font-semibold text-[#4d6b76]">
+                    يُحتسب هذا التاريخ على {attendanceAnchorLabel} ({effectiveSelectedDate})
+                  </span>
                   <div className="inline-flex rounded-2xl border border-[#003f55]/15 bg-[#f4fafb] p-1">
                     <button
                       type="button"
@@ -505,14 +515,6 @@ export default function StaffAttendancePage() {
                 <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
                   لا يمكن اعتماد تحضير تاريخ مستقبلي.
                 </div>
-              ) : !isAttendanceWindowOpen ? (
-                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
-                  يفتح فقط يوم الأحد ويوم الأربعاء.
-                </div>
-              ) : !isAttendanceDateAllowed ? (
-                <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
-                  التحضير متاح فقط يوم الأحد ويوم الأربعاء.
-                </div>
               ) : activeGroup === "students" ? (
                 filteredStudentRecords.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-[#003f55]/20 bg-[#f4fafb] px-4 py-10 text-center text-[#4d6b76]">
@@ -542,7 +544,7 @@ export default function StaffAttendancePage() {
                               onValueChange={(value) => {
                                 void saveStudentStatus(record.student_id, value as Exclude<AttendanceStatus, null>)
                               }}
-                              disabled={!isAttendanceDateAllowed || savingStudentIds.includes(record.student_id)}
+                              disabled={!isAttendanceDateAllowed || !isAttendanceWindowOpen || savingStudentIds.includes(record.student_id)}
                             >
                               <SelectTrigger dir="rtl" className="h-10 w-full justify-between gap-0 rounded-lg border-[#003f55]/20 bg-white text-right text-base font-normal text-[#1a2332] transition-all duration-200 hover:border-[#3453a7]/30 hover:shadow-sm [&>span]:flex-1 [&>span]:text-right">
                                 <SelectValue placeholder="اختيار" />

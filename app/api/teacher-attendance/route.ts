@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { getSaudiDateString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, getSaudiDateString, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,13 +14,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "teacher_id and date are required" }, { status: 400 })
     }
 
+    const effectiveDate = getSaudiAttendanceAnchorDate(date)
+
     const supabase = await createClient()
 
     const { data, error } = await supabase
       .from("teacher_attendance")
       .select("*")
       .eq("teacher_id", teacherId)
-      .eq("attendance_date", date)
+      .eq("attendance_date", effectiveDate)
       .maybeSingle()
 
     if (error) {
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
     const attendanceDate = typeof attendance_date === "string" && attendance_date.trim()
       ? attendance_date.trim()
       : getSaudiDateString()
+    const effectiveAttendanceDate = getSaudiAttendanceAnchorDate(attendanceDate)
 
     if (!isSaudiAttendanceDateAllowed(attendanceDate) || !isSaudiAttendanceWindowOpen()) {
       return NextResponse.json({ error: "التحضير متاح فقط يوم الأحد ويوم الأربعاء حتى الساعة 11:59 مساءً بتوقيت السعودية" }, { status: 400 })
@@ -75,7 +78,7 @@ export async function POST(request: NextRequest) {
       teacher_id,
       teacher_name,
       account_number: Number(account_number),
-      attendance_date: attendanceDate,
+      attendance_date: effectiveAttendanceDate,
       status: status || "present",
       check_in_time: check_in_time || new Date().toISOString(),
     }

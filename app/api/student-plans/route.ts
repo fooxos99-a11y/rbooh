@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse, type NextRequest } from "next/server"
-import { canAccessStudent, getRequestActor, isTeacherRole } from "@/lib/request-auth"
+import { canAccessStudent, getRequestActor, isAdminRole, isTeacherRole } from "@/lib/request-auth"
 import {
   SURAHS,
   calculatePreviousMemorizedPages,
@@ -33,6 +33,10 @@ function hasCompletedMemorization(record: any) {
 
   const latestEvaluation = evaluations[evaluations.length - 1]
   return isPassingMemorizationLevel(latestEvaluation?.hafiz_level ?? null)
+}
+
+function normalizeHalaqahName(value?: string | null) {
+  return (value || "").trim().toLowerCase()
 }
 
 function getExpectedNextStart(prevStartSurah?: number | null, prevEndSurah?: number | null, prevEndVerse?: number | null) {
@@ -107,17 +111,18 @@ async function buildStudentPlanSummary(params: {
     return { error: "غير مصرح لك بعرض خطة هذا الطالب", status: 403 as const }
   }
 
-  const { data: studentData } = await supabase
-    .from("students")
-    .select("completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
-    .eq("id", studentId)
-    .maybeSingle()
-
-  const { data: plans, error } = await supabase
-    .from("student_plans")
-    .select("*")
-    .eq("student_id", studentId)
-    .order("created_at", { ascending: false })
+  const [{ data: studentData }, { data: plans, error }] = await Promise.all([
+    supabase
+      .from("students")
+      .select("completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
+      .eq("id", studentId)
+      .maybeSingle(),
+    supabase
+      .from("student_plans")
+      .select("*")
+      .eq("student_id", studentId)
+      .order("created_at", { ascending: false }),
+  ])
 
   if (error) {
     throw error
@@ -240,12 +245,6 @@ async function buildStudentPlanSummary(params: {
     reportsQuery = reportsQuery.gte("report_date", plan.start_date)
   }
 
-  const { data: studentDailyReports, error: reportsError } = await reportsQuery
-
-  if (reportsError) {
-    console.error("[plans] student daily reports query error:", reportsError)
-  }
-
   let attQuery = supabase
     .from("attendance_records")
     .select("id, date, status, evaluations(hafiz_level, tikrar_level, samaa_level, rabet_level)")
@@ -256,7 +255,14 @@ async function buildStudentPlanSummary(params: {
     attQuery = attQuery.gte("date", plan.start_date)
   }
 
-  const { data: attendanceRecords, error: attError } = await attQuery
+  const [{ data: studentDailyReports, error: reportsError }, { data: attendanceRecords, error: attError }] = await Promise.all([
+    reportsQuery,
+    attQuery,
+  ])
+
+  if (reportsError) {
+    console.error("[plans] student daily reports query error:", reportsError)
+  }
 
   if (attError) {
     console.error("[plans] attendance query error:", attError)
@@ -312,6 +318,253 @@ async function buildStudentPlanSummary(params: {
   }
 }
 
+function buildStudentPlanSummaryFromResolvedData(params: {
+  studentData: any
+  rawPlan: any | null
+  studentDailyReports: Array<{ report_date: string; plan_session_number?: number | null }>
+  attendanceRecords: any[]
+}) {
+  const { studentData, rawPlan, studentDailyReports, attendanceRecords } = params
+
+  const normalizedCompletedJuzs = getNormalizedCompletedJuzs(studentData?.completed_juzs)
+  const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
+    ? null
+    : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+  const hasStoredStudentMemorizedRange = Boolean(
+    studentData?.memorized_start_surah && studentData?.memorized_end_surah,
+  )
+
+  if (!rawPlan) {
+    const quranMemorization = calculateQuranMemorizationProgress(
+      {
+        completed_juzs: studentData?.completed_juzs || [],
+        has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange),
+        prev_start_surah: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_start_surah ?? null)
+          : completedJuzRange?.startSurahNumber ?? null,
+        prev_start_verse: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_start_verse ?? null)
+          : completedJuzRange?.startVerseNumber ?? null,
+        prev_end_surah: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_end_surah ?? null)
+          : completedJuzRange?.endSurahNumber ?? null,
+        prev_end_verse: hasStoredStudentMemorizedRange
+          ? (studentData?.memorized_end_verse ?? null)
+          : completedJuzRange?.endVerseNumber ?? null,
+      },
+      0,
+    )
+
+    return {
+      plan: null,
+      completedDays: 0,
+      progressedDays: 0,
+      awaitingHearingSessionNumbers: [],
+      failedSessionNumbers: [],
+      completedSessionNumbers: [],
+      completedRecordsBySessionNumber: {},
+      nextSessionNumber: 1,
+      reportSessionNumbersByDate: {},
+      progressPercent: 0,
+      quranMemorizedPages: quranMemorization.memorizedPages,
+      quranProgressPercent: quranMemorization.progressPercent,
+      quranLevel: quranMemorization.level,
+      attendanceRecords: [],
+      completedRecords: [],
+    }
+  }
+
+  const hasExplicitCompletedJuzs = normalizedCompletedJuzs.length > 0
+  const shouldUsePlanPreviousRange = !hasStoredStudentMemorizedRange && !completedJuzRange && !hasExplicitCompletedJuzs
+  const effectivePlan = {
+    ...rawPlan,
+    completed_juzs: studentData?.completed_juzs || [],
+    current_juzs: studentData?.current_juzs || [],
+    has_previous: hasStoredStudentMemorizedRange || Boolean(completedJuzRange)
+      ? true
+      : shouldUsePlanPreviousRange
+        ? Boolean(rawPlan.has_previous)
+        : false,
+    prev_start_surah: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_start_surah ?? null)
+      : completedJuzRange
+        ? completedJuzRange.startSurahNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_start_surah ?? null)
+          : null,
+    prev_start_verse: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_start_verse ?? null)
+      : completedJuzRange
+        ? completedJuzRange.startVerseNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_start_verse ?? null)
+          : null,
+    prev_end_surah: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_end_surah ?? null)
+      : completedJuzRange
+        ? completedJuzRange.endSurahNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_end_surah ?? null)
+          : null,
+    prev_end_verse: hasStoredStudentMemorizedRange
+      ? (studentData?.memorized_end_verse ?? null)
+      : completedJuzRange
+        ? completedJuzRange.endVerseNumber
+        : shouldUsePlanPreviousRange
+          ? (rawPlan.prev_end_verse ?? null)
+          : null,
+  }
+
+  const plan = {
+    ...effectivePlan,
+    total_pages: resolvePlanTotalPages({
+      ...effectivePlan,
+      completed_juzs: studentData?.completed_juzs || [],
+    }),
+    total_days: resolvePlanTotalDays({
+      ...effectivePlan,
+      completed_juzs: studentData?.completed_juzs || [],
+    }),
+  }
+
+  const filteredReports = plan.start_date
+    ? studentDailyReports.filter((report) => report.report_date >= plan.start_date)
+    : studentDailyReports
+  const filteredAttendanceRecords = plan.start_date
+    ? attendanceRecords.filter((record) => record.date >= plan.start_date)
+    : attendanceRecords
+  const completedRecords = filteredAttendanceRecords.filter(hasCompletedMemorization)
+  const planSessionProgress = buildPlanSessionProgress({
+    reports: filteredReports,
+    attendanceRecords: filteredAttendanceRecords,
+    totalDays: plan.total_days,
+  })
+  const completedDays = planSessionProgress.completedDays
+  const completedRecordsBySessionNumber = completedRecords.reduce<Record<string, (typeof completedRecords)[number]>>((acc, record) => {
+    const sessionNumber = planSessionProgress.reportSessionNumbersByDate[record.date]
+    if (sessionNumber) {
+      acc[String(sessionNumber)] = record
+    }
+    return acc
+  }, {})
+  const progressPercent = plan.total_days > 0
+    ? Math.min(Math.round((completedDays / plan.total_days) * 100), 100)
+    : 0
+  const quranMemorization = calculateQuranMemorizationProgress(plan, completedDays)
+
+  return {
+    plan,
+    completedDays,
+    progressedDays: planSessionProgress.progressedDays,
+    awaitingHearingSessionNumbers: planSessionProgress.awaitingHearingSessionNumbers,
+    failedSessionNumbers: planSessionProgress.failedSessionNumbers,
+    completedSessionNumbers: planSessionProgress.completedSessionNumbers,
+    completedRecordsBySessionNumber,
+    nextSessionNumber: planSessionProgress.nextSessionNumber,
+    reportSessionNumbersByDate: planSessionProgress.reportSessionNumbersByDate,
+    progressPercent,
+    quranMemorizedPages: quranMemorization.memorizedPages,
+    quranProgressPercent: quranMemorization.progressPercent,
+    quranLevel: quranMemorization.level,
+    attendanceRecords: filteredAttendanceRecords,
+    completedRecords,
+  }
+}
+
+async function buildStudentPlanSummariesBatch(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  actor: Awaited<ReturnType<typeof getRequestActor>>
+  studentIds: string[]
+}) {
+  const { supabase, actor, studentIds } = params
+
+  if (!actor || studentIds.length === 0) {
+    return {}
+  }
+
+  const { data: studentRows, error: studentRowsError } = await supabase
+    .from("students")
+    .select("id, halaqah, completed_juzs, current_juzs, memorized_start_surah, memorized_start_verse, memorized_end_surah, memorized_end_verse")
+    .in("id", studentIds)
+
+  if (studentRowsError) {
+    throw studentRowsError
+  }
+
+  const accessibleStudents = (studentRows || []).filter((student) => {
+    if (isAdminRole(actor.role)) return true
+    if (actor.role === "student") return actor.id === student.id
+    if (isTeacherRole(actor.role)) {
+      return normalizeHalaqahName(student.halaqah) === normalizeHalaqahName(actor.halaqah)
+    }
+    return false
+  })
+
+  const accessibleStudentIds = accessibleStudents.map((student) => student.id)
+  if (accessibleStudentIds.length === 0) {
+    return {}
+  }
+
+  const [{ data: plans, error: plansError }, { data: reports, error: reportsError }, { data: attendanceRecords, error: attendanceError }] = await Promise.all([
+    supabase
+      .from("student_plans")
+      .select("*")
+      .in("student_id", accessibleStudentIds)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("student_daily_reports")
+      .select("student_id, report_date, plan_session_number")
+      .in("student_id", accessibleStudentIds)
+      .order("report_date", { ascending: true }),
+    supabase
+      .from("attendance_records")
+      .select("student_id, id, date, status, evaluations(hafiz_level, tikrar_level, samaa_level, rabet_level)")
+      .in("student_id", accessibleStudentIds)
+      .order("date", { ascending: true }),
+  ])
+
+  if (plansError) throw plansError
+  if (reportsError) {
+    console.error("[plans] batch reports query error:", reportsError)
+  }
+  if (attendanceError) {
+    console.error("[plans] batch attendance query error:", attendanceError)
+  }
+
+  const latestPlanByStudent = new Map<string, any>()
+  ;(plans || []).forEach((plan) => {
+    if (!latestPlanByStudent.has(plan.student_id)) {
+      latestPlanByStudent.set(plan.student_id, plan)
+    }
+  })
+
+  const reportsByStudent = new Map<string, Array<{ report_date: string; plan_session_number?: number | null }>>()
+  ;(reports || []).forEach((report) => {
+    const current = reportsByStudent.get(report.student_id) || []
+    current.push(report)
+    reportsByStudent.set(report.student_id, current)
+  })
+
+  const attendanceByStudent = new Map<string, any[]>()
+  ;(attendanceRecords || []).forEach((record) => {
+    const current = attendanceByStudent.get(record.student_id) || []
+    current.push(record)
+    attendanceByStudent.set(record.student_id, current)
+  })
+
+  return Object.fromEntries(
+    accessibleStudents.map((student) => [
+      student.id,
+      buildStudentPlanSummaryFromResolvedData({
+        studentData: student,
+        rawPlan: latestPlanByStudent.get(student.id) || null,
+        studentDailyReports: reportsByStudent.get(student.id) || [],
+        attendanceRecords: attendanceByStudent.get(student.id) || [],
+      }),
+    ]),
+  )
+}
+
 // GET - جلب خطط طالب معين أو جلب كل الخطط
 export async function GET(request: NextRequest) {
   try {
@@ -336,15 +589,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (studentIds.length > 0) {
-      const summaries = await Promise.all(
-        studentIds.map(async (currentStudentId) => [currentStudentId, await buildStudentPlanSummary({ supabase, actor, studentId: currentStudentId })] as const),
-      )
-
-      const plansByStudent = Object.fromEntries(
-        summaries
-          .filter(([, result]) => !("error" in result))
-          .map(([currentStudentId, result]) => [currentStudentId, result]),
-      )
+      const plansByStudent = await buildStudentPlanSummariesBatch({ supabase, actor, studentIds })
 
       return NextResponse.json({ plansByStudent })
     }

@@ -15,23 +15,28 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase-client";
 import { toast } from "@/hooks/use-toast";
 import { useAdminAuth } from "@/hooks/use-admin-auth"
-import { getContiguousCompletedJuzRange, getJuzBoundsRange } from "@/lib/quran-data";
+import { getAyahByPageFloat, getContiguousCompletedJuzRange, getInclusiveEndAyah, getJuzBoundsRange } from "@/lib/quran-data";
 import {
+  EnrollmentPartialJuzRange,
   EnrollmentJuzReviewStatus,
   EnrollmentJuzTestStatus,
   filterReviewResultsByReviewRequestedJuzs,
+  formatTestableMemorizedLabel,
   getContiguousSelectedJuzRange,
   getJuzNumbersFromAmount,
+  getJuzSelectablePageBounds,
   formatEnrollmentMemorizedAmount,
   getNeedsMasteryJuzNumbers,
   getPassedJuzNumbers,
   getReviewRequestedJuzNumbers,
   getTestableJuzNumbers,
   isContiguousJuzSelection,
+  normalizeEnrollmentPartialJuzRanges,
   normalizeEnrollmentReviewResults,
   normalizeSelectedJuzs,
   normalizeEnrollmentTestResults,
 } from "@/lib/enrollment-test-utils"
+import { getPartialJuzRangePageBounds } from "@/lib/enrollment-test-utils";
 
 const TEST_RESULTS_STORAGE_PREFIX = "enrollment-test-results:";
 
@@ -88,14 +93,59 @@ function buildDefaultTestResults(juzNumbers: number[], currentResults?: Record<n
   }, {})
 }
 
-function formatMemorizedDisplay(amount?: string | null, selectedJuzs?: number[] | null) {
-  const normalizedSelectedJuzs = normalizeSelectedJuzs(selectedJuzs)
+function formatMemorizedDisplay(
+  amount?: string | null,
+  selectedJuzs?: number[] | null,
+  partialJuzRanges?: EnrollmentPartialJuzRange[] | null,
+) {
+  return formatEnrollmentMemorizedAmount(amount, selectedJuzs, partialJuzRanges)
+}
 
-  if (normalizedSelectedJuzs.length > 0) {
-    return `الأجزاء ${normalizedSelectedJuzs.join(",")}`
+function buildMemorizedPageSegments(completedJuzs: number[], partialJuzRanges: EnrollmentPartialJuzRange[]) {
+  const fullJuzSegments = completedJuzs
+    .map((juzNumber) => getJuzBoundsRange(juzNumber, juzNumber))
+    .filter((segment): segment is NonNullable<typeof segment> => Boolean(segment))
+    .map((segment) => ({ startPage: segment.startPage, endPageExclusive: segment.endPageExclusive }))
+
+  const partialSegments = partialJuzRanges.map((range) => getPartialJuzRangePageBounds(range))
+
+  return [...fullJuzSegments, ...partialSegments].sort((left, right) => left.startPage - right.startPage)
+}
+
+function getContiguousMemorizedRangeFromSegments(completedJuzs: number[], partialJuzRanges: EnrollmentPartialJuzRange[]) {
+  const segments = buildMemorizedPageSegments(completedJuzs, partialJuzRanges)
+  if (segments.length === 0) {
+    return null
   }
 
-  return formatEnrollmentMemorizedAmount(amount, selectedJuzs)
+  const mergedSegments = [segments[0]]
+
+  for (let index = 1; index < segments.length; index += 1) {
+    const currentSegment = segments[index]
+    const lastMergedSegment = mergedSegments[mergedSegments.length - 1]
+
+    if (currentSegment.startPage <= lastMergedSegment.endPageExclusive) {
+      lastMergedSegment.endPageExclusive = Math.max(lastMergedSegment.endPageExclusive, currentSegment.endPageExclusive)
+      continue
+    }
+
+    mergedSegments.push({ ...currentSegment })
+  }
+
+  if (mergedSegments.length !== 1) {
+    return null
+  }
+
+  const contiguousSegment = mergedSegments[0]
+  const startRef = getAyahByPageFloat(contiguousSegment.startPage)
+  const endRef = getInclusiveEndAyah(contiguousSegment.endPageExclusive)
+
+  return {
+    startSurahNumber: startRef.surah,
+    startVerseNumber: startRef.ayah,
+    endSurahNumber: endRef.surah,
+    endVerseNumber: endRef.ayah,
+  }
 }
 
 function getReadableErrorMessage(error: unknown) {
@@ -152,6 +202,7 @@ interface EnrollmentRequest {
   educational_stage: string;
   memorized_amount?: string;
   selected_juzs?: number[];
+  partial_juz_ranges?: EnrollmentPartialJuzRange[];
   created_at: string;
   test_reviewed?: boolean | null;
   juz_test_results?: Record<number, EnrollmentJuzTestStatus>;
@@ -184,6 +235,7 @@ export default function EnrollmentRequestsPage() {
     educational_stage: "",
     memorized_amount: "",
     selected_juzs: [] as number[],
+    partial_juz_ranges: [] as EnrollmentPartialJuzRange[],
     circle_id: "",
   });
 
@@ -227,13 +279,13 @@ export default function EnrollmentRequestsPage() {
 
   const handleOpenAccept = (req: EnrollmentRequest) => {
     const initialJuzResults = buildDefaultTestResults(
-      getTestableJuzNumbers(req.selected_juzs, req.memorized_amount),
+      getTestableJuzNumbers(req.selected_juzs, req.memorized_amount, req.partial_juz_ranges),
     )
     const savedTestResults = loadSavedTestResults(req.id);
     const persistedTestResults = Object.keys(req.juz_test_results || {}).length > 0
-      ? buildDefaultTestResults(getTestableJuzNumbers(req.selected_juzs, req.memorized_amount), req.juz_test_results || {})
+        ? buildDefaultTestResults(getTestableJuzNumbers(req.selected_juzs, req.memorized_amount, req.partial_juz_ranges), req.juz_test_results || {})
       : buildDefaultTestResults(
-          getTestableJuzNumbers(req.selected_juzs, req.memorized_amount),
+          getTestableJuzNumbers(req.selected_juzs, req.memorized_amount, req.partial_juz_ranges),
           savedTestResults?.juzTestResults || initialJuzResults,
         );
     const persistedReviewResults = Object.keys(req.juz_review_results || {}).length > 0
@@ -249,6 +301,7 @@ export default function EnrollmentRequestsPage() {
       educational_stage: req.educational_stage,
       memorized_amount: req.memorized_amount || "",
       selected_juzs: normalizeSelectedJuzs(req.selected_juzs),
+      partial_juz_ranges: normalizeEnrollmentPartialJuzRanges(req.partial_juz_ranges),
       circle_id: "",
     });
     setJuzTestResults(persistedTestResults);
@@ -273,6 +326,7 @@ export default function EnrollmentRequestsPage() {
     }
     
     const normalizedSelectedJuzs = normalizeSelectedJuzs(acceptForm.selected_juzs);
+    const normalizedPartialJuzRanges = normalizeEnrollmentPartialJuzRanges(acceptForm.partial_juz_ranges);
     const contiguousSelectedRange = getContiguousSelectedJuzRange(normalizedSelectedJuzs);
     const parsedAmountRange = getJuzNumbersFromAmount(acceptForm.memorized_amount);
 
@@ -294,6 +348,10 @@ export default function EnrollmentRequestsPage() {
     const derivedCompletedRange = isContiguousJuzSelection(passedJuzs)
       ? getContiguousCompletedJuzRange(passedJuzs)
       : null;
+      const currentJuzs = Array.from(new Set(masteryJuzs)).sort((left, right) => left - right);
+    const derivedMemorizedRange = getContiguousMemorizedRangeFromSegments(passedJuzs, normalizedPartialJuzRanges)
+      ?? (normalizedPartialJuzRanges.length === 0 ? derivedCompletedRange : null)
+      ?? (normalizedPartialJuzRanges.length === 0 ? defaultRangeBounds : null);
 
     if (reviewRequestedJuzCount > 0 && isReviewPending) {
       toast({ title: "خطأ", description: "يجب إكمال العرض وتحديد نتيجة كل جزء قبل تأكيد القبول", variant: "destructive" });
@@ -312,12 +370,12 @@ export default function EnrollmentRequestsPage() {
           guardian_phone: acceptForm.phone,
           account_number: Number.parseInt(acceptForm.account_number, 10),
           initial_points: 0,
-          memorized_start_surah: derivedCompletedRange?.startSurahNumber ?? defaultRangeBounds?.startSurahNumber ?? null,
-          memorized_start_verse: derivedCompletedRange?.startVerseNumber ?? defaultRangeBounds?.startVerseNumber ?? null,
-          memorized_end_surah: derivedCompletedRange?.endSurahNumber ?? defaultRangeBounds?.endSurahNumber ?? null,
-          memorized_end_verse: derivedCompletedRange?.endVerseNumber ?? defaultRangeBounds?.endVerseNumber ?? null,
+          memorized_start_surah: derivedMemorizedRange?.startSurahNumber ?? null,
+          memorized_start_verse: derivedMemorizedRange?.startVerseNumber ?? null,
+          memorized_end_surah: derivedMemorizedRange?.endSurahNumber ?? null,
+          memorized_end_verse: derivedMemorizedRange?.endVerseNumber ?? null,
           completed_juzs: passedJuzs.length > 0 ? passedJuzs : undefined,
-          current_juzs: masteryJuzs.length > 0 ? masteryJuzs : undefined,
+          current_juzs: currentJuzs.length > 0 ? currentJuzs : undefined,
         }),
       });
 
@@ -418,6 +476,7 @@ export default function EnrollmentRequestsPage() {
       setRequests((data || []).map((request: any) => ({
         ...request,
         selected_juzs: normalizeSelectedJuzs(request.selected_juzs),
+        partial_juz_ranges: normalizeEnrollmentPartialJuzRanges(request.partial_juz_ranges),
         test_reviewed: Boolean(request.test_reviewed),
         juz_test_results: normalizeEnrollmentTestResults(request.juz_test_results),
         juz_review_results: normalizeEnrollmentReviewResults(request.juz_review_results),
@@ -457,8 +516,8 @@ export default function EnrollmentRequestsPage() {
   };
 
   const testableJuzs = useMemo(
-    () => getTestableJuzNumbers(acceptForm.selected_juzs, acceptForm.memorized_amount),
-    [acceptForm.memorized_amount, acceptForm.selected_juzs],
+    () => getTestableJuzNumbers(acceptForm.selected_juzs, acceptForm.memorized_amount, acceptForm.partial_juz_ranges),
+    [acceptForm.memorized_amount, acceptForm.partial_juz_ranges, acceptForm.selected_juzs],
   );
   const reviewRequestedJuzs = useMemo(
     () => getReviewRequestedJuzNumbers(juzTestResults),
@@ -479,7 +538,7 @@ export default function EnrollmentRequestsPage() {
 
 			<main className="flex-grow">
 				<div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-8">
-					<section className="rounded-[28px] border border-[#D4AF37]/15 bg-white px-5 py-6 shadow-sm md:px-8">
+          <section className="rounded-[28px] border border-[#8fb1ff]/15 bg-white px-5 py-6 shadow-sm md:px-8">
 						<div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
 							<div className="space-y-3">
 								<div className="space-y-2">
@@ -531,8 +590,8 @@ export default function EnrollmentRequestsPage() {
 						</div>
 					</section>
 
-					<section className="overflow-hidden rounded-[28px] border border-[#D4AF37]/15 bg-white shadow-sm">
-						<div className="flex items-center justify-between border-b border-[#D4AF37]/10 px-5 py-4 md:px-6">
+          <section className="overflow-hidden rounded-[28px] border border-[#8fb1ff]/15 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-[#8fb1ff]/10 px-5 py-4 md:px-6">
 							<div>
 								<h2 className="text-lg font-bold text-[#1a2332]">قائمة الطلبات</h2>
 								<p className="text-sm text-neutral-500">كل طلب يحتوي على بيانات الطالب وخيارات القبول أو الرفض.</p>
@@ -550,8 +609,8 @@ export default function EnrollmentRequestsPage() {
 							</div>
 						) : (
 							<div className="overflow-x-auto">
-								<table className="w-full min-w-[980px] text-right">
-									<thead className="bg-[#f8f3e7] text-[#023232]">
+                <table className="w-full min-w-[980px] text-right">
+                  <thead className="bg-[#eef4ff] text-[#023232]">
 										<tr>
 											<th className="px-6 py-4 font-semibold">الاسم الثلاثي</th>
 											<th className="px-6 py-4 font-semibold">رقم ولي الأمر</th>
@@ -562,14 +621,14 @@ export default function EnrollmentRequestsPage() {
 											<th className="px-6 py-4 font-semibold">الإجراءات</th>
 										</tr>
 									</thead>
-									<tbody className="divide-y divide-[#D4AF37]/10">
+                  <tbody className="divide-y divide-[#8fb1ff]/10">
 										{requests.map((request) => (
-											<tr key={request.id} className="transition-colors hover:bg-[#D4AF37]/5">
+                      <tr key={request.id} className="transition-colors">
 												<td className="px-6 py-4 align-top font-medium text-gray-900">
 													<div className="flex min-w-[180px] flex-col gap-2">
 														<span className="font-semibold text-[#1a2332]">{request.full_name}</span>
 														{Boolean(request.test_reviewed) && hasPendingEnrollmentReview(request.juz_test_results, request.juz_review_results) && (
-															<span className="inline-flex w-fit rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                              <span className="inline-flex w-fit rounded-full bg-[#eef4ff] px-2.5 py-1 text-xs font-semibold text-[#3453a7]">
 																في انتظار العرض
 															</span>
 														)}
@@ -585,7 +644,7 @@ export default function EnrollmentRequestsPage() {
 													{request.educational_stage}
 												</td>
 												<td className="px-6 py-4 text-gray-600">
-                          {formatMemorizedDisplay(request.memorized_amount, request.selected_juzs)}
+                          {formatMemorizedDisplay(request.memorized_amount, request.selected_juzs, request.partial_juz_ranges)}
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
 													{new Date(request.created_at).toLocaleString("ar-SA", {
@@ -600,14 +659,14 @@ export default function EnrollmentRequestsPage() {
 													<div className="flex items-center justify-center gap-2">
 														<button
 															onClick={() => handleOpenAccept(request)}
-															className="rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                              className="inline-flex min-w-[88px] items-center justify-center rounded-2xl border border-emerald-200 bg-[linear-gradient(180deg,#f4fff8_0%,#eafbf2_100%)] px-4 py-2.5 text-sm font-bold text-emerald-700 shadow-[0_10px_24px_-20px_rgba(22,163,74,0.45)] transition-all hover:-translate-y-[1px] hover:border-emerald-300 hover:bg-[linear-gradient(180deg,#effcf5_0%,#e2f7eb_100%)]"
 															title="قبول"
 														>
 															قبول
 														</button>
 														<button
 															onClick={() => deleteRequest(request.id)}
-															className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-100"
+                              className="inline-flex min-w-[88px] items-center justify-center rounded-2xl border border-rose-200 bg-[linear-gradient(180deg,#fff7f7_0%,#fff0f0_100%)] px-4 py-2.5 text-sm font-bold text-rose-700 shadow-[0_10px_24px_-20px_rgba(225,29,72,0.35)] transition-all hover:-translate-y-[1px] hover:border-rose-300 hover:bg-[linear-gradient(180deg,#fff2f2_0%,#ffe7e7_100%)]"
 															title="رفض"
 														>
 															رفض
@@ -632,8 +691,8 @@ export default function EnrollmentRequestsPage() {
 					setDraftJuzReviewResults({})
 				}
 			}}>
-        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden border-[#D4AF37]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#D4AF37]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden border-[#8fb1ff]/20 p-0 [&>button]:hidden" dir="rtl">
+          <DialogHeader className="border-b border-[#8fb1ff]/15 bg-[#f7faff] px-6 py-5 text-right">
 						<DialogTitle className="text-xl text-[#1a2332]">قبول الطالب</DialogTitle>
 					</DialogHeader>
 
@@ -661,18 +720,18 @@ export default function EnrollmentRequestsPage() {
 							</div>
 						</div>
 
-						<div className="rounded-2xl border border-[#D4AF37]/15 bg-[#fcfbf7] p-4">
+            <div className="rounded-2xl border border-[#8fb1ff]/20 bg-[#f7faff] p-4">
 							<div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
 								<div className="space-y-1">
 									<Label>المحفوظ</Label>
                   <div className="flex min-h-11 items-center rounded-xl border border-input bg-white px-3 text-sm text-gray-600 shadow-sm">
-                    {formatMemorizedDisplay(acceptForm.memorized_amount, acceptForm.selected_juzs) || "غير محدد"}
+                    {formatMemorizedDisplay(acceptForm.memorized_amount, acceptForm.selected_juzs, acceptForm.partial_juz_ranges) || "غير محدد"}
                   </div>
 								</div>
 								<Button
 									type="button"
 									variant="outline"
-                  className="h-10 shrink-0 border-[#D4AF37]/30"
+                  className="h-10 shrink-0 border-[#8fb1ff]/40 text-[#3453a7] hover:bg-[#eef4ff]"
 									disabled={testableJuzs.length === 0}
 									onClick={() => setIsTestDialogOpen(true)}
 								>
@@ -688,13 +747,13 @@ export default function EnrollmentRequestsPage() {
 
 									{reviewRequestedJuzCount > 0 && (
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <p className="text-sm font-medium text-amber-800">
+                      <p className="text-sm font-medium text-[#3453a7]">
 												هناك {reviewRequestedJuzCount} جزء تم تحويله إلى العرض.
 											</p>
 											<Button
 												type="button"
 												variant="outline"
-                        className="h-9 border-amber-300 px-3 text-sm text-amber-800 hover:bg-amber-50"
+                        className="h-9 border-[#8fb1ff] px-3 text-sm text-[#3453a7] hover:bg-[#eef4ff]"
 												onClick={() => {
 													setDraftJuzReviewResults(filterReviewResultsByReviewRequestedJuzs(juzTestResults, juzReviewResults))
 													setIsReviewDialogOpen(true)
@@ -723,13 +782,13 @@ export default function EnrollmentRequestsPage() {
 						</div>
 
             {requiresReviewedTest && !hasReviewedTest && (
-              <p className="text-sm font-medium text-amber-700">
+              <p className="text-sm font-medium text-[#3453a7]">
                 يجب حفظ نتائج الاختبار أولاً قبل تفعيل تأكيد القبول.
               </p>
             )}
 					</div>
 
-          <DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
+          <DialogFooter className="gap-2 border-t border-[#8fb1ff]/15 bg-white px-6 py-4 sm:space-x-0">
             <Button variant="outline" onClick={() => setAcceptRequest(null)} className="border-[#003f55]/20">إلغاء</Button>
 						<Button
               disabled={isAccepting || !isAcceptReady}
@@ -743,8 +802,8 @@ export default function EnrollmentRequestsPage() {
 			</Dialog>
 
       <Dialog open={isTestDialogOpen} onOpenChange={setIsTestDialogOpen}>
-        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#D4AF37]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#D4AF37]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#8fb1ff]/20 p-0 [&>button]:hidden" dir="rtl">
+      					<DialogHeader className="border-b border-[#8fb1ff]/15 bg-[#f7faff] px-6 py-5 text-right">
 						<DialogTitle className="text-xl text-[#1a2332]">اختبار المحفوظ</DialogTitle>
 						<DialogDescription className="leading-7 text-neutral-600">
 							حدِّد نتيجة كل جزء داخل المدى المختار، وسيتم حفظ الأجزاء الناجحة في ملف الطالب.
@@ -758,9 +817,9 @@ export default function EnrollmentRequestsPage() {
               </div>
             ) : (
               testableJuzs.map((juzNumber) => (
-                <div key={juzNumber} className="flex items-center justify-between gap-3 rounded-xl border border-[#D4AF37]/20 px-3 py-3">
+                <div key={juzNumber} className="flex items-center justify-between gap-3 rounded-xl border border-[#8fb1ff]/20 bg-[#f7faff] px-3 py-3">
                   <div>
-                    <p className="font-semibold text-[#1a2332]">الجزء {juzNumber}</p>
+                    <p className="font-semibold leading-7 text-[#1a2332]">{formatTestableMemorizedLabel(juzNumber, acceptForm.partial_juz_ranges)}</p>
                   </div>
                   <Select
                     value={juzTestResults[juzNumber] === "fail" ? "fail" : "review"}
@@ -779,7 +838,7 @@ export default function EnrollmentRequestsPage() {
             )}
           </div>
 
-					<DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
+          <DialogFooter className="gap-2 border-t border-[#8fb1ff]/15 bg-white px-6 py-4 sm:space-x-0">
             <Button variant="outline" onClick={() => setIsTestDialogOpen(false)} className="border-[#003f55]/20">إغلاق</Button>
             <Button
               onClick={async () => {
@@ -816,15 +875,15 @@ export default function EnrollmentRequestsPage() {
         }
         setIsReviewDialogOpen(open)
       }}>
-				<DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#D4AF37]/20 p-0 [&>button]:hidden" dir="rtl">
-					<DialogHeader className="border-b border-[#D4AF37]/10 bg-[#fbf8ef] px-6 py-5 text-right">
+        <DialogContent className="flex max-h-[85vh] max-w-xl flex-col overflow-hidden border-[#8fb1ff]/20 p-0 [&>button]:hidden" dir="rtl">
+          <DialogHeader className="border-b border-[#8fb1ff]/15 bg-[#f7faff] px-6 py-5 text-right">
 						<DialogTitle className="flex items-center justify-start gap-2 text-xl text-[#1a2332]">
 							<span>العرض</span>
               <Popover open={isReviewInfoOpen} onOpenChange={setIsReviewInfoOpen}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#D4AF37] text-[10px] font-bold text-white shadow-sm"
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#3453a7] text-[10px] font-bold text-white shadow-sm"
                     aria-label="توضيح نتائج العرض"
                     onMouseEnter={() => setIsReviewInfoOpen(true)}
                     onMouseLeave={() => setIsReviewInfoOpen(false)}
@@ -837,7 +896,7 @@ export default function EnrollmentRequestsPage() {
                 <PopoverContent
                   align="start"
                   side="bottom"
-                  className="w-[320px] rounded-2xl border border-[#D4AF37]/30 bg-white px-4 py-3 text-right text-sm leading-7 text-[#1a2332] shadow-xl"
+                  className="w-[320px] rounded-2xl border border-[#8fb1ff]/30 bg-white px-4 py-3 text-right text-sm leading-7 text-[#1a2332] shadow-xl"
                   onMouseEnter={() => setIsReviewInfoOpen(true)}
                   onMouseLeave={() => setIsReviewInfoOpen(false)}
                 >
@@ -859,9 +918,9 @@ export default function EnrollmentRequestsPage() {
 							</div>
 						) : (
 							reviewRequestedJuzs.map((juzNumber) => (
-								<div key={juzNumber} className="flex items-center justify-between gap-3 rounded-2xl border border-[#D4AF37]/20 bg-[#fcfbf7] px-4 py-4">
+                <div key={juzNumber} className="flex items-center justify-between gap-3 rounded-2xl border border-[#8fb1ff]/20 bg-[#f7faff] px-4 py-4">
 									<div>
-										<p className="font-semibold text-[#1a2332]">الجزء {juzNumber}</p>
+                    <p className="font-semibold leading-7 text-[#1a2332]">{formatTestableMemorizedLabel(juzNumber, acceptForm.partial_juz_ranges)}</p>
 									</div>
 									<Select
 										value={draftJuzReviewResults[juzNumber]}
@@ -881,7 +940,7 @@ export default function EnrollmentRequestsPage() {
 						)}
 					</div>
 
-					<DialogFooter className="gap-2 border-t border-[#D4AF37]/10 bg-white px-6 py-4 sm:space-x-0">
+          <DialogFooter className="gap-2 border-t border-[#8fb1ff]/15 bg-white px-6 py-4 sm:space-x-0">
             <Button variant="outline" onClick={() => setIsReviewDialogOpen(false)} className="border-[#003f55]/20">إغلاق</Button>
 						<Button
 							onClick={async () => {

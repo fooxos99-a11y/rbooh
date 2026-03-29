@@ -78,8 +78,11 @@ type DailyReportRow = {
   student_id: string;
   report_date: string;
   memorization_done: boolean;
+  memorization_pages_count?: number | null;
   review_done: boolean;
+  review_pages_count?: number | null;
   linking_done: boolean;
+  linking_pages_count?: number | null;
 };
 
 type StudentSummary = {
@@ -398,12 +401,12 @@ function CircleIndicatorsCard({ items }: { items: CircleSummary[] }) {
         <Orbit className="h-4 w-4 text-[#60a5fa]" />
       </div>
 
-      <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {items.length > 0 ? (
           items.map((item) => (
-            <div key={item.name} className="space-y-3 border-b border-[#edf0f3] pb-5 last:border-b-0 last:pb-0">
+            <div key={item.name} className="rounded-[18px] border border-[#edf0f3] bg-[#fbfcfe] p-4">
               <div className="text-right text-sm font-black text-[#1f2937]">{item.name}</div>
-              <div className="space-y-2.5">
+              <div className="mt-3 space-y-2.5">
                 <MetricBar label={TEXT.attendanceMetric} value={item.attendPercent} trackClass="bg-[#fff3bf]" fillClass="bg-[#facc15]" />
                 <MetricBar label={TEXT.memorizedMetric} value={item.memorizedPercent} trackClass="bg-[#dcfce7]" fillClass="bg-[#22c55e]" />
                 <MetricBar label={TEXT.tikrarMetric} value={item.tikrarPercent} trackClass="bg-[#d1fae5]" fillClass="bg-[#10b981]" />
@@ -618,7 +621,7 @@ export default function StatisticsPage() {
         evaluations (hafiz_level, tikrar_level, samaa_level, rabet_level)
       `);
 
-      let dailyReportsQuery = supabase.from("student_daily_reports").select("student_id, report_date, memorization_done, review_done, linking_done");
+      let dailyReportsQuery = supabase.from("student_daily_reports").select("student_id, report_date, memorization_done, memorization_pages_count, review_done, review_pages_count, linking_done, linking_pages_count");
 
       if (dateFilter !== "all") {
         attendanceQuery = attendanceQuery
@@ -648,7 +651,7 @@ export default function StatisticsPage() {
         (record) => isStudyDay(record.date) && plannedStudentIds.has(record.student_id),
       );
       const dailyReports = ((dailyReportsResult.data ?? []) as DailyReportRow[]).filter(
-        (report) => isStudyDay(report.report_date) && plannedStudentIds.has(report.student_id),
+        (report) => plannedStudentIds.has(report.student_id),
       );
 
       setCounts({ circles: circles.length, students: students.length });
@@ -755,9 +758,10 @@ export default function StatisticsPage() {
         }
 
         if (dailyReport?.review_done) {
-          studentSummary.revised += fallbackReviewPages;
-          circleSummary.revised += fallbackReviewPages;
-          revisedTotal += fallbackReviewPages;
+          const resolvedReviewPages = Math.max(Number(dailyReport.review_pages_count ?? fallbackReviewPages), 0);
+          studentSummary.revised += resolvedReviewPages;
+          circleSummary.revised += resolvedReviewPages;
+          revisedTotal += resolvedReviewPages;
         } else if (isPassingMemorizationLevel(evaluation.samaa_level ?? null)) {
           studentSummary.revised += fallbackReviewPages;
           circleSummary.revised += fallbackReviewPages;
@@ -765,9 +769,10 @@ export default function StatisticsPage() {
         }
 
         if (dailyReport?.linking_done && !isSaturdayReviewOnly) {
-          studentSummary.tied += fallbackTiePages;
-          circleSummary.tied += fallbackTiePages;
-          tiedTotal += fallbackTiePages;
+          const resolvedLinkingPages = Math.max(Number(dailyReport.linking_pages_count ?? fallbackTiePages), 0);
+          studentSummary.tied += resolvedLinkingPages;
+          circleSummary.tied += resolvedLinkingPages;
+          tiedTotal += resolvedLinkingPages;
         } else if (isPassingMemorizationLevel(evaluation.rabet_level ?? null)) {
           studentSummary.tied += fallbackTiePages;
           circleSummary.tied += fallbackTiePages;
@@ -807,15 +812,17 @@ export default function StatisticsPage() {
         const tiePages = Math.max(Number(plan.rabt_pages ?? 0), 0);
 
         if (report.review_done) {
-          studentSummary.revised += reviewPages;
-          circleSummary.revised += reviewPages;
-          revisedTotal += reviewPages;
+          const resolvedReviewPages = Math.max(Number(report.review_pages_count ?? reviewPages), 0);
+          studentSummary.revised += resolvedReviewPages;
+          circleSummary.revised += resolvedReviewPages;
+          revisedTotal += resolvedReviewPages;
         }
 
         if (report.linking_done && !isSaturdayReviewOnlyDay(report.report_date)) {
-          studentSummary.tied += tiePages;
-          circleSummary.tied += tiePages;
-          tiedTotal += tiePages;
+          const resolvedLinkingPages = Math.max(Number(report.linking_pages_count ?? tiePages), 0);
+          studentSummary.tied += resolvedLinkingPages;
+          circleSummary.tied += resolvedLinkingPages;
+          tiedTotal += resolvedLinkingPages;
         }
       }
 

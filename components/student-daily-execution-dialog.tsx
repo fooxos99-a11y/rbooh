@@ -8,10 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAuthHeaders } from "@/lib/client-auth"
 import {
+  calculatePreviousMemorizedPages,
   getActivePlanDayNumber,
   getPlanSessionContent,
   getPlanSessionContentRange,
   getPlanSupportSessionContent,
+  resolvePlanReviewPagesPreference,
+  resolvePlanReviewPoolPages,
   resolvePlanTotalDays,
 } from "@/lib/quran-data"
 
@@ -62,18 +65,18 @@ function buildDailyExecutionForm(report: StudentDailyReport | null, isReviewOnly
       ? null
       : typeof report?.memorization_done === "boolean"
         ? report.memorization_done
-        : true,
+        : null,
     tikrar_done: isReviewOnlyDay
       ? null
       : typeof report?.tikrar_done === "boolean"
         ? report.tikrar_done
-        : true,
-    review_done: typeof report?.review_done === "boolean" ? report.review_done : true,
+        : null,
+    review_done: typeof report?.review_done === "boolean" ? report.review_done : null,
     linking_done: isReviewOnlyDay
       ? null
       : typeof report?.linking_done === "boolean"
         ? report.linking_done
-        : true,
+        : null,
   }
 }
 
@@ -125,6 +128,16 @@ function formatPlanSessionRange(
   }
 
   return "-"
+}
+
+function formatPageCountLabel(value: number) {
+  const normalizedValue = Math.max(0, Math.round(value * 100) / 100)
+  if (normalizedValue === 0.25) return "ربع وجه"
+  if (normalizedValue === 0.5) return "نصف وجه"
+  if (normalizedValue === 1) return "وجه واحد"
+  if (normalizedValue === 2) return "وجهان"
+  if (normalizedValue <= 10 && Number.isInteger(normalizedValue)) return `${normalizedValue} أوجه`
+  return `${normalizedValue} وجه`
 }
 
 export function StudentDailyExecutionDialog() {
@@ -308,6 +321,24 @@ export function StudentDailyExecutionDialog() {
     setDailyReportFeedback(null)
   }
 
+  const markAllExecutionItemsDone = (fields: Array<{ key: keyof DailyExecutionForm; isLocked?: boolean; isUnavailable?: boolean }>) => {
+    setDailyExecutionForm((prev) => {
+      const nextForm = { ...prev }
+
+      for (const field of fields) {
+        if (field.isLocked || field.isUnavailable) {
+          continue
+        }
+
+        nextForm[field.key] = true
+      }
+
+      return nextForm
+    })
+    setIsDailyExecutionDirty(true)
+    setDailyReportFeedback(null)
+  }
+
   const handleSaveDailyReport = async () => {
     if (!studentData?.id) {
       return
@@ -471,6 +502,11 @@ export function StudentDailyExecutionDialog() {
     const { muraajaa: muraajaaContent, rabt: rabtContent } = getPlanSupportSessionContent(planData, planProgressedDays, planFailedSessionNumbers)
     const hasReviewContent = Boolean(muraajaaContent)
     const hasLinkingContent = !todayIsReviewOnlyDay && Boolean(rabtContent)
+    const dailyPages = Math.max(0, Number(planData?.daily_pages ?? 0))
+    const memorizedPoolPages = calculatePreviousMemorizedPages(planData) + planCompletedDays * dailyPages
+    const reviewPoolPages = resolvePlanReviewPoolPages(planData, memorizedPoolPages)
+    const reviewPagesCount = resolvePlanReviewPagesPreference(planData, reviewPoolPages)
+    const linkingPagesCount = Math.min(Number(planData?.rabt_pages ?? 10), Math.max(0, memorizedPoolPages))
     const hasSavableSelection = [
       !todayIsReviewOnlyDay && !isMemorizationLocked && typeof dailyExecutionForm.memorization_done === "boolean",
       !todayIsReviewOnlyDay && !isTikrarLocked && typeof dailyExecutionForm.tikrar_done === "boolean",
@@ -492,6 +528,7 @@ export function StudentDailyExecutionDialog() {
                   currentSessionContent.text,
                 )
               : "لا يوجد حفظ اليوم",
+            countLabel: dailyPages > 0 ? formatPageCountLabel(dailyPages) : null,
             isLocked: isMemorizationLocked,
           }, {
             key: "tikrar_done" as const,
@@ -505,6 +542,7 @@ export function StudentDailyExecutionDialog() {
                   currentSessionContent.text,
                 )
               : "لا يوجد تكرار اليوم",
+            countLabel: dailyPages > 0 ? formatPageCountLabel(dailyPages) : null,
             isLocked: isTikrarLocked,
           }]
         : []),
@@ -520,6 +558,7 @@ export function StudentDailyExecutionDialog() {
               muraajaaContent.text,
             )
           : "لا توجد مراجعة اليوم",
+          countLabel: hasReviewContent && reviewPagesCount > 0 ? formatPageCountLabel(reviewPagesCount) : null,
         isLocked: isReviewLocked,
           isUnavailable: !hasReviewContent,
       },
@@ -536,18 +575,31 @@ export function StudentDailyExecutionDialog() {
                   rabtContent.text,
                 )
               : "لا يوجد ربط اليوم",
+            countLabel: hasLinkingContent && linkingPagesCount > 0 ? formatPageCountLabel(linkingPagesCount) : null,
             isLocked: isLinkingLocked,
               isUnavailable: !hasLinkingContent,
           }]
         : []),
     ]
 
+    const canMarkAllDone = executionItems.some((item) => !item.isLocked && !item.isUnavailable)
+
     return (
       <div className="rounded-[24px] border border-[#8fb1ff]/30 bg-[#f7faff] p-3.5 shadow-sm md:p-4">
-        <div className="mb-4 border-b border-[#8fb1ff]/25 pb-3">
+        <div className="mb-4 flex flex-col gap-3 border-b border-[#8fb1ff]/25 pb-3 md:flex-row md:items-center md:justify-between">
           <div className="text-right">
             <p className="text-base font-black text-[#1a2332] md:text-lg">تنفيذ اليوم</p>
           </div>
+          {canMarkAllDone ? (
+            <Button
+              type="button"
+              onClick={() => markAllExecutionItemsDone(executionItems)}
+              disabled={isSavingDailyReport || isLoadingDailyReports || isDayLocked}
+              className="h-10 rounded-xl bg-[#3453a7] px-5 text-sm text-white shadow-sm hover:bg-[#27428d] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#3453a7]"
+            >
+              تنفيذ للكل
+            </Button>
+          ) : null}
         </div>
 
         <div className="space-y-2.5">
@@ -558,6 +610,7 @@ export function StudentDailyExecutionDialog() {
                 <div className="flex flex-col gap-2.5 md:grid md:grid-cols-[92px_minmax(0,1fr)_120px] md:items-center md:gap-3">
                   <div>
                     <p className="text-sm font-black text-[#1a2332] md:text-base">{item.title}</p>
+                        {item.countLabel ? <p className="mt-1 text-[11px] font-bold text-[#3453a7] md:text-xs">{item.countLabel}</p> : null}
                   </div>
                   <p className="text-xs leading-5 text-[#1a2332]/58 md:min-w-0 md:text-sm">{item.description}</p>
                   <div className="md:w-[120px]">
@@ -567,12 +620,14 @@ export function StudentDailyExecutionDialog() {
                       </div>
                     ) : (
                       <Select
-                        value={selectedValue === false ? "not_done" : "done"}
-                        onValueChange={(value) => updateDailyExecutionField(item.key as keyof DailyExecutionForm, value === "done")}
+                        value={selectedValue === true ? "done" : selectedValue === false ? "not_done" : undefined}
+                        onValueChange={(value) => {
+                          updateDailyExecutionField(item.key as keyof DailyExecutionForm, value === "done")
+                        }}
                         disabled={item.isLocked || isSavingDailyReport || isLoadingDailyReports}
                       >
                         <SelectTrigger className="h-9 rounded-lg border-[#8fb1ff] bg-white px-3 text-xs font-bold text-[#1a2332] md:text-sm">
-                          <SelectValue />
+                          <SelectValue placeholder="اختيار" />
                         </SelectTrigger>
                         <SelectContent dir="rtl">
                           <SelectItem value="done">نفذت</SelectItem>

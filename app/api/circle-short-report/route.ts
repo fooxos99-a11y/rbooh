@@ -55,10 +55,6 @@ function getSaudiWeekday(dateValue: string) {
   return new Date(`${dateValue}T12:00:00+03:00`).getUTCDay()
 }
 
-function isFriday(dateValue: string) {
-  return getSaudiWeekday(dateValue) === 5
-}
-
 function isCircleAttendanceDay(dateValue: string) {
   const weekday = getSaudiWeekday(dateValue)
   return weekday === 0 || weekday === 3
@@ -122,15 +118,14 @@ function countPlannedExecutions(plan: PlanRow | null | undefined, rangeStart: st
   let reviewRequired = 0
 
   while (currentDate <= rangeEnd && completedSessions < totalDays) {
-    const friday = isFriday(currentDate)
     const reviewOnly = isMemorizationOffDay(currentDate)
     const insideRange = currentDate >= rangeStart
 
-    if (!friday && insideRange) {
+    if (insideRange) {
       reviewRequired += 1
     }
 
-    if (!friday && !reviewOnly) {
+    if (!reviewOnly) {
       if (insideRange) {
         memorizationRequired += 1
       }
@@ -295,7 +290,7 @@ export async function GET(request: NextRequest) {
         const tikrarExecuted = studentReports.filter(
           (report) => report.tikrar_done && !isMemorizationOffDay(report.report_date),
         ).length
-        const reviewExecuted = studentReports.filter((report) => report.review_done && !isFriday(report.report_date)).length
+        const reviewExecuted = studentReports.filter((report) => report.review_done).length
         const linkingExecuted = studentReports.filter(
           (report) => report.linking_done && !isMemorizationOffDay(report.report_date),
         ).length

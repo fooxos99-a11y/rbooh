@@ -2,18 +2,26 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { getBuraidahIshaTime, getTeacherAttendanceTimingStatus } from "@/lib/prayer-times"
 import { getTeacherAttendanceDelayMinutes } from "@/lib/site-settings"
-import { getSaudiDateString } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, getSaudiDateString } from "@/lib/saudi-time"
 
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
+    const date = request.nextUrl.searchParams.get("date")
+    const effectiveDate = date ? getSaudiAttendanceAnchorDate(date) : null
     const graceMinutes = await getTeacherAttendanceDelayMinutes()
     const saudiToday = getSaudiDateString()
     const todayIshaTime = await getBuraidahIshaTime(saudiToday)
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("teacher_attendance")
       .select("*")
+
+    if (effectiveDate) {
+      query = query.eq("attendance_date", effectiveDate)
+    }
+
+    const { data, error } = await query
       .order("attendance_date", { ascending: false })
       .order("check_in_time", { ascending: false })
 

@@ -1109,7 +1109,15 @@ export function getPlanMemorizedRange(plan: {
   }
 }
 
-export function getJuzCoverageFromRange(pageRange?: { startPage: number; endPage: number; endPageExclusive?: number } | null) {
+export function getJuzCoverageFromRange(pageRange?: {
+  startPage: number
+  endPage: number
+  endPageExclusive?: number
+  startSurahNumber?: number
+  startVerseNumber?: number
+  endSurahNumber?: number
+  endVerseNumber?: number
+} | null) {
   const completedJuzs = new Set<number>()
   const currentJuzs = new Set<number>()
 
@@ -1118,6 +1126,12 @@ export function getJuzCoverageFromRange(pageRange?: { startPage: number; endPage
   }
 
   const endPageExclusive = pageRange.endPageExclusive ?? (pageRange.endPage + 1)
+  const hasExactAyahBounds = Boolean(
+    pageRange.startSurahNumber
+    && pageRange.startVerseNumber
+    && pageRange.endSurahNumber
+    && pageRange.endVerseNumber,
+  )
 
   for (let juzNumber = 1; juzNumber <= 30; juzNumber += 1) {
     const juzBounds = getJuzBounds(juzNumber)
@@ -1126,7 +1140,20 @@ export function getJuzCoverageFromRange(pageRange?: { startPage: number; endPage
     const juzStartPage = juzBounds.startPage
     const juzEndPageExclusive = juzBounds.endPageExclusive
     const overlaps = pageRange.startPage < juzEndPageExclusive && endPageExclusive > juzStartPage
-    const fullyCovered = pageRange.startPage <= juzStartPage && endPageExclusive >= juzEndPageExclusive
+    const fullyCovered = hasExactAyahBounds
+      ? compareAyahReferences(
+          Number(pageRange.startSurahNumber),
+          Number(pageRange.startVerseNumber),
+          juzBounds.startSurahNumber,
+          juzBounds.startVerseNumber,
+        ) <= 0
+        && compareAyahReferences(
+          Number(pageRange.endSurahNumber),
+          Number(pageRange.endVerseNumber),
+          juzBounds.endSurahNumber,
+          juzBounds.endVerseNumber,
+        ) >= 0
+      : pageRange.startPage <= juzStartPage && endPageExclusive >= juzEndPageExclusive
 
     if (fullyCovered) {
       completedJuzs.add(juzNumber)
