@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse, type NextRequest } from "next/server"
 import { canAccessStudent, getRequestActor, isAdminRole, isTeacherRole } from "@/lib/request-auth"
 import {
+  REVIEW_DISTRIBUTION_DEFAULT_DAYS,
+  REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES,
   SURAHS,
   calculatePreviousMemorizedPages,
   calculateQuranMemorizationProgress,
@@ -637,6 +639,8 @@ export async function POST(request: NextRequest) {
       muraajaa_pages,
       rabt_pages,
       review_distribution_mode,
+      review_distribution_days,
+      review_minimum_pages,
     } = body
 
     const canManageStudent = await canAccessStudent({
@@ -811,14 +815,32 @@ export async function POST(request: NextRequest) {
 
     const normalizedReviewDistributionMode = review_distribution_mode === "weekly" ? "weekly" : "fixed"
     const fixedReviewPages = Number(muraajaa_pages) || 0
-    const weeklyReviewPages = normalizedReviewDistributionMode === "weekly"
+    const normalizedReviewDistributionDays = normalizedReviewDistributionMode === "weekly"
+      ? Math.max(1, Math.floor(Number(review_distribution_days) || REVIEW_DISTRIBUTION_DEFAULT_DAYS))
+      : null
+    const normalizedReviewMinimumPages = normalizedReviewDistributionMode === "weekly"
+      ? Math.max(0.25, Number(review_minimum_pages) || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES)
+      : null
+    const weeklyReviewPoolPages = normalizedReviewDistributionMode === "weekly"
       ? calculatePreviousMemorizedPages({
           has_previous: effectiveHasPrevious,
           prev_start_surah: effectivePrevStartSurah,
           prev_start_verse: effectivePrevStartVerse,
           prev_end_surah: effectivePrevEndSurah,
           prev_end_verse: effectivePrevEndVerse,
-        }) / 7
+        })
+      : 0
+    const weeklyReviewRangePages = normalizedReviewDistributionMode === "weekly"
+      ? weeklyReviewPoolPages / (normalizedReviewDistributionDays || REVIEW_DISTRIBUTION_DEFAULT_DAYS)
+      : 0
+    const weeklyReviewPages = normalizedReviewDistributionMode === "weekly"
+      ? Math.min(
+          weeklyReviewRangePages,
+          Math.max(
+            normalizedReviewMinimumPages || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES,
+            weeklyReviewRangePages / (normalizedReviewDistributionDays || REVIEW_DISTRIBUTION_DEFAULT_DAYS),
+          ),
+        )
       : 0
     const muraajaaPagesForStorage = normalizedReviewDistributionMode === "weekly"
       ? (weeklyReviewPages > 0 ? weeklyReviewPages : null)
@@ -856,6 +878,8 @@ export async function POST(request: NextRequest) {
         muraajaa_pages: muraajaaPagesForStorage,
         rabt_pages: rabt_pages || null,
         review_distribution_mode: normalizedReviewDistributionMode,
+        review_distribution_days: normalizedReviewDistributionDays,
+        review_minimum_pages: normalizedReviewMinimumPages,
       }])
       .select()
       .single()

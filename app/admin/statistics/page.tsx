@@ -56,6 +56,8 @@ type PlanRow = {
   muraajaa_pages: number | null;
   rabt_pages: number | null;
   review_distribution_mode?: "fixed" | "weekly" | null;
+  review_distribution_days?: number | null;
+  review_minimum_pages?: number | null;
 };
 
 type EvaluationRecord = {
@@ -597,7 +599,7 @@ export default function StatisticsPage() {
       const [studentsResult, circlesResult, plansResult] = await Promise.all([
         supabase.from("students").select("id, name, halaqah"),
         supabase.from("circles").select("id, name"),
-        supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode"),
+        supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
       ]);
 
       if (studentsResult.error) {

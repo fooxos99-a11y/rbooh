@@ -31,7 +31,12 @@ interface Student {
 	circle_name?: string | null
 }
 
-const getStudentCircleName = (student: Student) => (student.halaqah || student.circle_name || "غير محدد").trim()
+const normalizeCircleKey = (value?: string | null) =>
+	(value || "")
+		.replace(/\s+/g, " ")
+		.trim()
+
+const getStudentCircleName = (student: Student) => normalizeCircleKey(student.halaqah || student.circle_name || "غير محدد")
 
 export function GlobalEditStudentDialog() {
 	const router = useRouter()
@@ -48,6 +53,12 @@ export function GlobalEditStudentDialog() {
 	const [editStudentIdNumber, setEditStudentIdNumber] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
 
+	const getStudentsForCircle = (circleName?: string | null) => {
+		const normalizedCircle = normalizeCircleKey(circleName)
+		if (!normalizedCircle) return []
+		return studentsInCircles[normalizedCircle] || []
+	}
+
 	useEffect(() => {
 		fetchData()
 	}, [])
@@ -55,18 +66,20 @@ export function GlobalEditStudentDialog() {
 	const fetchData = async () => {
 		try {
 			const supabase = createClient()
-			const [circlesRes, studentsRes] = await Promise.all([
+			const [circlesRes, studentsResponse] = await Promise.all([
 				supabase.from("circles").select("id, name").order("created_at", { ascending: false }),
-				supabase.from("students").select("id, name, guardian_phone, id_number, halaqah"),
+				fetch("/api/students", { cache: "no-store" }),
 			])
 
 			if (!circlesRes.error && circlesRes.data) {
 				setCircles(circlesRes.data)
 			}
 
-			if (!studentsRes.error && studentsRes.data) {
+			if (studentsResponse.ok) {
+				const studentsData = await studentsResponse.json()
+				const students = Array.isArray(studentsData.students) ? studentsData.students : []
 				const grouped: Record<string, Student[]> = {}
-				studentsRes.data.forEach((student) => {
+				students.forEach((student: Student) => {
 					const circleName = getStudentCircleName(student)
 					if (!grouped[circleName]) {
 						grouped[circleName] = []
@@ -91,7 +104,7 @@ export function GlobalEditStudentDialog() {
 
 	const handleSelectStudentForEdit = (studentId: string) => {
 		setSelectedStudentForEdit(studentId)
-		const student = (studentsInCircles[selectedCircleForEdit] || []).find((item) => item.id === studentId) || null
+		const student = getStudentsForCircle(selectedCircleForEdit).find((item) => item.id === studentId) || null
 		setEditingStudent(student)
 		setEditGuardianPhone(student?.guardian_phone || "")
 		setEditStudentIdNumber(student?.id_number || "")
@@ -190,7 +203,7 @@ export function GlobalEditStudentDialog() {
 								<SelectValue placeholder={selectedCircleForEdit ? "اختر الطالب" : "اختر الحلقة أولاً"} />
 							</SelectTrigger>
 							<SelectContent dir="rtl">
-								{(studentsInCircles[selectedCircleForEdit] || []).map((student) => (
+								{getStudentsForCircle(selectedCircleForEdit).map((student) => (
 									<SelectItem key={student.id} value={student.id}>
 										{student.name}
 									</SelectItem>

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
@@ -51,6 +52,8 @@ import {
   Check,
 } from "lucide-react";
 import {
+  REVIEW_DISTRIBUTION_DEFAULT_DAYS,
+  REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES,
   SURAHS,
   calculateTotalPages,
   calculateTotalDays,
@@ -109,12 +112,14 @@ interface StudentPlan {
   muraajaa_pages?: number | null;
   rabt_pages?: number | null;
   review_distribution_mode?: "fixed" | "weekly" | null;
+  review_distribution_days?: number | null;
+  review_minimum_pages?: number | null;
 }
 
 const WEEKLY_REVIEW_OPTION_VALUE = "weekly";
 
 const MURAAJAA_OPTIONS = [
-  { value: WEEKLY_REVIEW_OPTION_VALUE, label: "التقسيم على أسبوع" },
+  { value: WEEKLY_REVIEW_OPTION_VALUE, label: "قسمة على عدد الأيام" },
   { value: "20", label: "جزء واحد" },
   { value: "40", label: "جزئين" },
   { value: "60", label: "3 أجزاء" },
@@ -541,6 +546,8 @@ export default function StudentPlansPage() {
   const [prevStartVerse, setPrevStartVerse] = useState<string>("");
   const [prevEndVerse, setPrevEndVerse] = useState<string>("");
   const [isPreviousLocked, setIsPreviousLocked] = useState(false);
+  const [reviewDistributionDays, setReviewDistributionDays] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_DAYS));
+  const [reviewMinimumPages, setReviewMinimumPages] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES));
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{
@@ -718,6 +725,8 @@ export default function StudentPlansPage() {
       : currentPlan?.muraajaa_pages
         ? String(currentPlan.muraajaa_pages)
         : WEEKLY_REVIEW_OPTION_VALUE);
+    setReviewDistributionDays(String(currentPlan?.review_distribution_days || REVIEW_DISTRIBUTION_DEFAULT_DAYS));
+    setReviewMinimumPages(String(currentPlan?.review_minimum_pages || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES));
     setRabtPages("10");
     setPrevStartOpen(false);
     setPrevEndOpen(false);
@@ -789,6 +798,18 @@ export default function StudentPlansPage() {
     const days = adjustedPreview.totalDays;
     const effectiveDays = days;
     const reviewDistributionMode = muraajaaPages === WEEKLY_REVIEW_OPTION_VALUE ? "weekly" : "fixed";
+    const normalizedReviewDistributionDays = Math.max(1, Math.floor(Number(reviewDistributionDays) || REVIEW_DISTRIBUTION_DEFAULT_DAYS));
+    const normalizedReviewMinimumPages = Math.max(0.25, Number(reviewMinimumPages) || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES);
+
+    if (reviewDistributionMode === "weekly" && (!Number.isFinite(normalizedReviewDistributionDays) || normalizedReviewDistributionDays <= 0)) {
+      setSaveMsg({ type: "error", text: "أدخل عدد أيام صحيحًا لقسمة المراجعة" });
+      return;
+    }
+
+    if (reviewDistributionMode === "weekly" && (!Number.isFinite(normalizedReviewMinimumPages) || normalizedReviewMinimumPages <= 0)) {
+      setSaveMsg({ type: "error", text: "أدخل حدًا أدنى صحيحًا للمراجعة اليومية" });
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -818,6 +839,8 @@ export default function StudentPlansPage() {
           muraajaa_pages: reviewDistributionMode === "weekly" ? null : parseFloat(muraajaaPages),
           rabt_pages: parseFloat(rabtPages),
           review_distribution_mode: reviewDistributionMode,
+          review_distribution_days: reviewDistributionMode === "weekly" ? normalizedReviewDistributionDays : null,
+          review_minimum_pages: reviewDistributionMode === "weekly" ? normalizedReviewMinimumPages : null,
           start_date: getSaudiDateString(),
         }),
       });
@@ -1812,6 +1835,37 @@ export default function StudentPlansPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {muraajaaPages === WEEKLY_REVIEW_OPTION_VALUE && (
+                  <div className="space-y-2 rounded-xl border border-[#8fb1ff]/35 bg-[#f7faff] p-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-[#1a2332]">عدد أيام القسمة</label>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={reviewDistributionDays}
+                        onChange={(event) => setReviewDistributionDays(event.target.value)}
+                        className="h-9 border-[#8fb1ff] bg-white text-sm"
+                        dir="ltr"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-[#1a2332]">الحد الأدنى اليومي للمراجعة</label>
+                      <Input
+                        type="number"
+                        min="0.25"
+                        step="0.25"
+                        value={reviewMinimumPages}
+                        onChange={(event) => setReviewMinimumPages(event.target.value)}
+                        className="h-9 border-[#8fb1ff] bg-white text-sm"
+                        dir="ltr"
+                      />
+                    </div>
+                    <p className="text-[11px] font-medium text-neutral-500">
+                      يقسم النظام رصيد المراجعة على عدد الأيام المحدد، ثم يطبق الحد الأدنى اليومي داخل هذا النطاق.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1.5 min-w-0">

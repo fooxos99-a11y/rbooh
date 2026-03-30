@@ -27,6 +27,8 @@ type PlanRow = {
   muraajaa_pages: number | null;
   rabt_pages: number | null;
   review_distribution_mode?: "fixed" | "weekly" | null;
+  review_distribution_days?: number | null;
+  review_minimum_pages?: number | null;
 };
 
 type EvaluationRecord = {
@@ -362,7 +364,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
         }
 
         const [plansResult, attendanceResult, dailyReportsResult, previousWeekAttendanceResult, previousWeekReportsResult] = await Promise.all([
-          supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode"),
+          supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
           supabase
             .from("attendance_records")
             .select(`

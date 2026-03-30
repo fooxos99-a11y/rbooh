@@ -80,6 +80,18 @@ function addSaudiDays(dateValue: string, days: number) {
 	return date.toISOString().slice(0, 10)
 }
 
+function getSaudiDatesInRange(startDate: string, endDate: string) {
+	const dates: string[] = []
+	let currentDate = startDate
+
+	while (currentDate <= endDate) {
+		dates.push(currentDate)
+		currentDate = addSaudiDays(currentDate, 1)
+	}
+
+	return dates
+}
+
 function getAnchorDatesInRange(startDate: string, endDate: string) {
 	const anchorDates = new Set<string>()
 	let currentDate = startDate
@@ -207,6 +219,7 @@ export async function GET(request: NextRequest) {
 
 		const studentIds = ((students || []) as Array<{ id: string }>).map((student) => student.id)
 		const attendanceAnchorDates = getAnchorDatesInRange(rangeStart, rangeEnd)
+		const reportDatesInRange = getSaudiDatesInRange(rangeStart, rangeEnd)
 
 		const [{ data: attendanceRecords, error: attendanceError }, { data: dailyReports, error: dailyReportsError }, { data: issueActions, error: issueActionsError }] = await Promise.all([
 			studentIds.length > 0 && attendanceAnchorDates.length > 0
@@ -221,7 +234,8 @@ export async function GET(request: NextRequest) {
 					.from("student_daily_reports")
 					.select("student_id, report_date, memorization_done, tikrar_done, review_done, linking_done, notes")
 					.in("student_id", studentIds)
-					.eq("report_date", date)
+					.gte("report_date", rangeStart)
+					.lte("report_date", rangeEnd)
 				: Promise.resolve({ data: [] as DailyReportRow[], error: null }),
 			studentIds.length > 0
 				? (() => {
@@ -261,7 +275,12 @@ export async function GET(request: NextRequest) {
 			return acc
 		}, new Map())
 
-		const dailyReportsByStudent = new Map(safeDailyReports.map((report) => [report.student_id, report]))
+		const dailyReportsByStudent = safeDailyReports.reduce<Map<string, Map<string, DailyReportRow>>>((acc, report) => {
+			const reportsByDate = acc.get(report.student_id) || new Map<string, DailyReportRow>()
+			reportsByDate.set(report.report_date, report)
+			acc.set(report.student_id, reportsByDate)
+			return acc
+		}, new Map())
 		const issueActionsByStudent = ((issueActions || []) as StudentIssueActionRow[]).reduce<Map<string, StudentIssueActionRow[]>>((acc, action) => {
 			if (!action.student_id) {
 				return acc
@@ -279,7 +298,8 @@ export async function GET(request: NextRequest) {
 				const selectedAttendance = canFlagTodayAbsence
 					? normalizedAttendance.find((record) => record.date === selectedAnchorDate) || null
 					: null
-				const dailyReport = dailyReportsByStudent.get(student.id) || null
+				const reportsByDate = dailyReportsByStudent.get(student.id) || new Map<string, DailyReportRow>()
+				const dailyReport = reportsByDate.get(date) || null
 				const { absentCount, excusedCount, effectiveAbsenceCount } = countAbsenceStatuses(
 					normalizedAttendance.map((record) => record.status),
 				)
@@ -322,18 +342,30 @@ export async function GET(request: NextRequest) {
 					})
 				}
 
-				const missingTasks = getMissingDailyTasks(dailyReport, date)
-				if (missingTasks.length > 0) {
-					reasons.push({
-						code: "daily_execution_missing",
-						category: "execution",
-						severity: missingTasks.length >= 2 ? "alert" : "warning",
-						title: "نقص في التنفيذ اليومي",
-						description: `العناصر الناقصة: ${missingTasks.join("، ")}.`,
-						date,
-						missingTasks,
-					})
-				}
+				const executionIssueDates = scope === "total" ? reportDatesInRange : [date]
+				const executionReasons = executionIssueDates.flatMap((issueDate) => {
+					const issueReport = reportsByDate.get(issueDate) || null
+					const issueMissingTasks = getMissingDailyTasks(issueReport, issueDate)
+
+					if (issueMissingTasks.length === 0) {
+						return []
+					}
+
+					return [{
+						code: `daily_execution_missing_${issueDate}`,
+						category: "execution" as const,
+						severity: issueMissingTasks.length >= 2 ? "alert" as const : "warning" as const,
+						title: scope === "total" ? `نقص في التنفيذ بتاريخ ${issueDate}` : "نقص في التنفيذ اليومي",
+						description: `العناصر الناقصة: ${issueMissingTasks.join("، ")}.`,
+						date: issueDate,
+						missingTasks: issueMissingTasks,
+					} satisfies StudentIssueReason]
+				})
+
+				reasons.push(...executionReasons)
+				const missingTasks = Array.from(
+					new Set(executionReasons.flatMap((reason) => reason.missingTasks || [])),
+				)
 
 				if (reasons.length === 0 && studentActions.length === 0) {
 					return null

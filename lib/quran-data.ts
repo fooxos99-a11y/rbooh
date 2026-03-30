@@ -1578,8 +1578,27 @@ export interface SessionPlanBounds {
   muraajaa_pages?: number | null
   rabt_pages?: number | null
   review_distribution_mode?: "fixed" | "weekly" | null
+  review_distribution_days?: number | null
+  review_minimum_pages?: number | null
   start_date?: string | null
   created_at?: string | null
+}
+
+export const REVIEW_DISTRIBUTION_DEFAULT_DAYS = 7
+export const REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES = 10
+
+function resolveReviewDistributionDays(
+  plan: Pick<SessionPlanBounds, "review_distribution_days">,
+) {
+  const value = Math.floor(Number(plan.review_distribution_days) || 0)
+  return value > 0 ? value : REVIEW_DISTRIBUTION_DEFAULT_DAYS
+}
+
+function resolveReviewMinimumPages(
+  plan: Pick<SessionPlanBounds, "review_minimum_pages">,
+) {
+  const value = Number(plan.review_minimum_pages) || 0
+  return value > 0 ? value : REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES
 }
 
 interface MemorizedPageSegment {
@@ -2296,7 +2315,7 @@ export function resolvePlanReviewPoolPages(
 }
 
 export function resolvePlanReviewPagesPreference(
-  plan: Pick<SessionPlanBounds, "muraajaa_pages" | "review_distribution_mode">,
+  plan: Pick<SessionPlanBounds, "muraajaa_pages" | "review_distribution_mode" | "review_distribution_days" | "review_minimum_pages">,
   reviewPoolPages: number,
 ) {
   const safeReviewPoolPages = Math.max(0, reviewPoolPages)
@@ -2305,10 +2324,41 @@ export function resolvePlanReviewPagesPreference(
   }
 
   if (plan.review_distribution_mode === "weekly") {
-    return safeReviewPoolPages / 7
+    const distributionDays = resolveReviewDistributionDays(plan)
+    const minimumPages = resolveReviewMinimumPages(plan)
+    const distributedRangePages = safeReviewPoolPages / distributionDays
+    if (distributedRangePages <= 0) {
+      return 0
+    }
+
+    return Math.min(
+      distributedRangePages,
+      Math.max(minimumPages, distributedRangePages / distributionDays),
+    )
   }
 
   return Math.min(Math.max(0, Number(plan.muraajaa_pages) || 0), safeReviewPoolPages)
+}
+
+function resolveWeeklyReviewOffset(
+  distributionRangePages: number,
+  dailyReviewPages: number,
+  distributionDays: number,
+  activeDayNum: number,
+) {
+  if (distributionRangePages <= 0 || dailyReviewPages <= 0 || distributionDays <= 0) {
+    return 0
+  }
+
+  const normalizedDayIndex = Math.max(0, activeDayNum - 1)
+  const cycleIndex = Math.floor(normalizedDayIndex / distributionDays)
+  const dayIndexWithinCycle = normalizedDayIndex % distributionDays
+  const reviewWindowsCount = Math.max(1, Math.ceil(distributionRangePages / dailyReviewPages))
+  const reviewWindowIndex = dayIndexWithinCycle % reviewWindowsCount
+  const maxOffsetWithinCycle = Math.max(0, distributionRangePages - dailyReviewPages)
+  const offsetWithinCycle = Math.min(reviewWindowIndex * dailyReviewPages, maxOffsetWithinCycle)
+
+  return (cycleIndex * distributionRangePages) + offsetWithinCycle
 }
 
 function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNum: number): PlanSupportSessionContent {
@@ -2356,7 +2406,11 @@ function getLegacyPlanSupportSessionContent(plan: SessionPlanBounds, activeDayNu
   const muraajaaPool = resolvePlanReviewPoolPages(plan, totalMemorizedPool)
   const muraajaaPref = resolvePlanReviewPagesPreference(plan, muraajaaPool)
   if (muraajaaPool > 0 && muraajaaPref > 0) {
-    const baseOffset = ((activeDayNum - 1) * muraajaaPref) % muraajaaPool
+    const distributionDays = plan.review_distribution_mode === "weekly" ? resolveReviewDistributionDays(plan) : 0
+    const distributionRangePages = plan.review_distribution_mode === "weekly" ? muraajaaPool / distributionDays : 0
+    const baseOffset = plan.review_distribution_mode === "weekly"
+      ? resolveWeeklyReviewOffset(distributionRangePages, muraajaaPref, distributionDays, activeDayNum)
+      : ((activeDayNum - 1) * muraajaaPref) % muraajaaPool
     const muraajaaSize = Math.min(muraajaaPref, muraajaaPool - baseOffset)
     if (muraajaaSize > 0) {
       muraajaa = getOffsetPlanSessionContent(rootStartPage, baseOffset, muraajaaSize, 0, direction)
@@ -2412,10 +2466,15 @@ export function getPlanSupportSessionContent(
   const muraajaaPoolSegments = trimPagesFromSegmentIndex(memorizedSegments, rabtSourceSegmentIndex, rabtVisiblePages)
   const muraajaaPoolPages = getTotalMemorizedSequencePages(muraajaaPoolSegments)
   const muraajaaPref = resolvePlanReviewPagesPreference(plan, muraajaaPoolPages)
+  const distributionDays = plan.review_distribution_mode === "weekly" ? resolveReviewDistributionDays(plan) : 0
+  const distributionRangePages = plan.review_distribution_mode === "weekly" ? muraajaaPoolPages / distributionDays : 0
+  const reviewOffsetPages = plan.review_distribution_mode === "weekly"
+    ? resolveWeeklyReviewOffset(distributionRangePages, muraajaaPref, distributionDays, activeDayNum)
+    : Math.max(0, activeDayNum - 1) * muraajaaPref
   const muraajaa = muraajaaPoolPages > 0 && muraajaaPref > 0
     ? getSlidingSegmentContent(
         muraajaaPoolSegments,
-        Math.max(0, activeDayNum - 1) * muraajaaPref,
+        reviewOffsetPages,
         muraajaaPref,
       )
     : null

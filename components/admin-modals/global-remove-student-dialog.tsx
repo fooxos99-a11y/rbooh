@@ -28,7 +28,12 @@ interface Student {
 	circle_name?: string | null
 }
 
-const getStudentCircleName = (student: Student) => (student.halaqah || student.circle_name || "غير محدد").trim()
+const normalizeCircleKey = (value?: string | null) =>
+	(value || "")
+		.replace(/\s+/g, " ")
+		.trim()
+
+const getStudentCircleName = (student: Student) => normalizeCircleKey(student.halaqah || student.circle_name || "غير محدد")
 
 export function GlobalRemoveStudentDialog() {
 	const router = useRouter()
@@ -43,6 +48,12 @@ export function GlobalRemoveStudentDialog() {
 	const [selectedStudentToRemove, setSelectedStudentToRemove] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
 
+	const getStudentsForCircle = (circleName?: string | null) => {
+		const normalizedCircle = normalizeCircleKey(circleName)
+		if (!normalizedCircle) return []
+		return studentsInCircles[normalizedCircle] || []
+	}
+
 	useEffect(() => {
 		fetchData()
 	}, [])
@@ -50,18 +61,20 @@ export function GlobalRemoveStudentDialog() {
 	const fetchData = async () => {
 		try {
 			const supabase = createClient()
-			const [circlesRes, studentsRes] = await Promise.all([
+			const [circlesRes, studentsResponse] = await Promise.all([
 				supabase.from("circles").select("id, name").order("created_at", { ascending: false }),
-				supabase.from("students").select("id, name, halaqah"),
+				fetch("/api/students", { cache: "no-store" }),
 			])
 
 			if (!circlesRes.error && circlesRes.data) {
 				setCircles(circlesRes.data)
 			}
 
-			if (!studentsRes.error && studentsRes.data) {
+			if (studentsResponse.ok) {
+				const studentsData = await studentsResponse.json()
+				const students = Array.isArray(studentsData.students) ? studentsData.students : []
 				const grouped: Record<string, Student[]> = {}
-				studentsRes.data.forEach((student) => {
+				students.forEach((student: Student) => {
 					const circleName = getStudentCircleName(student)
 					if (!grouped[circleName]) {
 						grouped[circleName] = []
@@ -75,7 +88,7 @@ export function GlobalRemoveStudentDialog() {
 		}
 	}
 
-	const availableStudentsToRemove = selectedCircleToRemove ? studentsInCircles[selectedCircleToRemove] || [] : []
+	const availableStudentsToRemove = getStudentsForCircle(selectedCircleToRemove)
 
 	const handleClose = (open: boolean) => {
 		setIsOpen(open)

@@ -145,7 +145,7 @@ async function resolveExecutionPageCounts(params: {
   const { supabase, studentId, reportDate, hasMemorizationDone, hasTikrarDone, hasReviewDone, hasLinkingDone, isReviewOnlyDay } = params
   const { data: plan } = await supabase
     .from("student_plans")
-    .select("start_date, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode")
+    .select("start_date, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages")
     .eq("student_id", studentId)
     .order("created_at", { ascending: false })
     .limit(1)
