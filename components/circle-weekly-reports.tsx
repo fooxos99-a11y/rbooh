@@ -9,7 +9,7 @@ import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
 import { createClient } from "@/lib/supabase/client";
 import { getSaudiDateString, getSaudiWeekday } from "@/lib/saudi-time";
-import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
+import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import { isPassingMemorizationLevel, type EvaluationLevelValue } from "@/lib/student-attendance";
 
 type StudentRow = {
@@ -21,8 +21,31 @@ type StudentRow = {
   points?: number | null;
 };
 
+type PreviousMemorizationRange = {
+  startSurahNumber: number;
+  startVerseNumber: number;
+  endSurahNumber: number;
+  endVerseNumber: number;
+};
+
 type PlanRow = {
   student_id: string;
+  start_surah_number?: number | null;
+  start_verse?: number | null;
+  end_surah_number?: number | null;
+  end_verse?: number | null;
+  total_pages?: number | null;
+  total_days?: number | null;
+  start_date?: string | null;
+  created_at?: string | null;
+  direction?: "asc" | "desc" | null;
+  has_previous?: boolean | null;
+  prev_start_surah?: number | null;
+  prev_start_verse?: number | null;
+  prev_end_surah?: number | null;
+  prev_end_verse?: number | null;
+  completed_juzs?: number[] | null;
+  previous_memorization_ranges?: PreviousMemorizationRange[] | null;
   daily_pages: number | null;
   muraajaa_pages: number | null;
   rabt_pages: number | null;
@@ -344,17 +367,14 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
         const supabase = createClient();
         const previousWeek = getStudyWeek(weekOffset + 1);
 
-        const studentsResult = await supabase
-          .from("students")
-          .select("id, name, halaqah, id_number, account_number, points")
-          .eq("halaqah", circleName)
-          .order("points", { ascending: false });
+        const studentsResponse = await fetch(`/api/students?circle=${encodeURIComponent(circleName)}`, { cache: "no-store" });
+        const studentsPayload = await studentsResponse.json().catch(() => ({}));
 
-        if (studentsResult.error) {
-          throw studentsResult.error;
+        if (!studentsResponse.ok) {
+          throw new Error(studentsPayload.error || TEXT.loadError);
         }
 
-        const studentRows = (studentsResult.data ?? []) as StudentRow[];
+        const studentRows = (studentsPayload.students ?? []) as StudentRow[];
         const studentIds = studentRows.map((student) => student.id).filter(Boolean);
 
         if (studentIds.length === 0) {
@@ -364,7 +384,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
         }
 
         const [plansResult, attendanceResult, dailyReportsResult, previousWeekAttendanceResult, previousWeekReportsResult] = await Promise.all([
-          supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
+          supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
           supabase
             .from("attendance_records")
             .select(`
@@ -374,7 +394,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
               status,
               evaluations (hafiz_level, tikrar_level, samaa_level, rabet_level)
             `)
-            .eq("halaqah", circleName)
+            .in("student_id", studentIds)
             .gte("date", studyWeek.startDate)
             .lte("date", studyWeek.endDate),
           supabase
@@ -386,7 +406,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
           supabase
             .from("attendance_records")
             .select("id", { count: "exact", head: true })
-            .eq("halaqah", circleName)
+            .in("student_id", studentIds)
             .gte("date", previousWeek.startDate)
             .lte("date", previousWeek.endDate),
           supabase
@@ -452,6 +472,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
             let linkingCompletedCount = 0;
             let tasmeeCompletedCount = 0;
             let memorizedPoolPages = plan ? calculatePreviousMemorizedPages(plan) : 0;
+            let successfulMemorizationCount = 0;
 
             const statuses = studyDates.map((date) => {
               const record = byDate.get(date);
@@ -482,7 +503,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
               if (plan) {
                 const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
                 const reviewPages = resolvePlanReviewPagesPreference(plan, reviewPoolPages);
-                const tiePages = Math.min(Number(plan.rabt_pages ?? 10), Math.max(0, memorizedPoolPages));
+                const tiePages = resolvePlanLinkingPagesPreference(plan, successfulMemorizationCount);
 
                 if (dailyReport?.review_done) {
                   revised += Math.max(Number(dailyReport.review_pages_count ?? reviewPages), 0);
@@ -497,6 +518,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
                   tasmeeCompletedCount += 1;
                   memorized += dailyPages;
                   memorizedPoolPages += dailyPages;
+                  successfulMemorizationCount += 1;
                 }
               }
 

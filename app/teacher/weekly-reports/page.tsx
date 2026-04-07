@@ -8,9 +8,11 @@ import { CircleWeeklyReports } from "@/components/circle-weekly-reports";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
+import { resolveCircleName } from "@/lib/circle-name";
 
 type TeacherData = {
   halaqah?: string | null;
+  circle_name?: string | null;
 };
 
 export default function TeacherWeeklyReportsPage() {
@@ -34,14 +36,15 @@ export default function TeacherWeeklyReportsPage() {
         const response = await fetch(`/api/teachers?account_number=${accountNumber}`, { cache: "no-store" });
         const data = await response.json();
         const teacher = (data.teachers?.[0] ?? null) as TeacherData | null;
+        const teacherCircle = resolveCircleName(teacher?.halaqah, teacher?.circle_name);
 
-        if (!teacher?.halaqah) {
+        if (!teacherCircle) {
           setError("لا توجد حلقة مرتبطة بهذا المعلم");
           setTeacherCircle("");
           return;
         }
 
-        setTeacherCircle(String(teacher.halaqah));
+        setTeacherCircle(teacherCircle);
       } catch (caughtError) {
         const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
         setError(`تعذر تحميل حلقة المعلم: ${message}`);

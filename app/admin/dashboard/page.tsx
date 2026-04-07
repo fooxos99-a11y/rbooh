@@ -51,6 +51,13 @@ import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 
+const PERMISSION_ALIASES: Record<string, string[]> = {
+  "الإختبارات": ["الإختبارات", "إدارة المسار"],
+  "إدارة المسار": ["إدارة المسار", "الإختبارات"],
+  "يوم السرد": ["يوم السرد", "التقارير"],
+  "التقارير": ["التقارير", "يوم السرد"],
+}
+
 interface Circle {
   name: string
   studentCount: number
@@ -291,7 +298,8 @@ function AdminDashboard() {
 
   const canAccess = (action: string) => {
     if (isFullAccess) return true
-    return userPermissions.includes(action)
+    const candidateKeys = PERMISSION_ALIASES[action] || [action]
+    return candidateKeys.some((permissionKey) => userPermissions.includes(permissionKey))
   }
 
   useEffect(() => {
@@ -350,7 +358,7 @@ function AdminDashboard() {
   const fetchTeachers = async () => {
     try {
       const supabase = createClient()
-      const { data, error } = await supabase.from("users").select("*").in("role", ["teacher", "deputy_teacher"])
+      const { data, error } = await supabase.from("users").select("*").in("role", ["teacher", "deputy_teacher", "معلم", "نائب معلم"])
 
       if (error) {
         console.error("[v0] Error fetching teachers:", error)
@@ -1267,7 +1275,7 @@ function AdminDashboard() {
                         { icon: FileText, label: "تقرير الحلقات المختصر", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports/circle-short-report") } },
                         { icon: MessageSquare, label: "تقارير الرسائل", action: () => { setIsReportsDialogOpen(false); router.push("/admin/reports") } },
                         { icon: BookOpen, label: "متابعة التنفيذ", action: () => { setIsReportsDialogOpen(false); router.push("/admin/student-daily-attendance") } },
-                      ].map(({ icon: Ic, label, action }) => (
+                      ].filter(({ permKey, label }) => canAccess(permKey || label === "متابعة التنفيذ" ? "التقارير" : label)).map(({ icon: Ic, label, action }) => (
                         <button key={label} onClick={action} className="w-full flex items-center justify-between px-5 py-5 bg-white hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                           <div className="flex items-center gap-3">
                             <Ic className="w-5 h-5 text-[#003f55] group-hover:text-[#00506b] transition-colors" />
@@ -1287,7 +1295,7 @@ function AdminDashboard() {
                 {[
                   { icon: MessageSquare, label: "الإرسال إلى أولياء الأمور", path: "/admin/whatsapp-send" },
                   { icon: Bell, label: "الإشعارات", path: "/admin/notifications" },
-                  { icon: Map, label: "إدارة الإختبارات", path: "/admin/pathways" },
+                  { icon: Map, label: "الإختبارات", path: "/admin/exams" },
                 ].filter(({ label }) => canAccess(label)).map(({ icon: Ic, label, path }) => (
                   <button key={label} onClick={() => router.push(path)} className="w-full flex items-center justify-between px-6 py-5 hover:bg-[#D4AF37]/5 transition-colors duration-200 group">
                     <div className="flex items-center gap-3">

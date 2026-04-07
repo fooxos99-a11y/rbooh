@@ -209,26 +209,26 @@ export function GlobalCirclesDialog() {
             ) : (
               <div className="space-y-3">
                 {circles.map((circle) => (
-                  <div key={circle.name} className="flex items-center justify-between rounded-2xl border border-[#3453a7]/20 bg-white px-6 py-5 shadow-sm hover:bg-[#3453a7]/5 transition-colors">
-                    <div className="flex items-center gap-4">
+                  <div key={circle.name} className="flex flex-col gap-3 rounded-2xl border border-[#3453a7]/20 bg-white px-5 py-4 shadow-sm transition-colors hover:bg-[#3453a7]/5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-4">
                       <div className="w-11 h-11 flex items-center justify-center shrink-0">
                         <BookOpen className="w-5 h-5 text-[#003f55]" />
                       </div>
-                      <div>
-                        <p className="text-base font-bold text-[#1a2332]">{circle.name}</p>
+                      <div className="min-w-0">
+                        <p className="text-base font-bold leading-7 text-[#1a2332] break-words">{circle.name}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                       <button
                         onClick={() => handleViewCircle(circle)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#3453a7]/35 text-[#3453a7] hover:bg-[#3453a7]/10 hover:text-[#27428d] text-sm font-medium transition-colors"
+                        className="inline-flex h-9 min-w-[104px] items-center justify-center gap-1.5 rounded-lg border border-[#3453a7]/35 px-3 text-sm font-medium text-[#3453a7] transition-colors hover:bg-[#3453a7]/10 hover:text-[#27428d]"
                       >
                         <Eye className="w-3.5 h-3.5" />
                         عرض الطلاب
                       </button>
                       <button
                         onClick={() => handleRemoveCircle(circle.name)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 hover:border-red-300 text-sm font-medium transition-colors"
+                        className="inline-flex h-9 min-w-[88px] items-center justify-center gap-1.5 rounded-lg border border-red-200 px-3 text-sm font-medium text-red-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                         إزالة
@@ -281,25 +281,25 @@ export function GlobalCirclesDialog() {
             ) : circleStudents.length > 0 ? (
               <div className="divide-y divide-[#3453a7]/12 rounded-xl border border-[#3453a7]/20 overflow-hidden">
                 {circleStudents.map((student) => (
-                  <div key={student.id} className="flex items-center justify-between px-4 py-3 bg-white hover:bg-[#3453a7]/5 transition-colors">
-                    <div className="flex items-center gap-3">
+                  <div key={student.id} className="flex flex-col gap-3 bg-white px-4 py-3 transition-colors hover:bg-[#3453a7]/5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-[#3453a7]/10 border border-[#3453a7]/25 flex items-center justify-center shrink-0">
                         <span className="text-sm font-bold text-[#3453a7]">{student.rank || "-"}</span>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-[#1a2332]">{student.name}</p>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-[#1a2332] break-words">{student.name}</p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 sm:justify-end">
                       <button
                         onClick={() => handleViewStudentInfo(student)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#3453a7]/35 text-[#3453a7] hover:bg-[#3453a7]/10 hover:text-[#27428d] text-xs font-medium transition-colors"
+                        className="inline-flex h-8 min-w-[72px] items-center justify-center gap-1 rounded-lg border border-[#3453a7]/35 px-2.5 text-xs font-medium text-[#3453a7] transition-colors hover:bg-[#3453a7]/10 hover:text-[#27428d]"
                       >
                         <Info className="w-3 h-3" /> عرض
                       </button>
                       <button
                         onClick={() => handleRemoveStudent(student.id, student.name)}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-200 text-red-400 hover:bg-red-50 hover:text-red-600 text-xs font-medium transition-colors"
+                        className="inline-flex h-8 min-w-[72px] items-center justify-center gap-1 rounded-lg border border-red-200 px-2.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-50 hover:text-red-600"
                       >
                         <UserX className="w-3 h-3" /> إزالة
                       </button>

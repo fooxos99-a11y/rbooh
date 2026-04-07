@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { canAccessStudent, canManageHalaqah, getRequestActor, isTeacherRole } from "@/lib/request-auth"
 import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
+import { circleNamesMatch, normalizeCircleName, resolveCircleName } from "@/lib/circle-name"
 import {
   applyAttendancePointsAdjustment,
   calculateEvaluationLevelPoints,
@@ -49,11 +50,27 @@ export async function GET(request: NextRequest) {
       }
 
       const todayDate = getKsaDateString()
+      const normalizedCircle = normalizeCircleName(halaqah)
+      const { data: studentsInCircle, error: studentsError } = await supabase
+        .from("students")
+        .select("id, halaqah")
+
+      if (studentsError) {
+        return NextResponse.json({ error: "Failed to load circle students" }, { status: 500 })
+      }
+
+      const studentIds = (studentsInCircle || [])
+        .filter((student: any) => circleNamesMatch(student.halaqah, normalizedCircle))
+        .map((student: any) => student.id)
+
+      if (studentIds.length === 0) {
+        return NextResponse.json({ savedToday: false })
+      }
 
       const { data, error } = await supabase
         .from("attendance_records")
         .select("id")
-        .eq("halaqah", halaqah)
+        .in("student_id", studentIds)
         .eq("date", todayDate)
         .limit(1)
 
@@ -180,7 +197,9 @@ export async function POST(request: NextRequest) {
     console.log("  samaa_level:", samaa_level)
     console.log("  rabet_level:", rabet_level)
 
-    if (!student_id || !teacher_id || !halaqah) {
+    const normalizedHalaqah = resolveCircleName(halaqah)
+
+    if (!student_id || !teacher_id || !normalizedHalaqah) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
@@ -197,7 +216,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const isAuthorizedForHalaqah = canManageHalaqah(actor, halaqah)
+    const isAuthorizedForHalaqah = canManageHalaqah(actor, normalizedHalaqah)
     const isAuthorizedForStudent = await canAccessStudent({
       supabase,
       actor,
@@ -263,7 +282,7 @@ export async function POST(request: NextRequest) {
         .from("attendance_records")
         .update({
           teacher_id,
-          halaqah,
+          halaqah: normalizedHalaqah,
           status: normalizedStatus,
           notes: notes ?? null,
         })
@@ -301,7 +320,7 @@ export async function POST(request: NextRequest) {
         .insert({
           student_id,
           teacher_id,
-          halaqah,
+          halaqah: normalizedHalaqah,
           status: normalizedStatus,
           date: targetDate,
           notes: notes ?? null,

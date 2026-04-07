@@ -14,6 +14,8 @@ import {
   getNormalizedCompletedJuzs,
   hasScatteredCompletedJuzs,
   getPageFloatForAyah,
+  resolvePlanReviewPagesPreference,
+  resolvePlanReviewPoolPages,
   resolvePlanTotalDays,
   resolvePlanTotalPages,
 } from "@/lib/quran-data"
@@ -641,6 +643,7 @@ export async function POST(request: NextRequest) {
       review_distribution_mode,
       review_distribution_days,
       review_minimum_pages,
+      review_start_mode,
     } = body
 
     const canManageStudent = await canAccessStudent({
@@ -814,32 +817,37 @@ export async function POST(request: NextRequest) {
           })
 
     const normalizedReviewDistributionMode = review_distribution_mode === "weekly" ? "weekly" : "fixed"
+    const normalizedReviewStartMode = review_start_mode === "oldest" || review_start_mode === "newest"
+      ? review_start_mode
+      : "auto"
     const fixedReviewPages = Number(muraajaa_pages) || 0
     const normalizedReviewDistributionDays = normalizedReviewDistributionMode === "weekly"
       ? Math.max(1, Math.floor(Number(review_distribution_days) || REVIEW_DISTRIBUTION_DEFAULT_DAYS))
-      : null
+      : REVIEW_DISTRIBUTION_DEFAULT_DAYS
     const normalizedReviewMinimumPages = normalizedReviewDistributionMode === "weekly"
       ? Math.max(0.25, Number(review_minimum_pages) || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES)
-      : null
+      : REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES
     const weeklyReviewPoolPages = normalizedReviewDistributionMode === "weekly"
-      ? calculatePreviousMemorizedPages({
-          has_previous: effectiveHasPrevious,
-          prev_start_surah: effectivePrevStartSurah,
-          prev_start_verse: effectivePrevStartVerse,
-          prev_end_surah: effectivePrevEndSurah,
-          prev_end_verse: effectivePrevEndVerse,
-        })
-      : 0
-    const weeklyReviewRangePages = normalizedReviewDistributionMode === "weekly"
-      ? weeklyReviewPoolPages / (normalizedReviewDistributionDays || REVIEW_DISTRIBUTION_DEFAULT_DAYS)
+      ? resolvePlanReviewPoolPages(
+          { rabt_pages },
+          calculatePreviousMemorizedPages({
+            has_previous: effectiveHasPrevious,
+            prev_start_surah: effectivePrevStartSurah,
+            prev_start_verse: effectivePrevStartVerse,
+            prev_end_surah: effectivePrevEndSurah,
+            prev_end_verse: effectivePrevEndVerse,
+            completed_juzs: normalizedCompletedJuzs,
+          }),
+        )
       : 0
     const weeklyReviewPages = normalizedReviewDistributionMode === "weekly"
-      ? Math.min(
-          weeklyReviewRangePages,
-          Math.max(
-            normalizedReviewMinimumPages || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES,
-            weeklyReviewRangePages / (normalizedReviewDistributionDays || REVIEW_DISTRIBUTION_DEFAULT_DAYS),
-          ),
+      ? resolvePlanReviewPagesPreference(
+          {
+            review_distribution_mode: normalizedReviewDistributionMode,
+            review_distribution_days: normalizedReviewDistributionDays,
+            review_minimum_pages: normalizedReviewMinimumPages,
+          },
+          weeklyReviewPoolPages,
         )
       : 0
     const muraajaaPagesForStorage = normalizedReviewDistributionMode === "weekly"
@@ -880,6 +888,7 @@ export async function POST(request: NextRequest) {
         review_distribution_mode: normalizedReviewDistributionMode,
         review_distribution_days: normalizedReviewDistributionDays,
         review_minimum_pages: normalizedReviewMinimumPages,
+        review_start_mode: normalizedReviewStartMode,
       }])
       .select()
       .single()

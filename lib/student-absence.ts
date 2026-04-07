@@ -4,15 +4,14 @@ export const ABSENCE_ALERT_THRESHOLDS = [1, 2, 3, 4] as const
 
 export type AbsenceAlertThreshold = (typeof ABSENCE_ALERT_THRESHOLDS)[number]
 
-export type AbsenceAlertTemplates = Record<`${AbsenceAlertThreshold}`, string>
+export type AbsenceTemplateSettings = {
+	message: string
+}
 
 export const STUDENT_ABSENCE_ALERT_SETTING_ID = ABSENCE_ALERT_TEMPLATES_SETTING_ID
 
-export const DEFAULT_ABSENCE_ALERT_TEMPLATES: AbsenceAlertTemplates = {
-	"1": "تنبيه: لديك غياب واحد. نأمل الالتزام بالحضور من الآن.",
-	"2": "تنبيه: لديك غيابان حتى الآن. تكرار الغياب سيؤثر على انتظامك.",
-	"3": "تنبيه: لديك 3 غيابات. يرجى مراجعة الإدارة والالتزام بالحضور.",
-	"4": "تنبيه: لديك 4 غيابات. هذا إنذار أخير قبل اتخاذ إجراء إداري.",
+export const DEFAULT_ABSENCE_TEMPLATE_SETTINGS: AbsenceTemplateSettings = {
+	message: "نحيطكم علماً بأن الطالب {{studentName}} قد سُجّل غائباً اليوم{{date}}. نأمل المتابعة.",
 }
 
 export function calculateEffectiveAbsenceCount(absentCount: number, excusedCount: number) {
@@ -35,29 +34,36 @@ export function countAbsenceStatuses(statuses: Array<string | null | undefined>)
 	}
 }
 
-export function normalizeAbsenceAlertTemplates(value: unknown): AbsenceAlertTemplates {
-	const source = value && typeof value === "object" ? (value as Partial<Record<`${AbsenceAlertThreshold}`, unknown>>) : {}
-
-	return {
-		"1": typeof source["1"] === "string" && source["1"].trim() ? source["1"].trim() : DEFAULT_ABSENCE_ALERT_TEMPLATES["1"],
-		"2": typeof source["2"] === "string" && source["2"].trim() ? source["2"].trim() : DEFAULT_ABSENCE_ALERT_TEMPLATES["2"],
-		"3": typeof source["3"] === "string" && source["3"].trim() ? source["3"].trim() : DEFAULT_ABSENCE_ALERT_TEMPLATES["3"],
-		"4": typeof source["4"] === "string" && source["4"].trim() ? source["4"].trim() : DEFAULT_ABSENCE_ALERT_TEMPLATES["4"],
+export function normalizeAbsenceTemplateSettings(value: unknown): AbsenceTemplateSettings {
+	if (typeof value === "string" && value.trim()) {
+		return { message: value.trim() }
 	}
+
+	const source = value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+	if (typeof source.message === "string" && source.message.trim()) {
+		return { message: source.message.trim() }
+	}
+
+	for (const threshold of ABSENCE_ALERT_THRESHOLDS) {
+		const legacyValue = source[String(threshold)]
+		if (typeof legacyValue === "string" && legacyValue.trim()) {
+			return { message: legacyValue.trim() }
+		}
+	}
+
+	return DEFAULT_ABSENCE_TEMPLATE_SETTINGS
 }
 
 export function formatAbsenceAlertMessage(
 	template: string,
 	params: {
 		studentName: string
-		absenceCount: number
-		absentCount: number
-		excusedCount: number
+		date?: string
+		circleName?: string
 	},
 ) {
 	return template
 		.replaceAll("{{studentName}}", params.studentName)
-		.replaceAll("{{absenceCount}}", String(params.absenceCount))
-		.replaceAll("{{absentCount}}", String(params.absentCount))
-		.replaceAll("{{excusedCount}}", String(params.excusedCount))
+		.replaceAll("{{date}}", params.date ? ` بتاريخ ${params.date}` : "")
+		.replaceAll("{{circleName}}", params.circleName || "")
 }

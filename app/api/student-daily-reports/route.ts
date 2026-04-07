@@ -1,9 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { buildPlanSessionProgress, deriveReportSessionNumbersByDate, isMemorizationOffDay } from "@/lib/plan-session-progress"
 import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
-import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
+import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
 import { isPassingMemorizationLevel } from "@/lib/student-attendance"
+import { notifyGuardian } from "@/lib/guardian-notifications"
 
 const SELF_REPORT_REWARD_POINTS = {
   memorization_done: 10,
@@ -132,6 +134,46 @@ function normalizePageCount(value: number) {
   return Math.max(0, Math.round(value * 100) / 100)
 }
 
+function formatReportDateLabel(dateValue: string) {
+  const [year, month, day] = String(dateValue || "").split("-")
+  if (!year || !month || !day) {
+    return dateValue
+  }
+
+  return `${year}/${month}/${day}`
+}
+
+function buildDailyExecutionGuardianMessage(params: {
+  studentName: string
+  halaqah?: string | null
+  reportDate: string
+  isReviewOnlyDay: boolean
+  memorizationDone: boolean
+  tikrarDone: boolean
+  reviewDone: boolean
+  linkingDone: boolean
+}) {
+  const completedItems: string[] = []
+
+  if (!params.isReviewOnlyDay && params.memorizationDone) completedItems.push("الحفظ")
+  if (!params.isReviewOnlyDay && params.tikrarDone) completedItems.push("التكرار")
+  if (params.reviewDone) completedItems.push(params.isReviewOnlyDay ? "السرد" : "المراجعة")
+  if (!params.isReviewOnlyDay && params.linkingDone) completedItems.push("الربط")
+
+  if (completedItems.length === 0) {
+    return ""
+  }
+
+  const halaqahLabel = (params.halaqah || "الحلقة").trim() || "الحلقة"
+  const dateLabel = formatReportDateLabel(params.reportDate)
+
+  if (params.isReviewOnlyDay) {
+    return `تنبيه من ${halaqahLabel}: تم تسجيل يوم السرد للطالب ${params.studentName} بتاريخ ${dateLabel}.`
+  }
+
+  return `تنبيه من ${halaqahLabel}: تم تسجيل تنفيذ اليوم للطالب ${params.studentName} بتاريخ ${dateLabel}، وتم إنجاز ${completedItems.join("، ")}.`
+}
+
 async function resolveExecutionPageCounts(params: {
   supabase: Awaited<ReturnType<typeof createClient>>
   studentId: string
@@ -186,13 +228,14 @@ async function resolveExecutionPageCounts(params: {
 
   const memorizedPoolPages = calculatePreviousMemorizedPages(plan) + successfulMemorizationCount * dailyPages
   const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages)
+  const linkingPagesCount = resolvePlanLinkingPagesPreference(plan, successfulMemorizationCount)
 
   return {
     memorizationPagesCount: hasMemorizationDone && !isReviewOnlyDay ? dailyPages : 0,
     tikrarPagesCount: hasTikrarDone && !isReviewOnlyDay ? dailyPages : 0,
     reviewPagesCount: hasReviewDone ? normalizePageCount(resolvePlanReviewPagesPreference(plan, reviewPoolPages)) : 0,
     linkingPagesCount: hasLinkingDone && !isReviewOnlyDay
-      ? normalizePageCount(Math.min(Number(plan.rabt_pages ?? 10), Math.max(0, memorizedPoolPages)))
+      ? normalizePageCount(linkingPagesCount)
       : 0,
   }
 }
@@ -561,6 +604,44 @@ export async function POST(request: NextRequest) {
           },
           { status: 500 },
         )
+      }
+    }
+
+    const shouldNotifyGuardian = nextMemorizationDone || nextTikrarDone || nextReviewDone || nextLinkingDone
+    if (shouldNotifyGuardian) {
+      try {
+        const notificationSupabase = createAdminClient()
+        const { data: studentNotificationProfile, error: studentNotificationError } = await notificationSupabase
+          .from("students")
+          .select("name, halaqah, account_number, guardian_phone")
+          .eq("id", studentId)
+          .maybeSingle()
+
+        if (studentNotificationError) {
+          console.error("[student-daily-reports][POST][guardian-notify][student]", studentNotificationError)
+        } else {
+          const guardianMessage = buildDailyExecutionGuardianMessage({
+            studentName: studentNotificationProfile?.name || "الطالب",
+            halaqah: studentNotificationProfile?.halaqah || "",
+            reportDate,
+            isReviewOnlyDay,
+            memorizationDone: nextMemorizationDone,
+            tikrarDone: nextTikrarDone,
+            reviewDone: nextReviewDone,
+            linkingDone: nextLinkingDone,
+          })
+
+          if (guardianMessage) {
+            await notifyGuardian(notificationSupabase, {
+              accountNumber: studentNotificationProfile?.account_number,
+              appMessage: guardianMessage,
+              phoneNumber: studentNotificationProfile?.guardian_phone,
+              whatsappMessage: guardianMessage,
+            })
+          }
+        }
+      } catch (guardianNotificationError) {
+        console.error("[student-daily-reports][POST][guardian-notify]", guardianNotificationError)
       }
     }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { getWhatsAppRuntimeConfig } from "@/lib/whatsapp-config"
 
 /**
  * WhatsApp Cloud API - Webhook Endpoint
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
     const token = searchParams.get("hub.verify_token")
     const challenge = searchParams.get("hub.challenge")
 
-    const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN
+    const { verifyToken } = getWhatsAppRuntimeConfig()
 
     console.log("[Webhook] Verification request:", { mode, token: token?.substring(0, 10) + "..." })
 

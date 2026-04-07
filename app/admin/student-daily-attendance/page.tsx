@@ -174,7 +174,7 @@ function formatActionDate(value: string) {
 }
 
 export default function StudentDailyAttendancePage() {
-  const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير")
+  const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth(["يوم السرد", "التقارير"])
   const { toast } = useToast()
 
   const [isLoading, setIsLoading] = useState(true)

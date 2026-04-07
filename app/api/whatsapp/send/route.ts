@@ -1,4 +1,23 @@
 import { NextResponse } from "next/server"
+import { getWhatsAppRuntimeConfig } from "@/lib/whatsapp-config"
+import { readWhatsAppWorkerStatus } from "@/lib/whatsapp-worker-status"
+
+function shouldUseWorkerMode() {
+  return (process.env.RBOH_WHATSAPP_SEND_MODE || "").trim().toLowerCase() === "worker"
+}
+
+async function shouldSendViaWorker() {
+  if (shouldUseWorkerMode()) {
+    return true
+  }
+
+  try {
+    const workerStatus = await readWhatsAppWorkerStatus()
+    return Boolean(workerStatus.workerOnline && workerStatus.authenticated && workerStatus.ready && workerStatus.status === "connected")
+  } catch {
+    return false
+  }
+}
 
 /**
  * WhatsApp Cloud API - Send Message Endpoint
@@ -19,10 +38,42 @@ export async function POST(request: Request) {
       )
     }
 
+    if (await shouldSendViaWorker()) {
+      const cleanedPhone = phoneNumber.replace(/[^0-9]/g, "")
+      const { createAdminClient } = await import("@/lib/supabase/admin")
+      const supabase = createAdminClient()
+      const queueId = crypto.randomUUID()
+
+      const { error: queueError } = await supabase.from("whatsapp_queue").insert({
+        id: queueId,
+        phone_number: cleanedPhone,
+        message,
+        status: "pending",
+      })
+
+      if (queueError) {
+        console.error("[WhatsApp Queue] Enqueue error:", queueError)
+        return NextResponse.json({ error: "فشل في إضافة الرسالة إلى طابور الإرسال" }, { status: 500 })
+      }
+
+      await saveMessageToDatabase({
+        id: queueId,
+        phoneNumber: cleanedPhone,
+        message,
+        status: "pending",
+        userId,
+      })
+
+      return NextResponse.json({
+        success: true,
+        queued: true,
+        queueId,
+        message: "تمت إضافة الرسالة إلى طابور الإرسال بنجاح",
+      })
+    }
+
     // الحصول على معلومات WhatsApp API من المتغيرات البيئية
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN
-    const apiVersion = process.env.WHATSAPP_API_VERSION || "v19.0"
+    const { phoneNumberId, accessToken, apiVersion } = getWhatsAppRuntimeConfig()
 
     if (!phoneNumberId || !accessToken) {
       console.error("[WhatsApp] Missing configuration")
@@ -107,6 +158,7 @@ export async function POST(request: Request) {
  * حفظ الرسالة في قاعدة البيانات
  */
 async function saveMessageToDatabase(data: {
+  id?: string
   phoneNumber: string
   message: string
   status: string
@@ -121,6 +173,7 @@ async function saveMessageToDatabase(data: {
     const { data: savedMessage, error } = await supabase
       .from("whatsapp_messages")
       .insert({
+        id: data.id,
         phone_number: data.phoneNumber,
         message_text: data.message,
         status: data.status,

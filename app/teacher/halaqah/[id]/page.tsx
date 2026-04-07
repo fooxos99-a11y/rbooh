@@ -16,6 +16,7 @@ import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
 import { getSaudiAttendanceAnchorDate, getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { resolveCircleName } from "@/lib/circle-name"
 import {
 	type AttendanceStatus,
 	type EvaluationLevelValue,
@@ -212,10 +213,75 @@ const formatReadingDetails = (content?: EvaluationContent | null) => {
 	const toSurah = content.toSurah?.trim()
 	const fromVerse = content.fromVerse?.trim()
 	const toVerse = content.toVerse?.trim()
+	const fallbackText = content.text?.trim()
+
+	const formatExplicitRange = (startSurah: string, startVerse: string, endSurah: string, endVerse: string) => {
+		if (startSurah === endSurah && startVerse === endVerse) {
+			return `من ${startSurah} آية ${startVerse} إلى ${endSurah} آية ${endVerse}`
+		}
+
+		return `من ${startSurah} آية ${startVerse} إلى ${endSurah} آية ${endVerse}`
+	}
+
+	const normalizeSingleSegment = (segmentText: string) => {
+		const cleaned = segmentText
+			.replace(/\s+مرورًا\s+.+$/u, "")
+			.replace(/\s+مرورا\s+.+$/u, "")
+			.replace(/من\s+سورة\s+/u, "من ")
+			.replace(/إلى\s+سورة\s+/u, "إلى ")
+			.replace(/\s+الى\s+/u, " إلى ")
+			.trim()
+
+		const directMatch = cleaned.match(/^(.+?)\s+(\d+)\s+إلى\s+(.+?)\s+(\d+)$/u)
+		if (directMatch) {
+			return formatExplicitRange(directMatch[1].trim(), directMatch[2], directMatch[3].trim(), directMatch[4])
+		}
+
+		if (cleaned.startsWith("من ")) {
+			return cleaned
+		}
+
+		return cleaned
+	}
+
+	if (fallbackText?.trim()) {
+		const normalizedFallback = fallbackText
+			.replace(/من\s+سورة\s+/u, "من ")
+			.replace(/إلى\s+سورة\s+/u, "إلى ")
+			.trim()
+
+		if (normalizedFallback.includes("، ثم")) {
+			return normalizedFallback
+				.split(/،\s*ثم\s*/u)
+				.map((part) => normalizeSingleSegment(part))
+				.filter(Boolean)
+				.join(" و ")
+		}
+
+		if (normalizedFallback.includes("ما عدا")) {
+			return normalizedFallback
+				.replace(/\s+مرورًا\s+.+$/u, "")
+				.replace(/\s+مرورا\s+.+$/u, "")
+				.replace(/\s+الى\s+/u, " إلى ")
+				.trim()
+		}
+
+		if (normalizedFallback.includes("مرورًا") || normalizedFallback.includes("مرورا")) {
+			return normalizeSingleSegment(normalizedFallback)
+		}
+	}
+
+	if (fromSurah && fromVerse && toSurah && toVerse) {
+		return formatExplicitRange(fromSurah, fromVerse, toSurah, toVerse)
+	}
+
+	if (fallbackText?.trim()) {
+		return normalizeSingleSegment(fallbackText)
+	}
 
 	if (!fromSurah && !toSurah) return ""
 	if (!toSurah || (fromSurah === toSurah && (!toVerse || fromVerse === toVerse))) {
-		return fromVerse ? `${fromSurah} ${fromVerse}` : (fromSurah || "")
+		return fromVerse ? `من ${fromSurah} آية ${fromVerse} إلى ${fromSurah} آية ${fromVerse}` : (fromSurah || "")
 	}
 
 	const fromLabel = fromVerse ? `${fromSurah} ${fromVerse}` : fromSurah
@@ -253,10 +319,10 @@ const getPlanReadingDetails = (
 		? getPlanSessionContentRange(plan, retryStartSessionNumber, retryEndSessionNumber || retryStartSessionNumber)
 		: getPlanSessionContent(plan, activeSessionNumber)
 	const supportContent = getPlanSupportSessionContent(plan, progressedDays ?? completedDays, failedSessionNumbers) as {
-		review?: EvaluationContent | null
+		muraajaa?: EvaluationContent | null
 		rabt?: EvaluationContent | null
 	}
-	const samaa = supportContent.review
+	const samaa = supportContent.muraajaa
 	const rabet = supportContent.rabt
 
 	return {
@@ -458,7 +524,7 @@ const getReportMemorizationSegment = (student: StudentAttendance, reportDate: st
 	}
 
 	const content = getReportMemorizationContent(student, reportDate)
-	return content?.text || formatReadingDetails(content) || "لا يوجد مقطع حفظ"
+	return formatReadingDetails(content) || content?.text || "لا يوجد مقطع حفظ"
 }
 
 const deriveAutoLevel = (value: boolean) => (value ? "6" : "0") as EvaluationLevel
@@ -767,7 +833,7 @@ export default function HalaqahManagement() {
 
 			if (data.teachers && data.teachers.length > 0) {
 				const teacher = data.teachers[0]
-				const teacherHalaqah = (teacher.halaqah || teacher.circle_name || "").trim()
+				const teacherHalaqah = resolveCircleName(teacher.halaqah, teacher.circle_name)
 				setTeacherData(teacher)
 
 				if (teacherHalaqah) {
@@ -990,6 +1056,10 @@ export default function HalaqahManagement() {
 				})
 				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
 				const eligibleStudents = nextStudents.filter((student) => {
+					if (student.hasPlan) {
+						return true
+					}
+
 					if (editMode) {
 						return (student.selfReports || []).length > 0 || (student.savedToday && isEvaluatedAttendance(student.attendance))
 					}

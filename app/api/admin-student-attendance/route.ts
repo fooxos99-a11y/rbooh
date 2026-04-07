@@ -3,12 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { getSiteSetting } from "@/lib/site-settings"
 import { getSaudiAttendanceAnchorDate, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import {
-  DEFAULT_ABSENCE_ALERT_TEMPLATES,
-  calculateEffectiveAbsenceCount,
+  DEFAULT_ABSENCE_TEMPLATE_SETTINGS,
   formatAbsenceAlertMessage,
-  normalizeAbsenceAlertTemplates,
+  normalizeAbsenceTemplateSettings,
   STUDENT_ABSENCE_ALERT_SETTING_ID,
 } from "@/lib/student-absence"
+import { sendGuardianWhatsAppMessage } from "@/lib/guardian-notifications"
 
 type AdminAttendanceStatus = "present" | "late" | "absent" | "excused"
 
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
 
     const { data: students, error: studentsError } = await supabase
       .from("students")
-      .select("id, name, account_number, halaqah")
+      .select("id, name, account_number, guardian_phone, halaqah")
       .in("id", studentIds)
 
     if (studentsError) {
@@ -212,33 +212,13 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const { data: absenceRecords, error: absenceRecordsError } = await supabase
-    .from("attendance_records")
-    .select("student_id, status")
-    .in("student_id", studentIds)
-    .in("status", ["absent", "excused"])
-
-    if (absenceRecordsError) {
-    console.error("[admin-student-attendance] absence records error:", absenceRecordsError)
-    return NextResponse.json({ error: absenceRecordsError.message || "فشل في قراءة سجل الغيابات الحالي" }, { status: 500 })
-  }
-
-    const absenceCountByStudent = new Map<string, number>()
-  const excusedCountByStudent = new Map<string, number>()
-
-  for (const record of absenceRecords || []) {
-    if (record.status === "absent") {
-      absenceCountByStudent.set(record.student_id, (absenceCountByStudent.get(record.student_id) || 0) + 1)
-    }
-    if (record.status === "excused") {
-      excusedCountByStudent.set(record.student_id, (excusedCountByStudent.get(record.student_id) || 0) + 1)
-    }
-  }
-
-    const absenceAlertTemplates = normalizeAbsenceAlertTemplates(
-    await getSiteSetting(STUDENT_ABSENCE_ALERT_SETTING_ID, DEFAULT_ABSENCE_ALERT_TEMPLATES),
+    const absenceTemplateSettings = normalizeAbsenceTemplateSettings(
+    await getSiteSetting(STUDENT_ABSENCE_ALERT_SETTING_ID, DEFAULT_ABSENCE_TEMPLATE_SETTINGS),
   )
-    const absenceNotificationCandidates: Array<{ user_account_number: string; message: string }> = []
+    const absenceNotificationCandidates: Array<{
+      guardian_phone: string | null
+      message: string
+    }> = []
 
     const saved: Array<{ student_id: string; status: AdminAttendanceStatus }> = []
     const blocked: Array<{ student_id: string; reason: string }> = []
@@ -283,34 +263,15 @@ export async function POST(request: NextRequest) {
 
         saved.push({ student_id: update.student_id, status: update.status })
 
-    const oldAbsentCount = absenceCountByStudent.get(update.student_id) || 0
-    const oldExcusedCount = excusedCountByStudent.get(update.student_id) || 0
-    let nextAbsentCount = oldAbsentCount
-    let nextExcusedCount = oldExcusedCount
-
-    if (existingRecord.status === "absent" && update.status !== "absent") nextAbsentCount -= 1
-    if (existingRecord.status !== "absent" && update.status === "absent") nextAbsentCount += 1
-    if (existingRecord.status === "excused" && update.status !== "excused") nextExcusedCount -= 1
-    if (existingRecord.status !== "excused" && update.status === "excused") nextExcusedCount += 1
-
-    absenceCountByStudent.set(update.student_id, Math.max(0, nextAbsentCount))
-    excusedCountByStudent.set(update.student_id, Math.max(0, nextExcusedCount))
-
-    const previousEffectiveAbsences = calculateEffectiveAbsenceCount(oldAbsentCount, oldExcusedCount)
-    const nextEffectiveAbsences = calculateEffectiveAbsenceCount(nextAbsentCount, nextExcusedCount)
-    if (nextEffectiveAbsences > previousEffectiveAbsences && nextEffectiveAbsences >= 1 && nextEffectiveAbsences <= 4) {
-      const template = absenceAlertTemplates[String(nextEffectiveAbsences) as keyof typeof absenceAlertTemplates]
-      if (student.account_number && template) {
+    if (existingRecord.status !== "absent" && update.status === "absent" && absenceTemplateSettings.message && student.guardian_phone) {
         absenceNotificationCandidates.push({
-          user_account_number: String(student.account_number),
-          message: formatAbsenceAlertMessage(template, {
+          guardian_phone: student.guardian_phone || null,
+          message: formatAbsenceAlertMessage(absenceTemplateSettings.message, {
             studentName: student.name || "الطالب",
-            absenceCount: nextEffectiveAbsences,
-            absentCount: Math.max(0, nextAbsentCount),
-            excusedCount: Math.max(0, nextExcusedCount),
+            date: effectiveDate,
+            circleName: halaqah,
           }),
         })
-      }
     }
         continue
       }
@@ -351,55 +312,31 @@ export async function POST(request: NextRequest) {
 
       saved.push({ student_id: update.student_id, status: update.status })
 
-    const oldAbsentCount = absenceCountByStudent.get(update.student_id) || 0
-    const oldExcusedCount = excusedCountByStudent.get(update.student_id) || 0
-    const nextAbsentCount = update.status === "absent" ? oldAbsentCount + 1 : oldAbsentCount
-    const nextExcusedCount = update.status === "excused" ? oldExcusedCount + 1 : oldExcusedCount
-
-    absenceCountByStudent.set(update.student_id, nextAbsentCount)
-    excusedCountByStudent.set(update.student_id, nextExcusedCount)
-
-    const previousEffectiveAbsences = calculateEffectiveAbsenceCount(oldAbsentCount, oldExcusedCount)
-    const nextEffectiveAbsences = calculateEffectiveAbsenceCount(nextAbsentCount, nextExcusedCount)
-    if (nextEffectiveAbsences > previousEffectiveAbsences && nextEffectiveAbsences >= 1 && nextEffectiveAbsences <= 4) {
-      const template = absenceAlertTemplates[String(nextEffectiveAbsences) as keyof typeof absenceAlertTemplates]
-      if (student.account_number && template) {
+    if (update.status === "absent" && absenceTemplateSettings.message && student.guardian_phone) {
         absenceNotificationCandidates.push({
-          user_account_number: String(student.account_number),
-          message: formatAbsenceAlertMessage(template, {
+          guardian_phone: student.guardian_phone || null,
+          message: formatAbsenceAlertMessage(absenceTemplateSettings.message, {
             studentName: student.name || "الطالب",
-            absenceCount: nextEffectiveAbsences,
-            absentCount: nextAbsentCount,
-            excusedCount: nextExcusedCount,
+            date: effectiveDate,
+            circleName: halaqah,
           }),
         })
-      }
     }
     }
 
   if (absenceNotificationCandidates.length > 0) {
-    const todayStart = `${date}T00:00:00+03:00`
-    const candidateAccounts = Array.from(
-      new Set(absenceNotificationCandidates.map((candidate) => candidate.user_account_number)),
+    const uniqueNotificationCandidates = Array.from(
+      new Map(absenceNotificationCandidates.map((candidate) => [`${candidate.guardian_phone || ""}::${candidate.message}`, candidate])).values(),
     )
 
-    const { data: existingNotifications } = await supabase
-      .from("notifications")
-      .select("user_account_number, message")
-      .in("user_account_number", candidateAccounts)
-      .gte("created_at", todayStart)
-
-    const existingNotificationSet = new Set(
-      (existingNotifications || []).map((notification) => `${notification.user_account_number}::${notification.message}`),
+    await Promise.allSettled(
+      uniqueNotificationCandidates.map((candidate) =>
+        sendGuardianWhatsAppMessage(supabase, {
+          phoneNumber: candidate.guardian_phone,
+          message: candidate.message,
+        }),
+      ),
     )
-
-    const notificationsToInsert = absenceNotificationCandidates.filter(
-      (candidate) => !existingNotificationSet.has(`${candidate.user_account_number}::${candidate.message}`),
-    )
-
-    if (notificationsToInsert.length > 0) {
-      await supabase.from("notifications").insert(notificationsToInsert)
-    }
   }
 
     return NextResponse.json({

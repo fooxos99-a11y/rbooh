@@ -21,6 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserPlus, UserMinus } from "lucide-react"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { getClientAccountNumber } from "@/lib/client-auth"
+import { resolveCircleName } from "@/lib/circle-name"
 
 export default function TeacherDashboard() {
   const [isLoading, setIsLoading] = useState(true)
@@ -62,11 +63,12 @@ export default function TeacherDashboard() {
 
       if (data.teachers && data.teachers.length > 0) {
         const teacher = data.teachers[0]
-        setTeacherData(teacher)
+        const teacherHalaqah = resolveCircleName(teacher.halaqah, teacher.circle_name)
+        setTeacherData({ ...teacher, halaqah: teacherHalaqah, circle_name: teacherHalaqah })
 
         // Fetch students in teacher's circle
-        if (teacher.halaqah) {
-          await fetchMyStudents(teacher.halaqah)
+        if (teacherHalaqah) {
+          await fetchMyStudents(teacherHalaqah)
         }
       }
     } catch (error) {

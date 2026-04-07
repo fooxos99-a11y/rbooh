@@ -11,6 +11,18 @@ interface AdminAuthState {
   isFullAccess: boolean;
 }
 
+const PERMISSION_ALIASES: Record<string, string[]> = {
+  "الإختبارات": ["الإختبارات", "إدارة المسار"],
+  "إدارة المسار": ["إدارة المسار", "الإختبارات"],
+  "يوم السرد": ["يوم السرد", "التقارير"],
+  "التقارير": ["التقارير", "يوم السرد"],
+}
+
+function expandPermissionKeys(permissionKey?: string | string[]) {
+  const keys = Array.isArray(permissionKey) ? permissionKey : permissionKey ? [permissionKey] : []
+  return Array.from(new Set(keys.flatMap((key) => PERMISSION_ALIASES[key] || [key])))
+}
+
 function getNormalizedAccountNumber(rawValue: string | null): number | null {
   if (!rawValue) return null;
 
@@ -109,7 +121,7 @@ export function useAdminAuth(permissionKey?: string | string[]): AdminAuthState 
         const hasAll = isFullAccess || rolePermissions.includes("all");
 
         // 5. If a specific permission key is required, check it
-        const requiredPermissions = Array.isArray(permissionKey) ? permissionKey : permissionKey ? [permissionKey] : [];
+        const requiredPermissions = expandPermissionKeys(permissionKey);
         const hasRequiredPermission = requiredPermissions.length === 0 || requiredPermissions.some((permission) => rolePermissions.includes(permission));
 
         if (requiredPermissions.length > 0 && !hasAll && !hasRequiredPermission) {

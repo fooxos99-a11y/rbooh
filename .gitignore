@@ -40,3 +40,9 @@ next-env.d.ts
 .pnpm-debug.log*
 
 .vercel
+
+# WhatsApp worker runtime artifacts
+.wwebjs_cache/
+whatsapp-worker/.wwebjs_auth/
+whatsapp-worker/current-qr.txt
+whatsapp-worker/status.json

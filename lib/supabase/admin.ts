@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
+import { getSupabaseServerConfig } from "@/lib/supabase-config"
 
 export function createAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const { url: supabaseUrl, serviceRoleKey } = getSupabaseServerConfig()
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error("Supabase admin environment variables are not set!")

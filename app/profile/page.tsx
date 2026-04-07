@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { User, Trophy, Award, Calendar, Star, BarChart3, Medal, Gem, Flame, Zap, Crown, Heart, BookMarked, CheckCircle2, Clock, BookOpen, Library, Check, Lock } from "lucide-react"
-import { calculatePreviousMemorizedPages, getActivePlanDayNumber, getJuzCoverageFromRange, getJuzProgressDetailsFromRange, getPlanMemorizedRange, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, getStoredMemorizedRange, hasScatteredCompletedJuzs, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
+import { calculatePreviousMemorizedPages, getActivePlanDayNumber, getJuzCoverageFromRange, getJuzProgressDetailsFromRange, getPlanMemorizedRange, getPlanSessionContent, getPlanSessionContentPages, getPlanSessionContentRange, getPlanSupportSessionContent, getStoredMemorizedRange, hasScatteredCompletedJuzs, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages, resolvePlanTotalDays, resolvePlanTotalPages } from "@/lib/quran-data"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -102,12 +102,12 @@ interface PlanProgressResponse {
   completedRecords?: AttendanceRecord[]
 }
 
-interface PathwayTestsResponse {
-  displayJuzs?: Array<{
-    juzNumber: number
-    latestResult?: {
-      status: "pass" | "fail"
-    } | null
+interface ExamsResponse {
+  exams?: Array<{
+    juz_number?: number | null
+    portion_type?: "juz" | "hizb" | null
+    portion_number?: number | null
+    passed?: boolean
   }>
 }
 
@@ -351,16 +351,17 @@ function ProfilePage() {
 
   const fetchPassedPathwayJuzs = async (studentId: string) => {
     try {
-      const response = await fetch(`/api/admin-pathway-tests?student_id=${studentId}`, { cache: "no-store" })
+      const response = await fetch(`/api/exams?student_id=${studentId}`, { cache: "no-store", headers: getClientAuthHeaders() })
       if (!response.ok) {
         setPassedTestedJuzs([])
         return
       }
 
-      const data: PathwayTestsResponse = await response.json()
-      const passedJuzNumbers = (data.displayJuzs || [])
-        .filter((item) => item.latestResult?.status === "pass")
-        .map((item) => item.juzNumber)
+      const data: ExamsResponse = await response.json()
+      const passedJuzNumbers = Array.from(new Set((data.exams || [])
+        .filter((item) => item.passed)
+        .map((item) => Number(item.juz_number || item.portion_number || 0))
+        .filter((value) => Number.isFinite(value) && value > 0)))
 
       setPassedTestedJuzs(passedJuzNumbers)
     } catch (error) {
@@ -684,25 +685,73 @@ function ProfilePage() {
     toVerse?: string | null,
     fallbackText?: string | null,
   ) {
-    if (fallbackText?.includes("ما عدا")) {
-      return fallbackText.trim()
-    }
-
-    if (fromSurah && fromVerse && toSurah && toVerse) {
-      if (fromSurah === toSurah) {
-        return `من ${fromSurah} آية ${fromVerse} إلى آية ${toVerse}`
+    const formatExplicitRange = (
+      startSurah: string,
+      startVerse: string | number,
+      endSurah: string,
+      endVerse: string | number,
+    ) => {
+      if (startSurah === endSurah) {
+        return `من ${startSurah} آية ${startVerse} إلى آية ${endVerse}`
       }
 
-      return `من ${fromSurah} آية ${fromVerse} إلى ${toSurah} آية ${toVerse}`
+      return `من ${startSurah} آية ${startVerse} إلى ${endSurah} آية ${endVerse}`
+    }
+
+    const normalizeSingleSegment = (segmentText: string) => {
+      const cleaned = segmentText
+        .replace(/\s+مرورًا\s+.+$/u, "")
+        .replace(/\s+مرورا\s+.+$/u, "")
+        .replace(/من\s+سورة\s+/u, "من ")
+        .replace(/إلى\s+سورة\s+/u, "إلى ")
+        .replace(/\s+الى\s+/u, " إلى ")
+        .trim()
+
+      const directMatch = cleaned.match(/^(.+?)\s+(\d+)\s+إلى\s+(.+?)\s+(\d+)$/u)
+      if (directMatch) {
+        return formatExplicitRange(directMatch[1].trim(), directMatch[2], directMatch[3].trim(), directMatch[4])
+      }
+
+      if (cleaned.startsWith("من ")) {
+        return cleaned
+      }
+
+      return cleaned
     }
 
     if (fallbackText?.trim()) {
-      return fallbackText
-        .replace(/\s+مرورًا بسورة\s+.+$/u, "")
-        .replace(/\s+مرورا بسورة\s+.+$/u, "")
+      const normalizedFallback = fallbackText
         .replace(/من\s+سورة\s+/u, "من ")
         .replace(/إلى\s+سورة\s+/u, "إلى ")
         .trim()
+
+      if (normalizedFallback.includes("، ثم")) {
+        return normalizedFallback
+          .split(/،\s*ثم\s*/u)
+          .map((part) => normalizeSingleSegment(part))
+          .filter(Boolean)
+          .join(" و ")
+      }
+
+      if (normalizedFallback.includes("ما عدا")) {
+        return normalizedFallback
+          .replace(/\s+مرورًا\s+.+$/u, "")
+          .replace(/\s+مرورا\s+.+$/u, "")
+          .replace(/\s+الى\s+/u, " إلى ")
+          .trim()
+      }
+
+      if (normalizedFallback.includes("مرورًا") || normalizedFallback.includes("مرورا")) {
+        return normalizeSingleSegment(normalizedFallback)
+      }
+    }
+
+    if (fromSurah && fromVerse && toSurah && toVerse) {
+      return formatExplicitRange(fromSurah, fromVerse, toSurah, toVerse)
+    }
+
+    if (fallbackText?.trim()) {
+      return normalizeSingleSegment(fallbackText)
     }
 
     return "-"
@@ -710,18 +759,22 @@ function ProfilePage() {
 
   function formatPageCountLabel(value: number) {
     const normalizedValue = Math.max(0, Math.round(value * 100) / 100)
-    if (normalizedValue === 0.25) return "ربع وجه"
-    if (normalizedValue === 0.5) return "نصف وجه"
-    if (normalizedValue === 1) return "وجه واحد"
-    if (normalizedValue === 2) return "وجهان"
-    if (normalizedValue <= 10 && Number.isInteger(normalizedValue)) return `${normalizedValue} أوجه`
-    return `${normalizedValue} وجه`
+    const displayValue = normalizedValue > 1 && !Number.isInteger(normalizedValue) ? Math.ceil(normalizedValue) : normalizedValue
+    if (displayValue === 0.25) return "ربع وجه"
+    if (displayValue === 0.5) return "نصف وجه"
+    if (displayValue === 1) return "وجه واحد"
+    if (displayValue === 2) return "وجهان"
+    if (displayValue <= 10 && Number.isInteger(displayValue)) return `${displayValue} أوجه`
+    return `${displayValue} وجه`
   }
 
   const normalizedPlanData = planData
     ? {
         ...planData,
-        completed_juzs: planData.completed_juzs || studentData?.completed_juzs || [],
+        completed_juzs:
+          Array.isArray(planData.completed_juzs) && planData.completed_juzs.length > 0
+            ? planData.completed_juzs
+            : studentData?.completed_juzs || [],
         has_previous: planData.has_previous || !!(planData.prev_start_surah || studentData?.memorized_start_surah),
         prev_start_surah: planData.prev_start_surah || studentData?.memorized_start_surah || null,
         prev_start_verse: planData.prev_start_verse || studentData?.memorized_start_verse || null,
@@ -822,7 +875,11 @@ function ProfilePage() {
     const memorizedPoolPages = normalizedPlanData ? calculatePreviousMemorizedPages(normalizedPlanData) + planCompletedDays * dailyPagesCount : 0
     const reviewPoolPages = normalizedPlanData ? resolvePlanReviewPoolPages(normalizedPlanData, memorizedPoolPages) : 0
     const reviewPagesCount = normalizedPlanData ? resolvePlanReviewPagesPreference(normalizedPlanData, reviewPoolPages) : 0
-    const linkingPagesCount = normalizedPlanData ? Math.min(Number(normalizedPlanData.rabt_pages ?? 10), Math.max(0, memorizedPoolPages)) : 0
+    const linkingPagesCount = rabtContent
+      ? getPlanSessionContentPages(rabtContent)
+      : normalizedPlanData
+        ? Math.min(Number(normalizedPlanData.rabt_pages ?? 10), Math.max(0, memorizedPoolPages))
+        : 0
     const hasSavableSelection = [
       !todayIsReviewOnlyDay && !isMemorizationLocked && typeof dailyExecutionForm.memorization_done === "boolean",
       !todayIsReviewOnlyDay && !isTikrarLocked && typeof dailyExecutionForm.tikrar_done === "boolean",
@@ -895,7 +952,7 @@ function ProfilePage() {
     ]
     return (
       <div className="rounded-[24px] border border-[#8fb1ff]/30 bg-[#f7faff] p-3.5 shadow-sm md:p-4">
-        <div className="mb-4 border-b border-[#8fb1ff]/25 pb-3">
+        <div className="mb-4 flex flex-col gap-3 border-b border-[#8fb1ff]/25 pb-3 md:flex-row md:items-center md:justify-between">
               <div className="text-right">
                 <p className="text-base font-black text-[#1a2332] md:text-lg">تنفيذ اليوم</p>
               </div>

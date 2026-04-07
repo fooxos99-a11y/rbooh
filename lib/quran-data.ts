@@ -400,6 +400,7 @@ type SegmentedPlanLike = {
   prev_end_surah?: number | null
   prev_end_verse?: number | null
   completed_juzs?: number[] | null
+  previous_memorization_ranges?: AyahRange[] | null
 }
 
 type PlanSegment = {
@@ -555,7 +556,7 @@ function mergeAyahRanges(ranges: AyahRange[]) {
   return mergedRanges
 }
 
-function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous" | "prev_start_surah" | "prev_start_verse" | "prev_end_surah" | "prev_end_verse" | "completed_juzs">) {
+function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous" | "prev_start_surah" | "prev_start_verse" | "prev_end_surah" | "prev_end_verse" | "completed_juzs" | "previous_memorization_ranges">) {
   const ranges: AyahRange[] = []
 
   if (plan.has_previous && plan.prev_start_surah && plan.prev_end_surah) {
@@ -564,6 +565,24 @@ function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous"
       startVerseNumber: Number(plan.prev_start_verse) || 1,
       endSurahNumber: Number(plan.prev_end_surah),
       endVerseNumber: getEffectiveEndVerse(Number(plan.prev_end_surah), plan.prev_end_verse),
+    })
+  }
+
+  for (const range of Array.isArray(plan.previous_memorization_ranges) ? plan.previous_memorization_ranges : []) {
+    const startSurahNumber = Number(range?.startSurahNumber)
+    const startVerseNumber = Number(range?.startVerseNumber) || 1
+    const endSurahNumber = Number(range?.endSurahNumber)
+    const endVerseNumber = Number(range?.endVerseNumber)
+
+    if (!startSurahNumber || !endSurahNumber) {
+      continue
+    }
+
+    ranges.push({
+      startSurahNumber,
+      startVerseNumber,
+      endSurahNumber,
+      endVerseNumber: getEffectiveEndVerse(endSurahNumber, endVerseNumber),
     })
   }
 
@@ -975,6 +994,7 @@ export function calculatePreviousMemorizedPages(plan: {
   prev_end_surah?: number | null
   prev_end_verse?: number | null
   completed_juzs?: number[] | null
+  previous_memorization_ranges?: AyahRange[] | null
 }): number {
   const memorizedRanges = getPreviousMemorizedRanges(plan)
   if (memorizedRanges.length === 0) {
@@ -1452,11 +1472,36 @@ export interface PlanSessionContent {
   fromVerse: string
   toSurah: string
   toVerse: string
+  pageCount?: number
 }
 
 export interface PlanSupportSessionContent {
   muraajaa: PlanSessionContent | null
   rabt: PlanSessionContent | null
+}
+
+export function getPlanSessionContentPages(content?: PlanSessionContent | null) {
+  if (!content) {
+    return 0
+  }
+
+	if (typeof content.pageCount === "number" && Number.isFinite(content.pageCount)) {
+	  return Math.max(0, content.pageCount)
+	}
+
+  const fromSurah = SURAHS.find((surah) => surah.name === content.fromSurah)
+  const toSurah = SURAHS.find((surah) => surah.name === content.toSurah)
+
+  if (!fromSurah || !toSurah) {
+    return 0
+  }
+
+  return getPreciseRangePages(
+    fromSurah.number,
+    Number(content.fromVerse) || 1,
+    toSurah.number,
+    Number(content.toVerse) || 1,
+  )
 }
 
 function getOrderedContentBounds(content: PlanSessionContent) {
@@ -1575,11 +1620,13 @@ export interface SessionPlanBounds {
   prev_end_surah?: number | null
   prev_end_verse?: number | null
   completed_juzs?: number[] | null
+  previous_memorization_ranges?: AyahRange[] | null
   muraajaa_pages?: number | null
   rabt_pages?: number | null
   review_distribution_mode?: "fixed" | "weekly" | null
   review_distribution_days?: number | null
   review_minimum_pages?: number | null
+  review_start_mode?: "auto" | "oldest" | "newest" | null
   start_date?: string | null
   created_at?: string | null
 }
@@ -1599,6 +1646,16 @@ function resolveReviewMinimumPages(
 ) {
   const value = Number(plan.review_minimum_pages) || 0
   return value > 0 ? value : REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES
+}
+
+function resolveReviewStartMode(
+  plan: Pick<SessionPlanBounds, "review_start_mode" | "direction">,
+) {
+  if (plan.review_start_mode === "oldest" || plan.review_start_mode === "newest") {
+    return plan.review_start_mode
+  }
+
+  return plan.direction === "desc" ? "newest" : "oldest"
 }
 
 interface MemorizedPageSegment {
@@ -1663,6 +1720,7 @@ function formatPlanSessionContent(fromRef: AyahReference, toRef: AyahReference):
     fromVerse: String(fromRef.ayah),
     toSurah: toSurah.name,
     toVerse: String(toRef.ayah),
+    pageCount: getPreciseRangePages(fromRef.surah, fromRef.ayah, toRef.surah, toRef.ayah),
   }
 }
 
@@ -1679,6 +1737,7 @@ function createPlanSessionContent(fromRef: AyahReference, toRef: AyahReference, 
   return {
     ...baseContent,
     text,
+    pageCount: baseContent.pageCount,
   }
 }
 
@@ -2078,6 +2137,7 @@ function getTrailingSegmentContentAtIndex(
 
   const firstPart = parts[0]
   const lastPart = parts[parts.length - 1]
+  const totalPageCount = parts.reduce((total, part) => total + getPlanSessionContentPages(part), 0)
 
   return {
     text: parts.map((part) => part.text).join("، ثم "),
@@ -2085,6 +2145,7 @@ function getTrailingSegmentContentAtIndex(
     fromVerse: firstPart.fromVerse,
     toSurah: lastPart.toSurah,
     toVerse: lastPart.toVerse,
+    pageCount: totalPageCount,
   }
 }
 
@@ -2257,6 +2318,30 @@ function getSlidingSegmentContent(
   }
 
   let remainingOffset = ((offsetPages % totalPages) + totalPages) % totalPages
+
+  function getReverseSlidingSegmentContent(
+    segments: MemorizedPageSegment[],
+    offsetPages: number,
+    preferredPages: number,
+  ) {
+    const totalPages = getTotalMemorizedSequencePages(segments)
+    if (totalPages <= 0 || preferredPages <= 0) {
+      return null
+    }
+
+    const normalizedOffset = ((offsetPages % totalPages) + totalPages) % totalPages
+    const trimmedSegments = trimTrailingMemorizedSegments(segments, normalizedOffset)
+
+    if (trimmedSegments.length === 0) {
+      return null
+    }
+
+    return getTrailingSegmentContentAtIndex(
+      trimmedSegments,
+      trimmedSegments.length - 1,
+      preferredPages,
+    )
+  }
   let remainingPages = preferredPages
   const parts: PlanSessionContent[] = []
 
@@ -2295,6 +2380,7 @@ function getSlidingSegmentContent(
 
   const firstPart = parts[0]
   const lastPart = parts[parts.length - 1]
+  const totalPageCount = parts.reduce((total, part) => total + getPlanSessionContentPages(part), 0)
 
   return {
     text: parts.map((part) => part.text).join("، ثم "),
@@ -2302,6 +2388,7 @@ function getSlidingSegmentContent(
     fromVerse: firstPart.fromVerse,
     toSurah: lastPart.toSurah,
     toVerse: lastPart.toVerse,
+    pageCount: totalPageCount,
   }
 }
 
@@ -2332,8 +2419,8 @@ export function resolvePlanReviewPagesPreference(
     }
 
     return Math.min(
-      distributedRangePages,
-      Math.max(minimumPages, distributedRangePages / distributionDays),
+      safeReviewPoolPages,
+      Math.max(minimumPages, distributedRangePages),
     )
   }
 
@@ -2454,16 +2541,12 @@ export function getPlanSupportSessionContent(
   }
 
   const rabtPref = Number(plan.rabt_pages) || 0
-  const rabtSourceSegmentIndex = getRabtSourceSegmentIndex(memorizedSegments, plan, activeDayNum)
-  const rabtSourceSegment = rabtSourceSegmentIndex >= 0 ? memorizedSegments[rabtSourceSegmentIndex] : null
-  const rabtSourceSegments = rabtSourceSegment ? [rabtSourceSegment] : []
-  const rabtSourceSegmentPages = rabtSourceSegment ? getMemorizedPageSegmentSize(rabtSourceSegment) : 0
-  const rabt = getTrailingSegmentContentAtIndex(rabtSourceSegments, rabtSourceSegments.length - 1, rabtPref)
+  const rabt = getTrailingSegmentContentAtIndex(memorizedSegments, memorizedSegments.length - 1, rabtPref)
   const rabtVisiblePages = rabt
-    ? Math.min(rabtPref, rabtSourceSegmentPages)
+    ? Math.min(rabtPref, totalMemorizedPages)
     : 0
 
-  const muraajaaPoolSegments = trimPagesFromSegmentIndex(memorizedSegments, rabtSourceSegmentIndex, rabtVisiblePages)
+  const muraajaaPoolSegments = trimTrailingMemorizedSegments(memorizedSegments, rabtVisiblePages)
   const muraajaaPoolPages = getTotalMemorizedSequencePages(muraajaaPoolSegments)
   const muraajaaPref = resolvePlanReviewPagesPreference(plan, muraajaaPoolPages)
   const distributionDays = plan.review_distribution_mode === "weekly" ? resolveReviewDistributionDays(plan) : 0
@@ -2471,18 +2554,38 @@ export function getPlanSupportSessionContent(
   const reviewOffsetPages = plan.review_distribution_mode === "weekly"
     ? resolveWeeklyReviewOffset(distributionRangePages, muraajaaPref, distributionDays, activeDayNum)
     : Math.max(0, activeDayNum - 1) * muraajaaPref
+  const reviewStartMode = resolveReviewStartMode(plan)
   const muraajaa = muraajaaPoolPages > 0 && muraajaaPref > 0
-    ? getSlidingSegmentContent(
-        muraajaaPoolSegments,
-        reviewOffsetPages,
-        muraajaaPref,
-      )
+    ? reviewStartMode === "newest"
+      ? getReverseSlidingSegmentContent(
+          muraajaaPoolSegments,
+          reviewOffsetPages,
+          muraajaaPref,
+        )
+      : getSlidingSegmentContent(
+          muraajaaPoolSegments,
+          reviewOffsetPages,
+          muraajaaPref,
+        )
     : null
 
   return {
     muraajaa,
     rabt: applyFailedSessionExclusionsToRabt(plan, rabt, failedSessionNumbers),
   }
+}
+
+export function resolvePlanLinkingPagesPreference(
+  plan: SessionPlanBounds,
+  completedDays: number,
+  failedSessionNumbers?: number[] | null,
+) {
+  return Math.max(
+    0,
+    getPlanSessionContentPages(
+      getPlanSupportSessionContent(plan, completedDays, failedSessionNumbers).rabt,
+    ),
+  )
 }
 
 function getOffsetPlanSessionContent(

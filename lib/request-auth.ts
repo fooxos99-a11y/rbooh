@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server"
+import { circleNamesMatch, normalizeCircleNameKey, resolveCircleName } from "@/lib/circle-name"
 
 type SupabaseClientLike = Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>
 
@@ -10,10 +11,13 @@ type RequestActor = {
 }
 
 const ADMIN_ROLES = new Set(["admin", "مدير", "سكرتير", "مشرف تعليمي", "مشرف تربوي", "مشرف برامج"])
-const TEACHER_ROLES = new Set(["teacher", "deputy_teacher"])
+const TEACHER_ROLES = new Set(["teacher", "deputy_teacher", "معلم", "نائب معلم"])
 
-function normalizeHalaqahName(value?: string | null) {
-  return (value || "").trim().toLowerCase()
+function isMissingCircleNameColumn(error: { code?: string | null; message?: string | null } | null) {
+  if (!error) return false
+
+  const message = `${error.message || ""}`.toLowerCase()
+  return message.includes("circle_name") && (message.includes("column") || message.includes("schema cache"))
 }
 
 function normalizeAccountNumber(rawValue: string | null) {
@@ -38,18 +42,28 @@ export async function getRequestActor(request: NextRequest, supabase: SupabaseCl
     return null
   }
 
-  const { data: user } = await supabase
+  let userQuery = await supabase
     .from("users")
-    .select("id, role, halaqah, account_number")
+    .select("id, role, halaqah, circle_name, account_number")
     .eq("account_number", accountNumber)
     .maybeSingle()
+
+  if (userQuery.error && isMissingCircleNameColumn(userQuery.error)) {
+    userQuery = await supabase
+      .from("users")
+      .select("id, role, halaqah, account_number")
+      .eq("account_number", accountNumber)
+      .maybeSingle()
+  }
+
+  const { data: user } = userQuery
 
   if (user) {
     return {
       id: user.id,
       accountNumber,
       role: user.role || "",
-      halaqah: user.halaqah || null,
+      halaqah: resolveCircleName(user.halaqah, user.circle_name) || null,
     }
   }
 
@@ -94,15 +108,15 @@ export async function canAccessStudent(params: {
     .eq("id", studentId)
     .maybeSingle()
 
-  return !!normalizeHalaqahName(student?.halaqah) && !!normalizeHalaqahName(actor.halaqah)
-    && normalizeHalaqahName(student?.halaqah) === normalizeHalaqahName(actor.halaqah)
+  return !!normalizeCircleNameKey(student?.halaqah) && !!normalizeCircleNameKey(actor.halaqah)
+    && circleNamesMatch(student?.halaqah, actor.halaqah)
 }
 
 export function canManageHalaqah(actor: RequestActor | null, halaqah?: string | null) {
   if (!actor) return false
   if (isAdminRole(actor.role)) return true
   return isTeacherRole(actor.role)
-    && !!normalizeHalaqahName(halaqah)
-    && !!normalizeHalaqahName(actor.halaqah)
-    && normalizeHalaqahName(actor.halaqah) === normalizeHalaqahName(halaqah)
+    && !!normalizeCircleNameKey(halaqah)
+    && !!normalizeCircleNameKey(actor.halaqah)
+    && circleNamesMatch(actor.halaqah, halaqah)
 }

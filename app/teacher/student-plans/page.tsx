@@ -18,6 +18,7 @@ import { SURAHS, REVIEW_DISTRIBUTION_DEFAULT_DAYS, REVIEW_DISTRIBUTION_DEFAULT_M
 import { getSaudiDateString } from "@/lib/saudi-time"
 import { formatJuzList } from "@/lib/enrollment-test-utils"
 import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
+import { resolveCircleName } from "@/lib/circle-name"
 
 interface Student {
   id: string
@@ -57,6 +58,7 @@ interface StudentPlan {
   review_distribution_mode?: "fixed" | "weekly" | null
   review_distribution_days?: number | null
   review_minimum_pages?: number | null
+  review_start_mode?: "auto" | "oldest" | "newest" | null
 }
 
 const WEEKLY_REVIEW_OPTION_VALUE = "weekly"
@@ -471,7 +473,7 @@ export default function TeacherStudentPlansPage() {
   const [isPreviousLocked, setIsPreviousLocked] = useState(false)
   const [reviewDistributionDays, setReviewDistributionDays] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_DAYS))
   const [reviewMinimumPages, setReviewMinimumPages] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES))
-  const [muraajaaPages, setMuraajaaPages] = useState<string>(WEEKLY_REVIEW_OPTION_VALUE)
+  const [muraajaaPages, setMuraajaaPages] = useState<string>("20")
   const [rabtPages, setRabtPages] = useState<string>("10")
 
   const [isSaving, setIsSaving] = useState(false)
@@ -509,7 +511,7 @@ export default function TeacherStudentPlansPage() {
           return
         }
 
-        const teacherHalaqah = (teacher.halaqah || teacher.circle_name || "").trim()
+        const teacherHalaqah = resolveCircleName(teacher.halaqah, teacher.circle_name)
         setHalaqah(teacherHalaqah)
 
         const studentsRes = await fetch(`/api/students?circle=${encodeURIComponent(teacherHalaqah)}`, { cache: "no-store" })
@@ -596,10 +598,10 @@ export default function TeacherStudentPlansPage() {
       ? WEEKLY_REVIEW_OPTION_VALUE
       : currentPlan?.muraajaa_pages
         ? String(currentPlan.muraajaa_pages)
-        : WEEKLY_REVIEW_OPTION_VALUE)
+        : "20")
     setReviewDistributionDays(String(currentPlan?.review_distribution_days || REVIEW_DISTRIBUTION_DEFAULT_DAYS))
     setReviewMinimumPages(String(currentPlan?.review_minimum_pages || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES))
-    setRabtPages("10")
+    setRabtPages(currentPlan?.rabt_pages ? String(currentPlan.rabt_pages) : "10")
 
     setAddDialogOpen(true)
   }
@@ -705,6 +707,7 @@ export default function TeacherStudentPlansPage() {
           review_distribution_mode: reviewDistributionMode,
           review_distribution_days: reviewDistributionMode === "weekly" ? normalizedReviewDistributionDays : null,
           review_minimum_pages: reviewDistributionMode === "weekly" ? normalizedReviewMinimumPages : null,
+          review_start_mode: "auto",
           start_date: getSaudiDateString(),
         }),
       })

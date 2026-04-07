@@ -114,6 +114,7 @@ interface StudentPlan {
   review_distribution_mode?: "fixed" | "weekly" | null;
   review_distribution_days?: number | null;
   review_minimum_pages?: number | null;
+  review_start_mode?: "auto" | "oldest" | "newest" | null;
 }
 
 const WEEKLY_REVIEW_OPTION_VALUE = "weekly";
@@ -539,7 +540,7 @@ export default function StudentPlansPage() {
   const [hasPrevious, setHasPrevious] = useState(false);
   const [prevStartSurah, setPrevStartSurah] = useState<string>("");
   const [prevEndSurah, setPrevEndSurah] = useState<string>("");
-  const [muraajaaPages, setMuraajaaPages] = useState<string>(WEEKLY_REVIEW_OPTION_VALUE);
+  const [muraajaaPages, setMuraajaaPages] = useState<string>("20");
   const [rabtPages, setRabtPages] = useState<string>("10");
   const [prevStartOpen, setPrevStartOpen] = useState(false);
   const [prevEndOpen, setPrevEndOpen] = useState(false);
@@ -724,10 +725,10 @@ export default function StudentPlansPage() {
       ? WEEKLY_REVIEW_OPTION_VALUE
       : currentPlan?.muraajaa_pages
         ? String(currentPlan.muraajaa_pages)
-        : WEEKLY_REVIEW_OPTION_VALUE);
+        : "20");
     setReviewDistributionDays(String(currentPlan?.review_distribution_days || REVIEW_DISTRIBUTION_DEFAULT_DAYS));
     setReviewMinimumPages(String(currentPlan?.review_minimum_pages || REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES));
-    setRabtPages("10");
+    setRabtPages(currentPlan?.rabt_pages ? String(currentPlan.rabt_pages) : "10");
     setPrevStartOpen(false);
     setPrevEndOpen(false);
     setPrevStartVerse(lockedPreviousRange ? String(lockedPreviousRange.startVerseNumber) : "");
@@ -841,6 +842,7 @@ export default function StudentPlansPage() {
           review_distribution_mode: reviewDistributionMode,
           review_distribution_days: reviewDistributionMode === "weekly" ? normalizedReviewDistributionDays : null,
           review_minimum_pages: reviewDistributionMode === "weekly" ? normalizedReviewMinimumPages : null,
+          review_start_mode: "auto",
           start_date: getSaudiDateString(),
         }),
       });

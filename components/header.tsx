@@ -37,6 +37,10 @@ import {
   BarChart3,
   Trash2,
   BookMarked,
+  QrCode,
+  Smartphone,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
@@ -51,6 +55,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SiteLoader } from "@/components/ui/site-loader";
 import { getClientAuthHeaders } from "@/lib/client-auth";
 
@@ -70,6 +75,84 @@ interface Circle {
   studentCount: number;
 }
 
+type WhatsAppHeaderStatus = {
+  status: string
+  qrAvailable: boolean
+  ready: boolean
+  authenticated: boolean
+  lastUpdatedAt: string | null
+  lastHeartbeatAt: string | null
+  qrUpdatedAt: string | null
+  connectedAt: string | null
+  disconnectedAt: string | null
+  authFailedAt: string | null
+  lastError: string | null
+  workerOnline: boolean
+  qrImageUrl: string | null
+}
+
+const DEFAULT_WHATSAPP_HEADER_STATUS: WhatsAppHeaderStatus = {
+  status: "not_started",
+  qrAvailable: false,
+  ready: false,
+  authenticated: false,
+  lastUpdatedAt: null,
+  lastHeartbeatAt: null,
+  qrUpdatedAt: null,
+  connectedAt: null,
+  disconnectedAt: null,
+  authFailedAt: null,
+  lastError: null,
+  workerOnline: false,
+  qrImageUrl: null,
+}
+
+function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
+  if (status.ready && status.authenticated && status.status === "connected") {
+    return {
+      title: "تم الربط",
+      description: "الجهاز متصل وجاهز للإرسال.",
+      tone: "text-emerald-700 bg-emerald-50 border-emerald-200",
+      icon: CheckCircle2,
+    }
+  }
+
+  if (
+    status.status === "authenticating"
+    || status.status === "starting"
+    || status.status === "disconnecting"
+    || status.status === "fetching_qr"
+    || status.qrAvailable
+  ) {
+    return {
+      title: "جاري الربط",
+      description: "امسح الباركود من واتساب وانتظر اكتمال الربط.",
+      tone: "text-amber-700 bg-amber-50 border-amber-200",
+      icon: QrCode,
+    }
+  }
+
+  if (!status.workerOnline) {
+    return {
+      title: "لم يتم الربط",
+      description: "لن يظهر باركود جديد حتى يعمل العامل مرة أخرى.",
+      tone: "text-rose-700 bg-rose-50 border-rose-200",
+      icon: AlertTriangle,
+    }
+  }
+
+  return {
+    title: "لم يتم الربط",
+    description: "يتم الآن تجهيز الجلسة أو انتظار باركود جديد.",
+    tone: "text-slate-700 bg-slate-50 border-slate-200",
+    icon: Smartphone,
+  }
+}
+
+function isWhatsappHeaderConnected(status: WhatsAppHeaderStatus) {
+  return status.ready && status.authenticated && status.status === "connected"
+}
+
 type IdleWindow = Window & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
   cancelIdleCallback?: (handle: number) => void;
@@ -78,6 +161,13 @@ type IdleWindow = Window & {
 const CIRCLES_CACHE_DURATION = 5 * 60 * 1000;
 const ROLE_CACHE_DURATION = 5 * 60 * 1000;
 const CONTACT_REPORTS_CACHE_DURATION = 60 * 1000;
+
+const PERMISSION_ALIASES: Record<string, string[]> = {
+  "الإختبارات": ["الإختبارات", "إدارة المسار"],
+  "إدارة المسار": ["إدارة المسار", "الإختبارات"],
+  "يوم السرد": ["يوم السرد", "التقارير"],
+  "التقارير": ["التقارير", "يوم السرد"],
+}
 
 const scheduleIdleTask = (callback: () => void, timeout = 1200) => {
   const idleWindow = window as IdleWindow;
@@ -167,6 +257,165 @@ function SectionHeader({ title }: { title: string }) {
       </p>
     </div>
   );
+}
+
+function StudentRankIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={className}
+      fill="currentColor"
+    >
+      <path d="M8 2.75a1.25 1.25 0 0 0-1.25 1.25v1H4.75A1.75 1.75 0 0 0 3 6.96c.2 2.58 1.72 4.72 4.12 5.54A5.51 5.51 0 0 0 10.75 16v1.25H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2h-2.25V16a5.51 5.51 0 0 0 3.63-3.5c2.4-.82 3.92-2.96 4.12-5.54A1.75 1.75 0 0 0 19.25 5h-2V4A1.25 1.25 0 0 0 16 2.75H8Zm-.95 4.25c.11 1.21.46 2.34 1 3.32-1.33-.63-2.17-1.79-2.42-3.32h1.42Zm10.9 0c-.25 1.53-1.09 2.69-2.42 3.32.54-.98.89-2.11 1-3.32h1.42Z" />
+    </svg>
+  )
+}
+
+function StudentLevelBadge({ currentLevel, displayProgress }: { currentLevel: number; displayProgress: number }) {
+  return (
+    <div className="relative flex items-center gap-1.5">
+      <div className="student-level-shell relative flex flex-col items-center justify-center z-30 drop-shadow-md">
+        <div
+          className="absolute h-full w-full"
+          style={{
+            background: "linear-gradient(to bottom, #ffffff, #e1e4eb)",
+            clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+            padding: "2.5px",
+          }}
+        >
+          <div
+            className="relative flex h-full w-full items-center justify-center p-[2px]"
+            style={{
+              background: "linear-gradient(to bottom, #eceef3, #d3d7df)",
+              clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
+              boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.1), inset 0 2px 3px rgba(255,255,255,0.8)",
+            }}
+          >
+            <span
+              className="student-level-number relative z-10 font-black pb-[1px]"
+              style={{
+                color: "#3453a7",
+                filter: "drop-shadow(0px -1px 0px rgba(255,255,255,1)) drop-shadow(0px 2px 2px rgba(0,0,0,0.2))",
+              }}
+            >
+              {currentLevel}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="student-progress-shell relative z-20 flex items-center"
+        style={{
+          background: "linear-gradient(to bottom, #ffffff, #dcdede)",
+          borderRadius: "0 100px 100px 0",
+          padding: "2px",
+          paddingLeft: "0",
+        }}
+      >
+        <div
+          className="relative h-full w-full"
+          style={{
+            background: "linear-gradient(to bottom, #e2e5eb, #ced3db)",
+            borderRadius: "0 100px 100px 0",
+            boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)",
+          }}
+        >
+          <div
+            className="absolute bottom-0 left-0 top-0 z-10 transition-all duration-1000"
+            style={{
+              width: displayProgress > 0 ? `min(100%, calc(${displayProgress}% + 24px))` : "0%",
+              background: "linear-gradient(to right, #3453a7, #4a67b7)",
+              borderRadius: "0 100px 100px 0",
+            }}
+          >
+            <div className="absolute left-0 right-0 top-0 h-[45%] bg-gradient-to-b from-white/40 to-transparent" />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StudentStatPill({
+  label,
+  value,
+  icon,
+  compact = false,
+}: {
+  label: string
+  value: string | number
+  icon: React.ReactNode
+  compact?: boolean
+}) {
+  return (
+    <div className="relative z-30 group">
+      <div
+        className={`student-stat-pill relative flex items-center overflow-hidden rounded-full ${compact ? "gap-0.5 px-2" : "gap-1 px-2.5"}`}
+        style={{
+          background: "linear-gradient(135deg, rgba(125,183,255,0.24) 0%, rgba(52,83,167,0.20) 55%, rgba(24,49,112,0.18) 100%)",
+          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(4,16,44,0.18), 0 0 0 1px rgba(255,255,255,0.08)",
+          backdropFilter: "blur(10px)",
+        }}
+        aria-label={label}
+        title={label}
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent_52%)]" />
+        <div className={`student-stat-icon-wrap relative flex items-center justify-center ${compact ? "translate-y-0" : "translate-y-[1px]"}`}>
+          {icon}
+        </div>
+        <span
+          className="student-stat-number relative font-black tabular-nums leading-none tracking-[0.01em] text-white"
+          style={{ textShadow: "0 2px 8px rgba(7,20,54,0.32)" }}
+        >
+          {value}
+        </span>
+      </div>
+
+      {!compact ? (
+        <div className="pointer-events-none absolute left-1/2 top-full mt-1.5 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#3453a7]/25 bg-[linear-gradient(135deg,rgba(37,63,140,0.98),rgba(74,103,183,0.95))] px-2 py-1 text-[10px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+          {label}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StudentStatsCluster({
+  currentLevel,
+  globalRank,
+  points,
+  compact = false,
+  showLevel = true,
+  className = "",
+}: {
+  currentLevel: number
+  globalRank: string | number | null
+  points: number
+  compact?: boolean
+  showLevel?: boolean
+  className?: string
+}) {
+  const displayProgress = currentLevel
+
+  return (
+    <div className={`${compact ? "student-drawer-stats" : "student-header-stats"} ${className}`} style={{ direction: "ltr" }}>
+      {showLevel ? <StudentLevelBadge currentLevel={currentLevel} displayProgress={displayProgress} /> : null}
+      <StudentStatPill
+        label="الترتيب العام"
+        value={globalRank ?? "-"}
+        compact={compact}
+        icon={<StudentRankIcon className="student-stat-icon text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)]" />}
+      />
+      <StudentStatPill
+        label="النقاط"
+        value={points}
+        compact={compact}
+        icon={<Star className="student-stat-icon fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)]" strokeWidth={1.9} />}
+      />
+    </div>
+  )
 }
 
 function CollapseSection({
@@ -280,6 +529,12 @@ export function Header() {
   const [contactReportsUnreadCount, setContactReportsUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<{id:string;message:string;is_read:boolean;created_at:string}[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [isWhatsappQrDialogOpen, setIsWhatsappQrDialogOpen] = useState(false);
+  const [whatsappQrStatus, setWhatsappQrStatus] = useState<WhatsAppHeaderStatus>(DEFAULT_WHATSAPP_HEADER_STATUS);
+  const [isWhatsappQrLoading, setIsWhatsappQrLoading] = useState(false);
+  const [hasResolvedWhatsappQrStatus, setHasResolvedWhatsappQrStatus] = useState(false);
+  const [whatsappQrImageFailed, setWhatsappQrImageFailed] = useState(false);
+  const [isWhatsappQrDisconnecting, setIsWhatsappQrDisconnecting] = useState(false);
   const [sidebarPlanProgress, setSidebarPlanProgress] = useState<number | null>(null);
   const [sidebarQuranProgress, setSidebarQuranProgress] = useState<number | null>(null);
   const [sidebarQuranLevel, setSidebarQuranLevel] = useState<number>(0);
@@ -291,7 +546,14 @@ export function Header() {
 
   const isFullAccess = userAccountNumber === 2 || userRole === "admin" || userRole === "مدير" || userPermissions.includes("all");
 
-  const hasPermission = (key: string) => isFullAccess || userPermissions.includes(key);
+  const hasPermission = (key: string) => {
+    if (isFullAccess) {
+      return true
+    }
+
+    const candidateKeys = PERMISSION_ALIASES[key] || [key]
+    return candidateKeys.some((permissionKey) => userPermissions.includes(permissionKey))
+  };
 
   const router = useRouter();
 
@@ -340,6 +602,33 @@ export function Header() {
     } catch {
       setNotificationStartAt(null);
       return null;
+    }
+  };
+
+  const fetchWhatsappQrStatus = async (silent = false) => {
+    try {
+      if (!silent) {
+        setIsWhatsappQrLoading(true);
+      }
+
+      const response = await fetch(`/api/whatsapp/status?t=${Date.now()}`, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const nextStatus = { ...DEFAULT_WHATSAPP_HEADER_STATUS, ...data };
+      setWhatsappQrStatus(nextStatus);
+      setWhatsappQrImageFailed(false);
+      return nextStatus;
+    } catch {
+      setWhatsappQrStatus(DEFAULT_WHATSAPP_HEADER_STATUS);
+      return DEFAULT_WHATSAPP_HEADER_STATUS;
+    } finally {
+      setHasResolvedWhatsappQrStatus(true);
+      if (!silent) {
+        setIsWhatsappQrLoading(false);
+      }
     }
   };
 
@@ -520,6 +809,70 @@ export function Header() {
 
     return () => window.clearInterval(intervalId);
   }, [authResolved, userPermissions, userRole, userAccountNumber]);
+
+  useEffect(() => {
+    if (!authResolved || !isLoggedIn || userRole === "student" || !hasPermission("الإرسال إلى أولياء الأمور")) {
+      setHasResolvedWhatsappQrStatus(false);
+      return;
+    }
+
+    void fetchWhatsappQrStatus(true);
+  }, [authResolved, isLoggedIn, userRole, userPermissions]);
+
+  useEffect(() => {
+    if (!isWhatsappQrDialogOpen) {
+      return;
+    }
+
+    void fetchWhatsappQrStatus();
+
+    const intervalId = window.setInterval(() => {
+      void fetchWhatsappQrStatus(true);
+    }, 4000);
+
+    return () => window.clearInterval(intervalId);
+  }, [isWhatsappQrDialogOpen]);
+
+  const handleWhatsappQrDisconnect = async () => {
+    const confirmed = await confirmDialog({
+      title: "إلغاء ربط واتساب",
+      description: "سيتم فصل الجوال الحالي وإنشاء باركود جديد. هل تريد المتابعة؟",
+      confirmText: "إلغاء الربط",
+      cancelText: "تراجع",
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsWhatsappQrDisconnecting(true);
+      const response = await fetch("/api/whatsapp/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const immediateStatus = await fetchWhatsappQrStatus();
+
+      if (!immediateStatus.qrAvailable) {
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1000));
+          const nextStatus = await fetchWhatsappQrStatus(true);
+          if (nextStatus.qrAvailable || nextStatus.status === "waiting_for_qr") {
+            break;
+          }
+        }
+      }
+    } catch {
+      setWhatsappQrStatus(DEFAULT_WHATSAPP_HEADER_STATUS);
+    } finally {
+      setIsWhatsappQrDisconnecting(false);
+    }
+  };
 
   useEffect(() => {
     const handleContactMessagesChanged = () => {
@@ -934,138 +1287,6 @@ export function Header() {
             </div>
           )}
         </div>
-        {isStudentHeaderStatsReady && (() => {
-          const currentLevel = Math.max(0, Math.min(100, sidebarQuranLevel || 0));
-          const displayProgress = currentLevel;
-
-          return (
-            <div className="absolute left-12 md:left-16 top-1/2 -translate-y-1/2 flex items-center gap-2 transform-gpu drop-shadow-sm select-none z-30" style={{ direction: 'ltr' }}>
-              <div className="relative flex items-center gap-1.5">
-                <div 
-                   className="relative flex flex-col items-center justify-center z-30 drop-shadow-md"
-                   style={{
-                     width: "48px",
-                     height: "42px",
-                   }}
-                >
-                  <div className="absolute w-full h-full"
-                       style={{
-                         background: "linear-gradient(to bottom, #ffffff, #e1e4eb)",
-                         clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                         padding: "2.5px"
-                       }}>
-                    <div className="relative w-full h-full flex items-center justify-center p-[2px]"
-                         style={{
-                           background: "linear-gradient(to bottom, #eceef3, #d3d7df)",
-                           clipPath: "polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)",
-                           boxShadow: "inset 0 -2px 3px rgba(0,0,0,0.1), inset 0 2px 3px rgba(255,255,255,0.8)"
-                         }}>
-                      <span 
-                        className="relative z-10 text-[18px] sm:text-[20px] font-black pb-[1px]"
-                        style={{
-                          color: "#3453a7",
-                          filter: "drop-shadow(0px -1px 0px rgba(255,255,255,1)) drop-shadow(0px 2px 2px rgba(0,0,0,0.2))"
-                        }}
-                      >
-                        {currentLevel}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div 
-                  className="relative flex items-center h-5 w-36 z-20 ml-[-24px]"
-                  style={{
-                    background: "linear-gradient(to bottom, #ffffff, #dcdede)",
-                    borderRadius: "0 100px 100px 0",
-                    padding: "2px",
-                    paddingLeft: "0",
-                  }}
-                >
-                  <div
-                    className="relative w-full h-full"
-                    style={{
-                      background: "linear-gradient(to bottom, #e2e5eb, #ced3db)",
-                      borderRadius: "0 100px 100px 0",
-                      boxShadow: "inset 0 2px 4px rgba(0,0,0,0.15)"
-                    }}
-                  >
-                    <div 
-                      className="absolute top-0 left-0 bottom-0 z-10 transition-all duration-1000"
-                      style={{ 
-                        width: displayProgress > 0 ? `min(100%, calc(${displayProgress}% + 24px))` : "0%",
-                        background: "linear-gradient(to right, #3453a7, #4a67b7)",
-                        borderRadius: "0 100px 100px 0"
-                      }}
-                    >
-                      <div className="absolute top-0 left-0 right-0 h-[45%] bg-gradient-to-b from-white/40 to-transparent"></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative z-30 group">
-                <div
-                  className="relative flex items-center gap-0.5 h-7 sm:h-7.5 overflow-hidden rounded-full px-2.5 sm:px-2.5"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(125,183,255,0.24) 0%, rgba(52,83,167,0.20) 55%, rgba(24,49,112,0.18) 100%)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(4,16,44,0.18), 0 0 0 1px rgba(255,255,255,0.08)",
-                    backdropFilter: "blur(10px)",
-                  }}
-                  aria-label="الترتيب العام"
-                  title="الترتيب العام"
-                >
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent_52%)]" />
-                  <div className="relative flex h-6 w-6 items-center justify-center translate-y-[1px] sm:h-6.5 sm:w-6.5">
-                    <svg
-                      viewBox="0 0 24 24"
-                      aria-hidden="true"
-                      className="h-[19px] w-[19px] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)] sm:h-[17px] sm:w-[17px]"
-                      fill="currentColor"
-                    >
-                      <path d="M8 2.75a1.25 1.25 0 0 0-1.25 1.25v1H4.75A1.75 1.75 0 0 0 3 6.96c.2 2.58 1.72 4.72 4.12 5.54A5.51 5.51 0 0 0 10.75 16v1.25H8.5a1 1 0 1 0 0 2h7a1 1 0 1 0 0-2h-2.25V16a5.51 5.51 0 0 0 3.63-3.5c2.4-.82 3.92-2.96 4.12-5.54A1.75 1.75 0 0 0 19.25 5h-2V4A1.25 1.25 0 0 0 16 2.75H8Zm-.95 4.25c.11 1.21.46 2.34 1 3.32-1.33-.63-2.17-1.79-2.42-3.32h1.42Zm10.9 0c-.25 1.53-1.09 2.69-2.42 3.32.54-.98.89-2.11 1-3.32h1.42Z" />
-                    </svg>
-                  </div>
-                  <span className="relative text-[12px] font-black tabular-nums text-white leading-none tracking-[0.01em] sm:text-[13px]" style={{ textShadow: "0 2px 8px rgba(7,20,54,0.32)" }}>
-                    {globalRank ?? "-"}
-                  </span>
-                </div>
-
-                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#3453a7]/25 bg-[linear-gradient(135deg,rgba(37,63,140,0.98),rgba(74,103,183,0.95))] px-2 py-1 text-[10px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                  الترتيب العام
-                </div>
-              </div>
-
-              <div className="relative z-30 group">
-                <div
-                  className="relative flex items-center gap-1 h-7 sm:h-7.5 overflow-hidden rounded-full px-2.5 sm:px-2.5"
-                  style={{
-                    background: "linear-gradient(135deg, rgba(125,183,255,0.24) 0%, rgba(52,83,167,0.20) 55%, rgba(24,49,112,0.18) 100%)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 18px rgba(4,16,44,0.18), 0 0 0 1px rgba(255,255,255,0.08)",
-                    backdropFilter: "blur(10px)",
-                  }}
-                  aria-label="النقاط"
-                  title="النقاط"
-                >
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),transparent_52%)]" />
-                  <div className="relative flex h-5 w-5 items-center justify-center sm:h-5.5 sm:w-5.5">
-                    <Star
-                      className="h-4 w-4 fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)] sm:h-[14px] sm:w-[14px]"
-                      strokeWidth={1.9}
-                    />
-                  </div>
-                  <span className="relative text-[12px] font-black tabular-nums text-white leading-none tracking-[0.01em] sm:text-[13px]" style={{ textShadow: "0 2px 8px rgba(7,20,54,0.32)" }}>
-                    {sidebarStudentPoints}
-                  </span>
-                </div>
-
-                <div className="pointer-events-none absolute top-full mt-1.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-[#3453a7]/25 bg-[linear-gradient(135deg,rgba(37,63,140,0.98),rgba(74,103,183,0.95))] px-2 py-1 text-[10px] font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.18)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                  النقاط
-                </div>
-              </div>
-            </div>
-          );
-        })()}
         <div className="container mx-auto px-4 h-20 flex items-center justify-between relative">
           <div className="w-[40px] z-20 shrink-0" />
 
@@ -1082,112 +1303,124 @@ export function Header() {
 
           <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2">
             {isLoggedIn && userRole !== "student" && (
-              <DropdownMenu onOpenChange={async (open) => {
-                if (!open) return;
-                const accNumStr = localStorage.getItem("accountNumber");
-                if (!accNumStr) return;
-                setNotifLoading(true);
-                try {
-                  const supabase = createClient();
-                  const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
-                  let query = supabase
-                    .from("notifications")
-                    .select("id,message,is_read,created_at")
-                    .eq("user_account_number", accNumStr)
-                    .order("created_at", { ascending: false })
-                    .limit(20);
-                  if (createdAt) {
-                    query = query.gte("created_at", createdAt);
-                  }
-                  const { data } = await query;
-                  setNotifications(data || []);
-                  localStorage.setItem(`unreadCount_${accNumStr}`, "0");
-                  const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
-                  if (unreadIds.length > 0) {
-                    await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
-                    setUnreadCount(0);
-                  }
-                } catch {}
-                setNotifLoading(false);
-              }}>
-                <DropdownMenuTrigger asChild>
+              <>
+                {hasPermission("الإرسال إلى أولياء الأمور") && (
                   <button
+                    type="button"
                     className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 transition-colors hover:bg-white/15"
-                    aria-label="الإشعارات"
+                    aria-label="باركود الواتساب"
+                    onClick={() => setIsWhatsappQrDialogOpen(true)}
                   >
-                    <Bell size={22} className="text-white" />
-                    {unreadCount > 0 && (
-                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
-                        {unreadCount > 9 ? "9+" : unreadCount}
+                    <QrCode size={21} className="text-white" />
+                    {hasResolvedWhatsappQrStatus && !isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                      <span className="absolute -left-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-[11px] font-black text-[#1a2332] shadow-[0_4px_10px_rgba(0,0,0,0.18)]">
+                        !
                       </span>
-                    )}
+                    ) : null}
                   </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
-                  {/* Header */}
-                  <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
-                        <Bell size={13} className="text-[#003f55]" />
-                      </div>
-                      <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
-                    </div>
-                    {notifications.length > 0 && (
-                      <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
-                        {notifications.length}
-                      </span>
-                    )}
-                  </div>
-                  {/* Body */}
-                  <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3453a740_transparent] bg-white" dir="rtl">
-                    {notifLoading ? (
-                      <div className="flex items-center justify-center py-14">
-                        <SiteLoader size="sm" color="#003f55" />
-                      </div>
-                    ) : notifications.length === 0 ? (
-                      <div className="py-14 flex flex-col items-center gap-3 text-center">
-                        <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
-                          <Bell size={24} className="text-[#003f55]/60" />
+                )}
+                <DropdownMenu onOpenChange={async (open) => {
+                  if (!open) return;
+                  const accNumStr = localStorage.getItem("accountNumber");
+                  if (!accNumStr) return;
+                  setNotifLoading(true);
+                  try {
+                    const supabase = createClient();
+                    const createdAt = notificationStartAt || await fetchNotificationStartAt(accNumStr);
+                    let query = supabase
+                      .from("notifications")
+                      .select("id,message,is_read,created_at")
+                      .eq("user_account_number", accNumStr)
+                      .order("created_at", { ascending: false })
+                      .limit(20);
+                    if (createdAt) {
+                      query = query.gte("created_at", createdAt);
+                    }
+                    const { data } = await query;
+                    setNotifications(data || []);
+                    localStorage.setItem(`unreadCount_${accNumStr}`, "0");
+                    const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
+                    if (unreadIds.length > 0) {
+                      await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+                      setUnreadCount(0);
+                    }
+                  } catch {}
+                  setNotifLoading(false);
+                }}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 transition-colors hover:bg-white/15"
+                      aria-label="الإشعارات"
+                    >
+                      <Bell size={22} className="text-white" />
+                      {unreadCount > 0 && (
+                        <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                          {unreadCount > 9 ? "9+" : unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={8} className="w-[320px] p-0 overflow-hidden rounded-xl shadow-2xl border border-gray-200">
+                    <div dir="rtl" className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
+                          <Bell size={13} className="text-[#003f55]" />
                         </div>
-                        <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                        <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
                       </div>
-                    ) : (
-                      <div>
-                        {notifications.map((n, i) => (
-                          <div
-                            key={n.id}
-                            className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-[#3453a7]/5 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
-                          >
-                            {/* Unread indicator */}
-                            <div className="flex-shrink-0 mt-2">
-                              {!n.is_read
-                                ? <div className="w-2 h-2 rounded-full bg-[#3453a7] shadow-sm" />
-                                : <div className="w-2 h-2 rounded-full border border-gray-300" />
-                              }
-                            </div>
-                            {/* Content */}
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
-                                {n.message}
-                              </p>
-                              <p className="text-[11px] text-gray-400 mt-1.5">
-                                {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                              </p>
-                            </div>
-                            {/* Delete */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
-                              className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                      {notifications.length > 0 && (
+                        <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
+                          {notifications.length}
+                        </span>
+                      )}
+                    </div>
+                    <div className="max-h-[380px] overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#3453a740_transparent] bg-white" dir="rtl">
+                      {notifLoading ? (
+                        <div className="flex items-center justify-center py-14">
+                          <SiteLoader size="sm" color="#003f55" />
+                        </div>
+                      ) : notifications.length === 0 ? (
+                        <div className="py-14 flex flex-col items-center gap-3 text-center">
+                          <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
+                            <Bell size={24} className="text-[#003f55]/60" />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                          <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                        </div>
+                      ) : (
+                        <div>
+                          {notifications.map((n, i) => (
+                            <div
+                              key={n.id}
+                              className={`group flex items-start gap-3 px-4 py-3.5 hover:bg-[#3453a7]/5 transition-colors cursor-default ${i !== notifications.length - 1 ? "border-b border-gray-100" : ""}`}
+                            >
+                              <div className="flex-shrink-0 mt-2">
+                                {!n.is_read
+                                  ? <div className="w-2 h-2 rounded-full bg-[#3453a7] shadow-sm" />
+                                  : <div className="w-2 h-2 rounded-full border border-gray-300" />
+                                }
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-sm leading-relaxed break-words ${!n.is_read ? "text-gray-800 font-medium" : "text-gray-500"}`}>
+                                  {n.message}
+                                </p>
+                                <p className="text-[11px] text-gray-400 mt-1.5">
+                                  {new Date(n.created_at).toLocaleString("ar-SA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </p>
+                              </div>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteNotification(n.id); }}
+                                className="flex-shrink-0 mt-1 opacity-0 group-hover:opacity-100 w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
             {authResolved && !isLoggedIn && (
               <Button
@@ -1200,6 +1433,71 @@ export function Header() {
           </div>
         </div>
         <GlobalAddStudentDialog />
+        <Dialog open={isWhatsappQrDialogOpen} onOpenChange={setIsWhatsappQrDialogOpen}>
+          <DialogContent className="max-w-[92vw] rounded-[24px] border border-[#e5e7eb] p-0 sm:max-w-[360px]" dir="rtl">
+            <DialogHeader className="px-5 pb-0 pt-5 text-right">
+              <DialogTitle className="flex items-center justify-start gap-2 text-lg font-black text-[#1a2332]">
+                <QrCode className="h-5 w-5 text-[#3453a7]" />
+                باركود الواتساب
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 p-5 pt-3">
+              {!isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                <div className={`rounded-2xl border px-4 py-2.5 text-center text-sm font-black ${getWhatsappHeaderStatusText(whatsappQrStatus).tone}`}>
+                  {getWhatsappHeaderStatusText(whatsappQrStatus).title}
+                </div>
+              ) : null}
+
+              <div className="flex min-h-[188px] items-center justify-center rounded-[20px] border border-[#eceff3] bg-white p-2.5">
+                {isWhatsappQrLoading ? (
+                  <SiteLoader size="md" color="#3453a7" />
+                ) : whatsappQrStatus.qrAvailable && whatsappQrStatus.qrImageUrl && !whatsappQrImageFailed ? (
+                  <img
+                    src={whatsappQrStatus.qrImageUrl}
+                    alt="باركود واتساب"
+                    className="h-auto w-full max-w-[210px] rounded-2xl bg-white"
+                    onError={() => setWhatsappQrImageFailed(true)}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    {(() => {
+                      const StatusIcon = getWhatsappHeaderStatusText(whatsappQrStatus).icon
+                      return <StatusIcon className="h-11 w-11 text-[#3453a7]" />
+                    })()}
+                    <p className="text-base font-black text-[#1a2332]">{getWhatsappHeaderStatusText(whatsappQrStatus).title}</p>
+                  </div>
+                )}
+              </div>
+
+              {!isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                <p className="text-center text-xs font-bold leading-6 text-[#64748b]">
+                  {getWhatsappHeaderStatusText(whatsappQrStatus).description}
+                </p>
+              ) : null}
+
+              {whatsappQrStatus.lastError && !isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs font-bold leading-6 text-rose-700">
+                  {whatsappQrStatus.lastError}
+                </div>
+              ) : null}
+
+              <div className="flex items-center justify-center gap-3">
+                {isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleWhatsappQrDisconnect}
+                  className="h-9 rounded-2xl border-rose-200 bg-rose-50 px-4 text-sm font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={isWhatsappQrDisconnecting}
+                >
+                  <LogOut className="me-1.5 h-4 w-4" />
+                  {isWhatsappQrDisconnecting ? "جاري الإلغاء..." : "إلغاء الربط"}
+                </Button>
+                ) : null}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
     </header>
 
       {/* خلفية مظللة */}
@@ -1256,6 +1554,19 @@ export function Header() {
                   </div>
                   <ChevronLeft size={16} className="text-white/40 flex-shrink-0" />
                 </button>
+                {isStudentHeaderStatsReady ? (
+                  <div className="pt-2">
+                    <div className="flex justify-end">
+                      <StudentStatsCluster
+                        currentLevel={Math.max(0, Math.min(100, sidebarQuranLevel || 0))}
+                        globalRank={globalRank}
+                        points={sidebarStudentPoints}
+                        compact
+                        showLevel={false}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </>
           )}
@@ -1383,7 +1694,7 @@ export function Header() {
                 <NavItem
                   icon={Map}
                   label="الإختبارات"
-                  onClick={() => handleNav("/pathways")}
+                  onClick={() => handleNav("/exams")}
                 />
               </div>
             </>
@@ -1548,7 +1859,7 @@ export function Header() {
 
               {/* فئة التقارير */}
 
-              {hasPermission("التقارير") && <div className="px-2 mb-0.5">
+              {["التقارير", "يوم السرد"].some((permission) => hasPermission(permission)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={FileText}
                   label="التقارير"
@@ -1562,6 +1873,8 @@ export function Header() {
 
                       label: "متابعة التنفيذ",
 
+                      permKey: "التقارير",
+
                       path: "/admin/student-daily-attendance",
                     },
 
@@ -1569,6 +1882,8 @@ export function Header() {
                       icon: FileText,
 
                       label: "تقرير الحلقات المختصر",
+
+                      permKey: "التقارير",
 
                       path: "/admin/reports/circle-short-report",
                     },
@@ -1578,6 +1893,8 @@ export function Header() {
 
                       label: "تقارير المعلمين",
 
+                      permKey: "التقارير",
+
                       path: "/admin/teacher-attendance",
                     },
 
@@ -1585,6 +1902,8 @@ export function Header() {
                       icon: MessageSquare,
 
                       label: "تقارير الرسائل",
+
+                      permKey: "التقارير",
 
                       path: "/admin/reports",
                     },
@@ -1594,9 +1913,11 @@ export function Header() {
 
                       label: "الإحصائيات",
 
+                      permKey: "التقارير",
+
                       path: "/admin/statistics",
                     },
-                  ].map(({ icon: Ic, label, path }) => (
+                  ].filter(({ permKey }) => hasPermission(permKey)).map(({ icon: Ic, label, path }) => (
                     <NavItem
                       key={label}
                       icon={Ic}
@@ -1611,7 +1932,7 @@ export function Header() {
 
               {/* فئة الإدارة العامة */}
 
-              {["الإشعارات", "إدارة المسار", "إنهاء الفصل", "الإرسال إلى أولياء الأمور", "الصلاحيات", "المالية"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
+              {["الإشعارات", "الإختبارات", "إدارة المسار", "إنهاء الفصل", "الإرسال إلى أولياء الأمور", "الصلاحيات", "المالية"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={Settings}
                   label="الإدارة العامة"
@@ -1622,15 +1943,15 @@ export function Header() {
                     {
                       icon: Map,
 
-                      label: "إدارة الإختبارات",
+                      label: "الإختبارات",
 
-                      permKey: "إدارة المسار",
+                      permKey: "الإختبارات",
 
-                      path: "/admin/pathways",
+                      path: "/admin/exams",
                     },
 
                     {
-                      icon: Bell,
+                      icon: FileText,
 
                       label: "الإشعارات",
 

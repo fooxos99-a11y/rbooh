@@ -5,15 +5,24 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SiteLoader } from "@/components/ui/site-loader"
+import { Textarea } from "@/components/ui/textarea"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { getSaudiAttendanceAnchorDate, getSaudiDateString, getSaudiTimeString, getSaudiWeekday, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { DEFAULT_ABSENCE_TEMPLATE_SETTINGS, normalizeAbsenceTemplateSettings, STUDENT_ABSENCE_ALERT_SETTING_ID, type AbsenceTemplateSettings } from "@/lib/student-absence"
 import { Calendar as CalendarIcon, Check } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
+
+const ABSENCE_TEMPLATE_HELP_ITEMS = [
+  { key: "{{studentName}}", description: "اسم الطالب" },
+  { key: "{{date}}", description: "التاريخ" },
+  { key: "{{circleName}}", description: "اسم الحلقة" },
+] as const
 
 type AttendanceStatus = "present" | "late" | "absent" | "excused" | null
 type StaffGroup = "students" | "teachers"
@@ -102,6 +111,9 @@ export default function StaffAttendancePage() {
   const [savingStudentIds, setSavingStudentIds] = useState<string[]>([])
   const [savingTeacherIds, setSavingTeacherIds] = useState<string[]>([])
   const [recentlySavedStudentIds, setRecentlySavedStudentIds] = useState<string[]>([])
+  const [absenceTemplateSettings, setAbsenceTemplateSettings] = useState<AbsenceTemplateSettings>(DEFAULT_ABSENCE_TEMPLATE_SETTINGS)
+  const [isTemplatesDialogOpen, setIsTemplatesDialogOpen] = useState(false)
+  const [isSavingTemplates, setIsSavingTemplates] = useState(false)
   const studentSuccessTimersRef = useRef<Record<string, number>>({})
 
   const filteredStudentRecords = useMemo(() => {
@@ -173,6 +185,7 @@ export default function StaffAttendancePage() {
 
   useEffect(() => {
     if (!authLoading && authVerified) {
+      void fetchAbsenceTemplates()
       if (isAttendanceWindowOpen) {
         void fetchRecords(selectedDate)
       } else {
@@ -184,6 +197,42 @@ export default function StaffAttendancePage() {
       }
     }
   }, [authLoading, authVerified, selectedDate, isAttendanceWindowOpen])
+
+  const fetchAbsenceTemplates = async () => {
+    try {
+      const response = await fetch(`/api/site-settings?id=${STUDENT_ABSENCE_ALERT_SETTING_ID}`, { cache: "no-store" })
+      const data = await response.json().catch(() => ({}))
+      setAbsenceTemplateSettings(normalizeAbsenceTemplateSettings(data.value))
+    } catch {
+      setAbsenceTemplateSettings(DEFAULT_ABSENCE_TEMPLATE_SETTINGS)
+    }
+  }
+
+  const saveAbsenceTemplates = async () => {
+    try {
+      setIsSavingTemplates(true)
+      const response = await fetch("/api/site-settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: STUDENT_ABSENCE_ALERT_SETTING_ID,
+          value: absenceTemplateSettings,
+        }),
+      })
+      const data = await response.json().catch(() => ({}))
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "تعذر حفظ قوالب الغياب")
+      }
+
+      setIsTemplatesDialogOpen(false)
+      await showAlert("تم حفظ قوالب رسائل الغياب", "تم")
+    } catch (error) {
+      await showAlert(error instanceof Error ? error.message : "تعذر حفظ قوالب الغياب", "خطأ")
+    } finally {
+      setIsSavingTemplates(false)
+    }
+  }
 
   useEffect(() => {
     if (selectedCircle !== "all" && !circles.includes(selectedCircle)) {
@@ -416,44 +465,45 @@ export default function StaffAttendancePage() {
 
           <Card className="border border-[#003f55]/15 shadow-sm transition-all duration-200 hover:shadow-md">
             <CardContent className="pt-6">
-              <div className="grid gap-4 lg:grid-cols-[220px_240px_1fr] lg:items-end">
-                <div className="space-y-2 text-right">
-                  <Label className="text-sm font-semibold text-[#1a2332]">
-                    <span className="inline-flex items-center gap-2">
-                      <CalendarIcon className="h-4 w-4 text-[#003f55]" />
-                      التاريخ
-                    </span>
-                  </Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={`w-full justify-start gap-2 text-right font-normal flex-row-reverse transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm ${!selectedDate ? "text-muted-foreground" : ""}`}
-                      >
-                        <span className="flex-1 text-right" dir="ltr">{selectedDate || "اختر تاريخاً"}</span>
-                        <CalendarIcon className="h-4 w-4" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={selectedDate ? new Date(selectedDate) : undefined}
-                        onSelect={(date) => {
-                          if (date) {
-                            const pad = (value: number) => value.toString().padStart(2, "0")
-                            const nextDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-                            setSelectedDate(nextDate)
-                          }
-                        }}
-                        disabled={(date) => date > new Date()}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div className="space-y-2 text-right">
-                  <div className="flex items-center justify-end gap-0.5">
-                    <div className="w-[150px] shrink-0">
+              <div className="flex flex-col items-end gap-4 text-right">
+                <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="flex w-full flex-wrap items-end justify-end gap-3 lg:w-auto lg:justify-start">
+                    <div className="w-full sm:w-[220px] space-y-2 text-right">
+                      <Label className="text-sm font-semibold text-[#1a2332]">
+                        <span className="inline-flex items-center gap-2">
+                          <CalendarIcon className="h-4 w-4 text-[#003f55]" />
+                          التاريخ
+                        </span>
+                      </Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={`w-full justify-start gap-2 text-right font-normal flex-row-reverse transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm ${!selectedDate ? "text-muted-foreground" : ""}`}
+                          >
+                            <span className="flex-1 text-right" dir="ltr">{selectedDate || "اختر تاريخاً"}</span>
+                            <CalendarIcon className="h-4 w-4" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={selectedDate ? new Date(selectedDate) : undefined}
+                            onSelect={(date) => {
+                              if (date) {
+                                const pad = (value: number) => value.toString().padStart(2, "0")
+                                const nextDate = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+                                setSelectedDate(nextDate)
+                              }
+                            }}
+                            disabled={(date) => date > new Date()}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <div className="w-full sm:w-[180px] space-y-2 text-right">
+                      <Label className="text-sm font-semibold text-[#1a2332]">الحلقة</Label>
                       <Select value={selectedCircle} onValueChange={setSelectedCircle}>
                         <SelectTrigger className="transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm">
                           <SelectValue placeholder="اختر الحلقة" />
@@ -466,6 +516,16 @@ export default function StaffAttendancePage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-end gap-2 self-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-[#003f55]/20 text-[#1a2332] transition-all duration-200 hover:border-[#3453a7]/30 hover:bg-white hover:shadow-sm"
+                      onClick={() => setIsTemplatesDialogOpen(true)}
+                    >
+                      قالب الغياب
+                    </Button>
                     {activeGroup === "students" && isTodaySelected ? (
                       <Button
                         type="button"
@@ -477,12 +537,7 @@ export default function StaffAttendancePage() {
                       </Button>
                     ) : null}
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-3">
-                  <span className="text-sm font-semibold text-[#4d6b76]">
-                    يُحتسب هذا التاريخ على {attendanceAnchorLabel} ({effectiveSelectedDate})
-                  </span>
-                  <div className="inline-flex rounded-2xl border border-[#003f55]/15 bg-[#f4fafb] p-1">
+                  <div className="inline-flex self-end rounded-2xl border border-[#003f55]/15 bg-[#f4fafb] p-1">
                     <button
                       type="button"
                       onClick={() => setActiveGroup("students")}
@@ -498,6 +553,11 @@ export default function StaffAttendancePage() {
                       معلمين
                     </button>
                   </div>
+                </div>
+                <div className="flex w-full flex-wrap items-center justify-end gap-3">
+                  <span className="text-sm font-semibold text-[#4d6b76]">
+                    يُحتسب هذا التاريخ على {attendanceAnchorLabel} ({effectiveSelectedDate})
+                  </span>
                   {isRefreshing ? <span className="text-sm font-semibold text-[#4d6b76]">جاري التحديث...</span> : null}
                 </div>
               </div>
@@ -521,23 +581,23 @@ export default function StaffAttendancePage() {
                     {isEditMode && isTodaySelected ? "لا يوجد طلاب قابلون للتعديل ضمن الفلترة الحالية." : "لا يوجد طلاب ضمن الفلترة الحالية."}
                   </div>
                 ) : (
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" dir="rtl">
                     {filteredStudentRecords.map((record) => (
                       <Card
                         key={record.student_id}
-                        className={`relative w-full md:max-w-[200px] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${recentlySavedStudentIds.includes(record.student_id) ? "border border-[#003f55]/12 bg-white/95 animate-pulse" : "border border-[#003f55]/12 bg-white/95"}`}
+                    className={`relative h-full min-h-[154px] w-full shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${recentlySavedStudentIds.includes(record.student_id) ? "border border-[#003f55]/12 bg-white/95 animate-pulse" : "border border-[#003f55]/12 bg-white/95"}`}
                       >
                         {recentlySavedStudentIds.includes(record.student_id) ? (
-                          <CardContent className="flex min-h-[102px] items-center justify-center p-2.5" dir="rtl">
+                      <CardContent className="flex min-h-[154px] items-center justify-center p-2.5" dir="rtl">
                             <div className="flex flex-col items-center justify-center gap-2 text-center">
                               <Check className="h-10 w-10 text-[#3453a7]" />
                               <span className="text-sm font-bold text-[#3453a7]">تم الحفظ</span>
                             </div>
                           </CardContent>
                         ) : (
-                          <CardContent className="p-2.5" dir="rtl">
-                            <div className="mb-2 flex justify-start">
-                              <p className="text-base font-black text-[#1a2332] text-left">{record.student_name}</p>
+                      <CardContent className="flex h-full min-h-[154px] flex-col justify-between p-2.5" dir="rtl">
+                      <div className="min-h-[64px] text-right">
+                        <p className="text-base font-black leading-8 text-[#1a2332]">{record.student_name}</p>
                             </div>
                             <Select
                               value={record.status ?? undefined}
@@ -568,12 +628,12 @@ export default function StaffAttendancePage() {
                   لايوجد معلمون
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2.5">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" dir="rtl">
                   {filteredTeacherRecords.map((record) => (
-                    <Card key={record.teacher_id} className="w-full md:max-w-[200px] border border-[#003f55]/12 bg-white/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-                      <CardContent className="p-2.5" dir="rtl">
-                        <div className="mb-2 flex justify-start">
-                          <p className="text-base font-black text-[#1a2332] text-left">{record.teacher_name}</p>
+                  <Card key={record.teacher_id} className="h-full min-h-[154px] w-full border border-[#003f55]/12 bg-white/95 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                  <CardContent className="flex h-full min-h-[154px] flex-col justify-between p-2.5" dir="rtl">
+                    <div className="min-h-[64px] text-right">
+                    <p className="text-base font-black leading-8 text-[#1a2332]">{record.teacher_name}</p>
                         </div>
                         <Select
                           value={record.status ?? undefined}
@@ -604,6 +664,44 @@ export default function StaffAttendancePage() {
       </main>
 
       <Footer />
+
+      <Dialog open={isTemplatesDialogOpen} onOpenChange={setIsTemplatesDialogOpen}>
+        <DialogContent className="max-w-3xl border border-[#8fb1ff] bg-[#f8fbff]" dir="rtl" showCloseButton={false}>
+          <DialogHeader>
+            <div className="flex items-center justify-between gap-3">
+              <DialogTitle className="text-2xl font-black text-[#1a2332]">قوالب رسائل الغياب</DialogTitle>
+              <div className="group relative">
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#8fb1ff] bg-[#eaf1ff] text-base font-black text-[#3453a7]">
+                  !
+                </span>
+                <div className="invisible absolute left-0 top-10 z-10 w-80 rounded-2xl border border-[#8fb1ff] bg-white p-4 text-right opacity-0 shadow-xl transition-all duration-150 group-hover:visible group-hover:opacity-100">
+                  <p className="text-sm font-black text-[#1a2332]">المتغيرات المتاحة</p>
+                  <div className="mt-3 space-y-2 text-sm text-[#4b5563]">
+                    {ABSENCE_TEMPLATE_HELP_ITEMS.map((item) => (
+                      <div key={item.key} className="flex items-start justify-between gap-3 rounded-xl border border-[#3453a7]/10 bg-[#f7faff] px-3 py-2">
+                        <span className="font-semibold text-[#3453a7]">{item.description}</span>
+                        <span className="font-mono text-[#1a2332]" dir="ltr">{item.key}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <label className="block text-right font-black text-[#1a2332]">رسالة الغياب</label>
+              <Textarea value={absenceTemplateSettings.message} onChange={(event) => setAbsenceTemplateSettings({ message: event.target.value })} className="min-h-[140px] border-[#8fb1ff] bg-white text-right focus-visible:ring-[#3453a7]/25" />
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsTemplatesDialogOpen(false)} className="border-[#003f55]/20">إغلاق</Button>
+              <Button onClick={() => void saveAbsenceTemplates()} disabled={isSavingTemplates} className="bg-[#3453a7] text-white hover:bg-[#27428d]">
+                {isSavingTemplates ? "جاري الحفظ..." : "حفظ القوالب"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -129,6 +129,89 @@
 }
 
 @layer components {
+  .student-header-stats,
+  .student-drawer-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .student-level-shell {
+    width: 48px;
+    height: 42px;
+  }
+
+  .student-level-number {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .student-progress-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 1.25rem;
+    width: 9rem;
+    margin-left: -24px;
+  }
+
+  .student-stat-pill {
+    height: 1.75rem;
+  }
+
+  .student-stat-icon-wrap {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .student-stat-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  .student-stat-number {
+    font-size: 12px;
+  }
+
+  .student-drawer-stats {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 0.35rem;
+  }
+
+  .student-drawer-stats .student-level-shell {
+    width: 42px;
+    height: 37px;
+  }
+
+  .student-drawer-stats .student-level-number {
+    font-size: 16px;
+  }
+
+  .student-drawer-stats .student-progress-shell {
+    width: 7.5rem;
+    height: 1.1rem;
+    margin-left: -20px;
+  }
+
+  .student-drawer-stats .student-stat-pill {
+    height: 1.7rem;
+  }
+
+  .student-drawer-stats .student-stat-icon-wrap {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+
+  .student-drawer-stats .student-stat-icon {
+    width: 14px;
+    height: 14px;
+  }
+
+  .student-drawer-stats .student-stat-number {
+    font-size: 11px;
+  }
+
   .plan-history-checkbox {
     display: inline-flex;
     align-items: center;
@@ -157,7 +240,7 @@
   }
 
   .plan-history-checkbox__mark {
-    --clr: #cead57;
+    --clr: #3453a7;
     position: relative;
     display: inline-block;
     width: 1.18rem;
@@ -196,7 +279,48 @@
   }
 
   .plan-history-checkbox input:focus-visible ~ .plan-history-checkbox__mark {
-    box-shadow: 0 0 0 3px #e8ca7a66;
+    box-shadow: 0 0 0 3px #3453a744;
+  }
+}
+
+@media (max-width: 640px) and (orientation: portrait) {
+  .student-header-stats {
+    left: 0.65rem !important;
+    gap: 0.35rem;
+  }
+
+  .student-header-stats .student-level-shell {
+    width: 38px;
+    height: 33px;
+  }
+
+  .student-header-stats .student-level-number {
+    font-size: 14px;
+  }
+
+  .student-header-stats .student-progress-shell {
+    width: 6.3rem;
+    height: 1rem;
+    margin-left: -17px;
+  }
+
+  .student-header-stats .student-stat-pill {
+    height: 1.55rem;
+    padding-inline: 0.45rem;
+  }
+
+  .student-header-stats .student-stat-icon-wrap {
+    width: 0.95rem;
+    height: 0.95rem;
+  }
+
+  .student-header-stats .student-stat-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .student-header-stats .student-stat-number {
+    font-size: 10px;
   }
 }
 

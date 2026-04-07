@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { createClient } from "@/lib/supabase/client"
+import { getMissingSupabasePublicConfigKeys, hasSupabasePublicConfig } from "@/lib/supabase-config"
 import { LogIn, CheckCircle2 } from 'lucide-react'
 
 function normalizeAccountNumber(value: string) {
@@ -81,11 +82,18 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const router = useRouter()
-  const supabase = createClient()
+  const hasSupabaseConfig = hasSupabasePublicConfig()
+  const missingConfigKeys = getMissingSupabasePublicConfigKeys()
+  const supabase = hasSupabaseConfig ? createClient() : null
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isLoading) return
+
+    if (!supabase) {
+      setError("إعدادات Supabase غير مكتملة في هذا الموقع")
+      return
+    }
 
     const parsedAccountNumber = normalizeAccountNumber(accountNumber)
     if (!parsedAccountNumber) {
@@ -187,6 +195,13 @@ export function LoginForm() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4 md:space-y-6">
+        {!hasSupabaseConfig && (
+          <div className="rounded-xl border-2 border-amber-200 bg-amber-50 px-4 py-3 text-right text-sm font-semibold text-amber-900">
+            <div>إعدادات قاعدة البيانات غير مضافة لهذا الموقع بعد.</div>
+            <div className="mt-2 text-xs font-bold text-amber-800">المطلوب: {missingConfigKeys.join(" , ")}</div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="accountNumber" className="text-[#023232] font-semibold text-base md:text-lg">
             رقم الحساب
@@ -209,7 +224,7 @@ export function LoginForm() {
 
         <Button
           type="submit"
-          disabled={isLoading}
+          disabled={isLoading || !hasSupabaseConfig}
           className="w-full h-12 md:h-14 bg-[#3453a7] text-white font-bold text-base md:text-lg shadow-lg hover:bg-[#27428d] hover:shadow-xl transition-all duration-300"
         >
           {isLoading ? (

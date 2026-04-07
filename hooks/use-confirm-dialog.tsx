@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useCallback } from "react"
 
 import { create } from "zustand"
 import {
@@ -145,9 +146,8 @@ interface ConfirmDialogOptions {
 }
 
 export function useConfirmDialog() {
-  return (options: string | ConfirmDialogOptions, fallbackTitle?: string): Promise<boolean> => {
+  return useCallback((options: string | ConfirmDialogOptions, fallbackTitle?: string): Promise<boolean> => {
     return new Promise((resolve) => {
-      // Handle both string and object formats
       const config =
         typeof options === "string"
           ? {
@@ -173,11 +173,11 @@ export function useConfirmDialog() {
         },
       }))
     })
-  }
+  }, [])
 }
 
 export function useAlertDialog() {
-  return (message: string, title = "تنبيه"): Promise<void> => {
+  return useCallback((message: string, title = "تنبيه"): Promise<void> => {
     return new Promise((resolve) => {
       useDialogStore.setState((state) => ({
         ...state,
@@ -189,5 +189,5 @@ export function useAlertDialog() {
         },
       }))
     })
-  }
+  }, [])
 }

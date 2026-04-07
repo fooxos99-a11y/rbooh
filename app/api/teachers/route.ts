@@ -1,11 +1,21 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { normalizeCircleNameKey, resolveCircleName } from "@/lib/circle-name"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-function normalizeHalaqahName(value?: string | null) {
-  return (value || "").trim().toLowerCase()
+const TEACHER_ROLE_VALUES = ["teacher", "deputy_teacher", "معلم", "نائب معلم"]
+
+function normalizeTeacherRole(role?: string | null) {
+  return role === "deputy_teacher" || role === "نائب معلم" ? "deputy_teacher" : "teacher"
+}
+
+function isMissingCircleNameColumn(error: { code?: string | null; message?: string | null } | null) {
+  if (!error) return false
+
+  const message = `${error.message || ""}`.toLowerCase()
+  return message.includes("circle_name") && (message.includes("column") || message.includes("schema cache"))
 }
 
 function normalizeAccountNumber(rawValue: string | null) {
@@ -18,7 +28,7 @@ function normalizeAccountNumber(rawValue: string | null) {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const accountNumber = normalizeAccountNumber(searchParams.get("account_number"))
 
@@ -27,7 +37,7 @@ export async function GET(request: Request) {
       const { data: teachers, error } = await supabase
         .from("users")
         .select("*")
-        .in("role", ["teacher", "deputy_teacher"])
+        .in("role", TEACHER_ROLE_VALUES)
         .eq("account_number", accountNumber)
         .limit(1)
 
@@ -45,23 +55,33 @@ export async function GET(request: Request) {
         teachers: [{
           id: teacher.id,
           name: teacher.name,
-          role: teacher.role || "teacher",
+          role: normalizeTeacherRole(teacher.role),
           account_number: teacher.account_number,
           accountNumber: teacher.account_number?.toString() || "",
           idNumber: teacher.id_number || "",
           circle_name: teacher.circle_name || "",
-          halaqah: teacher.halaqah || teacher.circle_name || "",
+          halaqah: resolveCircleName(teacher.halaqah, teacher.circle_name),
           phoneNumber: teacher.phone_number || "",
         }]
       }, { status: 200 })
     }
 
     // Fetch all users with role 'teacher' or 'deputy_teacher'
-    const { data: teachers, error } = await supabase
+    let teachersQuery = await supabase
       .from("users")
-      .select("id, name, role, account_number, id_number, halaqah, phone_number")
-      .in("role", ["teacher", "deputy_teacher"])
+      .select("id, name, role, account_number, id_number, halaqah, circle_name, phone_number")
+      .in("role", TEACHER_ROLE_VALUES)
       .order("created_at", { ascending: false })
+
+    if (teachersQuery.error && isMissingCircleNameColumn(teachersQuery.error)) {
+      teachersQuery = await supabase
+        .from("users")
+        .select("id, name, role, account_number, id_number, halaqah, phone_number")
+        .in("role", TEACHER_ROLE_VALUES)
+        .order("created_at", { ascending: false })
+    }
+
+    const { data: teachers, error } = teachersQuery
 
     if (error) {
       console.error("[v0] Error fetching teachers:", error)
@@ -78,23 +98,25 @@ export async function GET(request: Request) {
 
     const studentCountByHalaqah = new Map<string, number>()
     ;(students || []).forEach((student) => {
-      const normalizedHalaqah = normalizeHalaqahName(student.halaqah)
+      const normalizedHalaqah = normalizeCircleNameKey(student.halaqah)
       if (!normalizedHalaqah) return
       studentCountByHalaqah.set(normalizedHalaqah, (studentCountByHalaqah.get(normalizedHalaqah) || 0) + 1)
     })
 
     const teachersWithStudentCount = (teachers || []).map((teacher) => {
-      const teacherHalaqah = normalizeHalaqahName(teacher.halaqah)
+      const resolvedHalaqah = resolveCircleName(teacher.halaqah, teacher.circle_name)
+      const teacherHalaqah = normalizeCircleNameKey(resolvedHalaqah)
 
       return {
         id: teacher.id,
         name: teacher.name,
         accountNumber: teacher.account_number?.toString() || "",
         idNumber: teacher.id_number || "",
-        halaqah: teacher.halaqah || "",
+        circle_name: teacher.circle_name || "",
+        halaqah: resolvedHalaqah,
         studentCount: studentCountByHalaqah.get(teacherHalaqah) || 0,
         phoneNumber: teacher.phone_number || "",
-        role: teacher.role || "teacher",
+        role: normalizeTeacherRole(teacher.role),
       }
     })
 
@@ -107,7 +129,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const { name, id_number, account_number, halaqah, role } = body
 
@@ -134,7 +156,7 @@ export async function POST(request: Request) {
           name,
           id_number,
           role: assignedRole,
-          halaqah,
+          halaqah: resolveCircleName(halaqah),
           account_number: Number.parseInt(account_number),
           password_hash: "",
         },
@@ -170,7 +192,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const teacherId = searchParams.get("id")
 
@@ -178,7 +200,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "معرف المعلم مطلوب" }, { status: 400 })
     }
 
-    const { error } = await supabase.from("users").delete().eq("id", teacherId).in("role", ["teacher", "deputy_teacher"])
+    const { error } = await supabase.from("users").delete().eq("id", teacherId).in("role", TEACHER_ROLE_VALUES)
 
     if (error) {
       console.error("[v0] Error removing teacher:", error)
@@ -194,7 +216,7 @@ export async function DELETE(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const body = await request.json()
     const { id, name, phone_number, id_number, account_number, halaqah, role } = body
 
@@ -207,7 +229,7 @@ export async function PATCH(request: Request) {
     if (phone_number !== undefined) updateData.phone_number = phone_number
     if (id_number !== undefined) updateData.id_number = id_number
     if (account_number !== undefined) updateData.account_number = account_number
-    if (halaqah !== undefined) updateData.halaqah = halaqah
+    if (halaqah !== undefined) updateData.halaqah = resolveCircleName(halaqah)
     if (role !== undefined) updateData.role = role === "deputy_teacher" ? "deputy_teacher" : "teacher"
 
     if (Object.keys(updateData).length === 0) {
@@ -236,7 +258,7 @@ export async function PATCH(request: Request) {
       .from("users")
       .update(updateData)
       .eq("id", id)
-      .in("role", ["teacher", "deputy_teacher"])
+      .in("role", TEACHER_ROLE_VALUES)
       .select()
       .single()
 

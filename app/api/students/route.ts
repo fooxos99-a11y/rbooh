@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 import { ensureStudentPathwayLevels } from "@/lib/pathway-levels"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { circleNamesMatch, normalizeCircleName, resolveCircleName } from "@/lib/circle-name"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
 
     const insertData: any = {
       name,
-      halaqah: (circle_name || "").trim(),
+      halaqah: resolveCircleName(circle_name),
       points: initial_points,
       id_number,
       account_number,
@@ -186,8 +187,6 @@ export async function GET(request: Request) {
 
     if (accountNumber) {
       query = query.eq("account_number", Number(accountNumber)) as typeof query
-    } else if (circleName) {
-      query = query.eq("halaqah", circleName.trim()) as typeof query
     }
 
     const { data, error } = await (query as any).order("points", { ascending: false })
@@ -197,13 +196,21 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "فشل في جلب الطلاب" }, { status: 500 })
     }
 
-    const filtered = data || [];
+    const normalizedRequestedCircle = normalizeCircleName(circleName)
+    const filtered = (data || []).filter((student: { halaqah?: string | null }) => {
+      if (!normalizedRequestedCircle || accountNumber) {
+        return true
+      }
+
+      return circleNamesMatch(student.halaqah, normalizedRequestedCircle)
+    });
 
     console.log("[v0] Students fetched from database:", filtered)
 
     const studentsWithCircleName = filtered.map((student) => ({
       ...student,
-      circle_name: student.halaqah,
+      halaqah: normalizeCircleName(student.halaqah),
+      circle_name: normalizeCircleName(student.halaqah),
     }))
 
     return NextResponse.json(
@@ -283,14 +290,14 @@ export async function PATCH(request: Request) {
     
     // Check if halaqah changed
     if (halaqah !== undefined) {
-      updateData.halaqah = halaqah
+      updateData.halaqah = resolveCircleName(halaqah)
       const { data: currentStudentHalaqah } = await supabase
         .from("students")
         .select("halaqah")
         .eq("id", studentId)
         .single()
       
-      if (currentStudentHalaqah && currentStudentHalaqah.halaqah !== halaqah) {
+      if (currentStudentHalaqah && !circleNamesMatch(currentStudentHalaqah.halaqah, updateData.halaqah)) {
         // Drop pathway progress if student moved to a different circle
         await supabase.from("pathway_level_completions").delete().eq("student_id", studentId)
       }

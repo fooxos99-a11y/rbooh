@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr"
+import { getSupabasePublicConfig } from "@/lib/supabase-config"
 
 let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
 
@@ -7,8 +8,7 @@ export function getSupabase() {
     return supabaseClient
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
+  const { url: supabaseUrl, publishableKey: supabaseKey } = getSupabasePublicConfig()
 
   if (!supabaseUrl || !supabaseKey) {
     throw new Error("Supabase environment variables are not set!")

@@ -8,7 +8,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
 import { createClient } from "@/lib/supabase/client";
-import { calculatePreviousMemorizedPages, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
+import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import {
   applyAttendancePointsAdjustment,
   calculateTotalEvaluationPoints,
@@ -50,8 +50,31 @@ type CircleRow = {
   name: string | null;
 };
 
+type PreviousMemorizationRange = {
+  startSurahNumber: number;
+  startVerseNumber: number;
+  endSurahNumber: number;
+  endVerseNumber: number;
+};
+
 type PlanRow = {
   student_id: string;
+  start_surah_number?: number | null;
+  start_verse?: number | null;
+  end_surah_number?: number | null;
+  end_verse?: number | null;
+  total_pages?: number | null;
+  total_days?: number | null;
+  start_date?: string | null;
+  created_at?: string | null;
+  direction?: "asc" | "desc" | null;
+  has_previous?: boolean | null;
+  prev_start_surah?: number | null;
+  prev_start_verse?: number | null;
+  prev_end_surah?: number | null;
+  prev_end_verse?: number | null;
+  completed_juzs?: number[] | null;
+  previous_memorization_ranges?: PreviousMemorizationRange[] | null;
   daily_pages: number | null;
   muraajaa_pages: number | null;
   rabt_pages: number | null;
@@ -599,7 +622,7 @@ export default function StatisticsPage() {
       const [studentsResult, circlesResult, plansResult] = await Promise.all([
         supabase.from("students").select("id, name, halaqah"),
         supabase.from("circles").select("id, name"),
-        supabase.from("student_plans").select("student_id, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
+        supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
       ]);
 
       if (studentsResult.error) {
@@ -684,6 +707,8 @@ export default function StatisticsPage() {
       }
 
       const memorizedPoolByStudent = new Map<string, number>();
+      const successfulMemorizationCountByStudent = new Map<string, number>();
+      const passedMemorizationDatesByStudent = new Map<string, string[]>();
       const sortedAttendance = [...attendance].sort((left, right) => {
         if (left.student_id !== right.student_id) {
           return left.student_id.localeCompare(right.student_id);
@@ -691,6 +716,21 @@ export default function StatisticsPage() {
 
         return left.date.localeCompare(right.date);
       });
+
+      for (const record of sortedAttendance) {
+        if (!plansByStudent.has(record.student_id)) {
+          continue;
+        }
+
+        const evaluation = getEvaluationRecord(record.evaluations);
+        if (!isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
+          continue;
+        }
+
+        const passedDates = passedMemorizationDatesByStudent.get(record.student_id) ?? [];
+        passedDates.push(record.date);
+        passedMemorizationDatesByStudent.set(record.student_id, passedDates);
+      }
 
       for (const record of sortedAttendance) {
         const studentId = record.student_id;
@@ -717,12 +757,13 @@ export default function StatisticsPage() {
         const dailyPages = Number(plan?.daily_pages ?? 1);
         const status = record.status ?? "";
         const isPresent = status === "present" || status === "late";
+        const successfulMemorizationCount = successfulMemorizationCountByStudent.get(studentId) ?? 0;
         const memorizedPoolPages = memorizedPoolByStudent.has(studentId)
           ? memorizedPoolByStudent.get(studentId) ?? 0
           : calculatePreviousMemorizedPages(plan);
         const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
         const reviewPages = resolvePlanReviewPagesPreference(plan, reviewPoolPages);
-        const tiePages = Math.min(Number(plan?.rabt_pages ?? 10), Math.max(0, memorizedPoolPages));
+        const tiePages = resolvePlanLinkingPagesPreference(plan, successfulMemorizationCount);
 
         studentSummary.maxPoints += 10;
         circleSummary.maxPoints += 10;
@@ -739,15 +780,17 @@ export default function StatisticsPage() {
         const dailyReport = dailyReportByStudentDate.get(`${studentId}::${record.date}`);
         const isSaturdayReviewOnly = isSaturdayReviewOnlyDay(record.date);
         const fallbackReviewPages = Math.max(reviewPages, Number(plan?.muraajaa_pages ?? 0), 0);
-        const fallbackTiePages = Math.max(tiePages, Number(plan?.rabt_pages ?? 0), 0);
+        const fallbackTiePages = tiePages;
 
         if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
           studentSummary.memorized += dailyPages;
           circleSummary.memorized += dailyPages;
           memorizedTotal += dailyPages;
           memorizedPoolByStudent.set(studentId, memorizedPoolPages + dailyPages);
+          successfulMemorizationCountByStudent.set(studentId, successfulMemorizationCount + 1);
         } else if (!memorizedPoolByStudent.has(studentId)) {
           memorizedPoolByStudent.set(studentId, memorizedPoolPages);
+          successfulMemorizationCountByStudent.set(studentId, successfulMemorizationCount);
         }
 
         if (isPassingMemorizationLevel(evaluation.hafiz_level ?? null)) {
@@ -811,7 +854,10 @@ export default function StatisticsPage() {
         const baseMemorizedPool = calculatePreviousMemorizedPages(plan);
         const reviewPoolPages = resolvePlanReviewPoolPages(plan, baseMemorizedPool);
         const reviewPages = Math.max(resolvePlanReviewPagesPreference(plan, reviewPoolPages), Number(plan.muraajaa_pages ?? 0), 0);
-        const tiePages = Math.max(Number(plan.rabt_pages ?? 0), 0);
+        const successfulMemorizationCount = (passedMemorizationDatesByStudent.get(report.student_id) || []).filter(
+          (date) => date <= report.report_date,
+        ).length;
+        const tiePages = resolvePlanLinkingPagesPreference(plan, successfulMemorizationCount);
 
         if (report.review_done) {
           const resolvedReviewPages = Math.max(Number(report.review_pages_count ?? reviewPages), 0);

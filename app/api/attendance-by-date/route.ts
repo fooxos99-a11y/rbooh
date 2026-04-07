@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { getRequestActor } from "@/lib/request-auth"
 import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
+import { circleNamesMatch, normalizeCircleName } from "@/lib/circle-name"
 
 function isMissingUpdatedAtColumn(error: { code?: string | null; message?: string | null } | null) {
   if (!error) return false
@@ -39,6 +40,29 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = createAdminClient()
+    const normalizedCircle = normalizeCircleName(circle)
+    let circleStudentIds: string[] = []
+
+    if (normalizedCircle) {
+      const { data: students, error: studentsError } = await supabase
+        .from("students")
+        .select("id, halaqah")
+
+      if (studentsError) {
+        console.error("[attendance-by-date] Error fetching circle students:", studentsError)
+        return NextResponse.json({ error: "Failed to fetch circle students" }, { status: 500 })
+      }
+
+      circleStudentIds = (students || [])
+        .filter((student: any) => circleNamesMatch(student.halaqah, normalizedCircle))
+        .map((student: any) => student.id)
+
+      if (circleStudentIds.length === 0) {
+        const response = NextResponse.json({ records: [], count: 0 })
+        response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+        return response
+      }
+    }
 
     const runAttendanceQuery = async (includeUpdatedAt: boolean) => {
       let query = supabase
@@ -59,8 +83,8 @@ export async function GET(request: NextRequest) {
           : query.gte("created_at", dayStartIso).lt("created_at", dayEndIso)
       }
 
-      if (circle) {
-        query = query.eq("halaqah", circle)
+      if (circleStudentIds.length > 0) {
+        query = query.in("student_id", circleStudentIds)
       }
 
       return query.order("id", { ascending: true })

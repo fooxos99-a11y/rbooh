@@ -10,6 +10,7 @@ import { getClientAuthHeaders } from "@/lib/client-auth"
 import {
   calculatePreviousMemorizedPages,
   getActivePlanDayNumber,
+  getPlanSessionContentPages,
   getPlanSessionContent,
   getPlanSessionContentRange,
   getPlanSupportSessionContent,
@@ -106,25 +107,73 @@ function formatPlanSessionRange(
   toVerse?: string | null,
   fallbackText?: string | null,
 ) {
-  if (fallbackText?.includes("ما عدا")) {
-    return fallbackText.trim()
-  }
-
-  if (fromSurah && fromVerse && toSurah && toVerse) {
-    if (fromSurah === toSurah) {
-      return `من ${fromSurah} آية ${fromVerse} إلى آية ${toVerse}`
+  const formatExplicitRange = (
+    startSurah: string,
+    startVerse: string | number,
+    endSurah: string,
+    endVerse: string | number,
+  ) => {
+    if (startSurah === endSurah) {
+      return `من ${startSurah} آية ${startVerse} إلى آية ${endVerse}`
     }
 
-    return `من ${fromSurah} آية ${fromVerse} إلى ${toSurah} آية ${toVerse}`
+    return `من ${startSurah} آية ${startVerse} إلى ${endSurah} آية ${endVerse}`
+  }
+
+  const normalizeSingleSegment = (segmentText: string) => {
+    const cleaned = segmentText
+        .replace(/\s+مرورًا\s+.+$/u, "")
+        .replace(/\s+مرورا\s+.+$/u, "")
+      .replace(/من\s+سورة\s+/u, "من ")
+      .replace(/إلى\s+سورة\s+/u, "إلى ")
+      .replace(/\s+الى\s+/u, " إلى ")
+      .trim()
+
+    const directMatch = cleaned.match(/^(.+?)\s+(\d+)\s+إلى\s+(.+?)\s+(\d+)$/u)
+    if (directMatch) {
+      return formatExplicitRange(directMatch[1].trim(), directMatch[2], directMatch[3].trim(), directMatch[4])
+    }
+
+    if (cleaned.startsWith("من ")) {
+      return cleaned
+    }
+
+    return cleaned
   }
 
   if (fallbackText?.trim()) {
-    return fallbackText
-      .replace(/\s+مرورًا بسورة\s+.+$/u, "")
-      .replace(/\s+مرورا بسورة\s+.+$/u, "")
+    const normalizedFallback = fallbackText
       .replace(/من\s+سورة\s+/u, "من ")
       .replace(/إلى\s+سورة\s+/u, "إلى ")
       .trim()
+
+    if (normalizedFallback.includes("، ثم")) {
+      return normalizedFallback
+        .split(/،\s*ثم\s*/u)
+        .map((part) => normalizeSingleSegment(part))
+        .filter(Boolean)
+        .join(" و ")
+    }
+
+    if (normalizedFallback.includes("ما عدا")) {
+      return normalizedFallback
+        .replace(/\s+مرورًا\s+.+$/u, "")
+        .replace(/\s+مرورا\s+.+$/u, "")
+        .replace(/\s+الى\s+/u, " إلى ")
+        .trim()
+    }
+
+    if (normalizedFallback.includes("مرورًا") || normalizedFallback.includes("مرورا")) {
+      return normalizeSingleSegment(normalizedFallback)
+    }
+  }
+
+  if (fromSurah && fromVerse && toSurah && toVerse) {
+    return formatExplicitRange(fromSurah, fromVerse, toSurah, toVerse)
+  }
+
+  if (fallbackText?.trim()) {
+    return normalizeSingleSegment(fallbackText)
   }
 
   return "-"
@@ -132,12 +181,13 @@ function formatPlanSessionRange(
 
 function formatPageCountLabel(value: number) {
   const normalizedValue = Math.max(0, Math.round(value * 100) / 100)
-  if (normalizedValue === 0.25) return "ربع وجه"
-  if (normalizedValue === 0.5) return "نصف وجه"
-  if (normalizedValue === 1) return "وجه واحد"
-  if (normalizedValue === 2) return "وجهان"
-  if (normalizedValue <= 10 && Number.isInteger(normalizedValue)) return `${normalizedValue} أوجه`
-  return `${normalizedValue} وجه`
+  const displayValue = normalizedValue > 1 && !Number.isInteger(normalizedValue) ? Math.ceil(normalizedValue) : normalizedValue
+  if (displayValue === 0.25) return "ربع وجه"
+  if (displayValue === 0.5) return "نصف وجه"
+  if (displayValue === 1) return "وجه واحد"
+  if (displayValue === 2) return "وجهان"
+  if (displayValue <= 10 && Number.isInteger(displayValue)) return `${displayValue} أوجه`
+  return `${displayValue} وجه`
 }
 
 export function StudentDailyExecutionDialog() {
@@ -506,7 +556,9 @@ export function StudentDailyExecutionDialog() {
     const memorizedPoolPages = calculatePreviousMemorizedPages(planData) + planCompletedDays * dailyPages
     const reviewPoolPages = resolvePlanReviewPoolPages(planData, memorizedPoolPages)
     const reviewPagesCount = resolvePlanReviewPagesPreference(planData, reviewPoolPages)
-    const linkingPagesCount = Math.min(Number(planData?.rabt_pages ?? 10), Math.max(0, memorizedPoolPages))
+    const linkingPagesCount = rabtContent
+      ? getPlanSessionContentPages(rabtContent)
+      : Math.min(Number(planData?.rabt_pages ?? 10), Math.max(0, memorizedPoolPages))
     const hasSavableSelection = [
       !todayIsReviewOnlyDay && !isMemorizationLocked && typeof dailyExecutionForm.memorization_done === "boolean",
       !todayIsReviewOnlyDay && !isTikrarLocked && typeof dailyExecutionForm.tikrar_done === "boolean",
@@ -590,16 +642,18 @@ export function StudentDailyExecutionDialog() {
           <div className="text-right">
             <p className="text-base font-black text-[#1a2332] md:text-lg">تنفيذ اليوم</p>
           </div>
-          {canMarkAllDone ? (
-            <Button
-              type="button"
-              onClick={() => markAllExecutionItemsDone(executionItems)}
-              disabled={isSavingDailyReport || isLoadingDailyReports || isDayLocked}
-              className="h-10 rounded-xl bg-[#3453a7] px-5 text-sm text-white shadow-sm hover:bg-[#27428d] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#3453a7]"
-            >
-              تنفيذ للكل
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            {canMarkAllDone ? (
+              <Button
+                type="button"
+                onClick={() => markAllExecutionItemsDone(executionItems)}
+                disabled={isSavingDailyReport || isLoadingDailyReports || isDayLocked}
+                className="h-10 rounded-xl bg-[#3453a7] px-5 text-sm text-white shadow-sm hover:bg-[#27428d] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-[#3453a7]"
+              >
+                تنفيذ للكل
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-2.5">
