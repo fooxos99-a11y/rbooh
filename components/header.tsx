@@ -1442,12 +1442,6 @@ export function Header() {
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 p-5 pt-3">
-              {!isWhatsappHeaderConnected(whatsappQrStatus) ? (
-                <div className={`rounded-2xl border px-4 py-2.5 text-center text-sm font-black ${getWhatsappHeaderStatusText(whatsappQrStatus).tone}`}>
-                  {getWhatsappHeaderStatusText(whatsappQrStatus).title}
-                </div>
-              ) : null}
-
               <div className="flex min-h-[188px] items-center justify-center rounded-[20px] border border-[#eceff3] bg-white p-2.5">
                 {isWhatsappQrLoading ? (
                   <SiteLoader size="md" color="#3453a7" />
