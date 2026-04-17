@@ -52,9 +52,9 @@ function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse) {
 		case "disconnecting":
 		case "fetching_qr":
 		case "starting":
-			return 2500
+			return 1200
 		case "waiting_for_qr":
-			return 10000
+			return 1500
 		default:
 			return 0
 	}
@@ -82,13 +82,13 @@ function getStatusUi(status: WhatsAppStatusResponse) {
 			return {
 				label: "الباركود جاهز",
 				tone: "bg-amber-50 text-amber-700 border-amber-200",
-				description: "امسح الباركود من تطبيق واتساب لإكمال الربط.",
+					description: "الباركود جاهز لإكمال الربط.",
 			}
 		case "authenticating":
 			return {
 				label: "جاري التحقق",
 				tone: "bg-sky-50 text-sky-700 border-sky-200",
-				description: "تمت قراءة الباركود. يرجى عدم الخروج من نافذة الأجهزة المرتبطة في واتساب حتى يكتمل الربط.",
+					description: "تمت قراءة الباركود بالفعل. لا تعِد مسحه مرة ثانية، فقط انتظر حتى يكتمل الربط.",
 			}
 		case "auth_failed":
 			return {

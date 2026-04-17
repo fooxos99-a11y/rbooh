@@ -117,18 +117,35 @@ function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
     }
   }
 
-  if (
-    status.status === "authenticating"
-    || status.status === "starting"
-    || status.status === "disconnecting"
-    || status.status === "fetching_qr"
-    || status.qrAvailable
-  ) {
+  if (status.status === "authenticating") {
     return {
-      title: "Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø±Ø¨Ø·",
-      description: "Ø§Ù…Ø³Ø­ Ø§Ù„Ø¨Ø§Ø±ÙƒÙˆØ¯ Ù…Ù† ÙˆØ§ØªØ³Ø§Ø¨ ÙˆØ§Ù†ØªØ¸Ø± Ø§ÙƒØªÙ…Ø§Ù„ Ø§Ù„Ø±Ø¨Ø·.",
+      title: "تمت قراءة الباركود",
+      description: "لا تمسح الباركود مرة ثانية. انتظر حتى يكتمل الربط داخل واتساب.",
+      tone: "text-sky-700 bg-sky-50 border-sky-200",
+      icon: CheckCircle2,
+    }
+  }
+
+  if (status.status === "waiting_for_qr" || status.qrAvailable) {
+    return {
+      title: "الباركود جاهز",
+      description: "الباركود جاهز، وبعد القراءة انتظر انتقال الحالة تلقائياً.",
       tone: "text-amber-700 bg-amber-50 border-amber-200",
       icon: QrCode,
+    }
+  }
+
+  if (
+    status.status === "starting"
+    || status.status === "disconnecting"
+    || status.status === "fetching_qr"
+    || status.status === "restarting"
+  ) {
+    return {
+      title: "جاري تجهيز الجلسة",
+      description: "يتم الآن تجهيز واتساب أو طلب باركود جديد، انتظر قليلاً.",
+      tone: "text-slate-700 bg-slate-50 border-slate-200",
+      icon: Smartphone,
     }
   }
 
@@ -136,6 +153,15 @@ function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
     return {
       title: "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø±Ø¨Ø·",
       description: "Ù„Ù† ÙŠØ¸Ù‡Ø± Ø¨Ø§Ø±ÙƒÙˆØ¯ Ø¬Ø¯ÙŠØ¯ Ø­ØªÙ‰ ÙŠØ¹Ù…Ù„ Ø§Ù„Ø¹Ø§Ù…Ù„ Ù…Ø±Ø© Ø£Ø®Ø±Ù‰.",
+      tone: "text-rose-700 bg-rose-50 border-rose-200",
+      icon: AlertTriangle,
+    }
+  }
+
+  if (status.status === "auth_failed" || status.status === "disconnected") {
+    return {
+      title: "انقطع الربط",
+      description: "إذا ظهر باركود جديد امسحه مرة واحدة فقط، ولا تكرر المسح بعد انتقال الحالة.",
       tone: "text-rose-700 bg-rose-50 border-rose-200",
       icon: AlertTriangle,
     }
@@ -636,7 +662,7 @@ export function Header() {
     try {
       const response = await fetch("/api/contact", { cache: "no-store" });
       const data = await response.json();
-      const messages = Array.isArray(data.messages) ? data.messages : [];
+      const messages = Array.isArray(data.messages) ? data.messages as Array<{ status?: string | null }> : [];
       const nextUnreadCount = messages.filter((message) => message?.status === "unread").length;
       setContactReportsUnreadCount(nextUnreadCount);
       localStorage.setItem("contactReportsUnreadCount", String(nextUnreadCount));
@@ -828,7 +854,7 @@ export function Header() {
 
     const intervalId = window.setInterval(() => {
       void fetchWhatsappQrStatus(true);
-    }, 4000);
+    }, 1500);
 
     return () => window.clearInterval(intervalId);
   }, [isWhatsappQrDialogOpen]);
