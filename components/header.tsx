@@ -41,6 +41,7 @@ import {
   Smartphone,
   AlertTriangle,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
@@ -833,6 +834,22 @@ export function Header() {
     return () => window.clearInterval(intervalId);
   }, [isWhatsappQrDialogOpen]);
 
+  const handleWhatsappQrRefresh = async () => {
+    setWhatsappQrImageFailed(false);
+    setIsWhatsappQrLoading(true);
+    try {
+      if (whatsappQrStatus.workerOnline) {
+        await fetch("/api/whatsapp/disconnect", { method: "POST" });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    // Wait for the worker to pick up the disconnect command (up to 5s)
+    setTimeout(() => {
+      void fetchWhatsappQrStatus(false);
+    }, 6000);
+  };
+
   const handleWhatsappQrDisconnect = async () => {
     const confirmed = await confirmDialog({
       title: "إلغاء ربط واتساب",
@@ -1434,60 +1451,90 @@ export function Header() {
         </div>
         <GlobalAddStudentDialog />
         <Dialog open={isWhatsappQrDialogOpen} onOpenChange={setIsWhatsappQrDialogOpen}>
-          <DialogContent className="max-w-[92vw] rounded-[24px] border border-[#e5e7eb] p-0 sm:max-w-[360px]" dir="rtl">
-            <DialogHeader className="px-5 pb-0 pt-5 text-right">
-              <DialogTitle className="flex items-center justify-start gap-2 text-lg font-black text-[#1a2332]">
-                <QrCode className="h-5 w-5 text-[#3453a7]" />
-                باركود الواتساب
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3 p-5 pt-3">
-              <div className="flex min-h-[188px] items-center justify-center rounded-[20px] border border-[#eceff3] bg-white p-2.5">
+          <DialogContent className="max-w-[92vw] rounded-[24px] border border-[#e5e7eb] p-6 sm:max-w-[360px] shadow-2xl bg-white" dir="rtl" showCloseButton={false}>
+            <DialogTitle className="sr-only">ربط واتساب</DialogTitle>
+            <div className="flex flex-col items-center justify-center bg-white">
+              <div className="flex w-full items-center justify-start gap-2 mb-5">
+                <QrCode className="h-6 w-6 text-[#3453a7]" />
+                <span className="text-xl font-black text-[#1a2332]">ربط الهاتف</span>
+              </div>
+              
+              <div className="relative flex w-full flex-col items-center justify-center">
                 {isWhatsappQrLoading ? (
-                  <SiteLoader size="md" color="#3453a7" />
-                ) : whatsappQrStatus.qrAvailable && whatsappQrStatus.qrImageUrl && !whatsappQrImageFailed ? (
-                  <img
-                    src={whatsappQrStatus.qrImageUrl}
-                    alt="باركود واتساب"
-                    className="h-auto w-full max-w-[210px] rounded-2xl bg-white"
-                    onError={() => setWhatsappQrImageFailed(true)}
-                  />
+                  <div className="flex flex-col items-center justify-center gap-3 py-4 mb-5">
+                    <SiteLoader size="md" color="#3453a7" />
+                    <p className="text-sm font-semibold text-[#64748b]">جاري التحديث...</p>
+                  </div>
+                ) : !isWhatsappHeaderConnected(whatsappQrStatus) && whatsappQrStatus.qrAvailable && whatsappQrStatus.qrImageUrl && !whatsappQrImageFailed ? (
+                  <div className="relative flex w-full flex-col items-center justify-center gap-3 h-auto mix-blend-multiply mb-5">
+                    <img
+                      src={`${whatsappQrStatus.qrImageUrl}&refresh=${Date.now()}`}
+                      alt="باركود واتساب"
+                      className="h-auto w-full max-w-[210px] rounded-xl"
+                      onError={() => setWhatsappQrImageFailed(true)}
+                    />
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 text-center">
+                  <div className="flex flex-col items-center justify-center gap-3 text-center px-4 py-4 mb-5">
                     {(() => {
                       const StatusIcon = getWhatsappHeaderStatusText(whatsappQrStatus).icon
-                      return <StatusIcon className="h-11 w-11 text-[#3453a7]" />
+                      const statusTone = getWhatsappHeaderStatusText(whatsappQrStatus).tone
+                      
+                      const iconColorClass = statusTone.match(/text-\w+-\d+/)?.[0] || 'text-[#3453a7]'
+                      const bgAndBorder = statusTone.replace(/text-\w+-\d+/g, '')
+
+                      return (
+                        <div className={`flex h-16 w-16 items-center justify-center rounded-[20px] border shadow-sm ${bgAndBorder}`}>
+                          <StatusIcon className={`h-8 w-8 ${iconColorClass}`} />
+                        </div>
+                      )
                     })()}
-                    <p className="text-base font-black text-[#1a2332]">{getWhatsappHeaderStatusText(whatsappQrStatus).title}</p>
+                    <p className="text-lg font-black text-[#1a2332] mt-1">{getWhatsappHeaderStatusText(whatsappQrStatus).title}</p>
                   </div>
                 )}
               </div>
 
-              {!isWhatsappHeaderConnected(whatsappQrStatus) ? (
-                <p className="text-center text-xs font-bold leading-6 text-[#64748b]">
-                  {getWhatsappHeaderStatusText(whatsappQrStatus).description}
-                </p>
-              ) : null}
-
               {whatsappQrStatus.lastError && !isWhatsappHeaderConnected(whatsappQrStatus) ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-center text-xs font-bold leading-6 text-rose-700">
+                <div className="mb-6 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3.5 text-center text-sm font-bold leading-relaxed text-rose-700 shadow-sm">
                   {whatsappQrStatus.lastError}
                 </div>
               ) : null}
 
-              <div className="flex items-center justify-center gap-3">
+              <div className="flex w-full flex-col gap-3">
+                {!isWhatsappHeaderConnected(whatsappQrStatus) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleWhatsappQrRefresh}
+                    disabled={isWhatsappQrLoading}
+                    className="w-full h-12 rounded-2xl border-[#dbe7ff] bg-[#f8faff] text-[15px] font-bold text-[#3453a7] shadow-[0_6px_18px_rgba(59,130,246,0.05)] transition-all hover:bg-[#eff4ff] hover:border-[#c5d6f8] disabled:opacity-70"
+                  >
+                    <RefreshCw className={`me-2 h-4 w-4 ${isWhatsappQrLoading ? 'animate-spin' : ''}`} />
+                    تحديث الباركود
+                  </Button>
+                ) : null}
+
                 {isWhatsappHeaderConnected(whatsappQrStatus) ? (
                 <Button
                   type="button"
                   variant="outline"
                   onClick={handleWhatsappQrDisconnect}
-                  className="h-9 rounded-2xl border-rose-200 bg-rose-50 px-4 text-sm font-black text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full h-12 rounded-2xl border-rose-200 bg-rose-50 px-5 text-[15px] font-black text-rose-700 transition-all hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={isWhatsappQrDisconnecting}
                 >
-                  <LogOut className="me-1.5 h-4 w-4" />
-                  {isWhatsappQrDisconnecting ? "جاري الإلغاء..." : "إلغاء الربط"}
+                  <LogOut className="me-2 h-4 w-4" />
+                  {isWhatsappQrDisconnecting ? "يُفصل..." : "إلغاء الربط"}
                 </Button>
                 ) : null}
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsWhatsappQrDialogOpen(false)}
+                  className="w-full h-12 rounded-2xl text-[15px] font-bold text-[#64748b] hover:bg-gray-100 hover:text-[#334155]"
+                >
+                  إغلاق
+                </Button>
               </div>
             </div>
           </DialogContent>
