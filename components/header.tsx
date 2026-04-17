@@ -41,8 +41,7 @@ import {
   Smartphone,
   AlertTriangle,
   CheckCircle2,
-  RefreshCw,
-} from "lucide-react";
+  RefreshCw, ServerCrash } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client";
@@ -111,8 +110,8 @@ const DEFAULT_WHATSAPP_HEADER_STATUS: WhatsAppHeaderStatus = {
 function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
   if (status.ready && status.authenticated && status.status === "connected") {
     return {
-      title: "تم الربط",
-      description: "الجهاز متصل وجاهز للإرسال.",
+      title: "ØªÙ… Ø§Ù„Ø±Ø¨Ø·",
+      description: "Ø§Ù„Ø¬Ù‡Ø§Ø² Ù…ØªØµÙ„ ÙˆØ¬Ø§Ù‡Ø² Ù„Ù„Ø¥Ø±Ø³Ø§Ù„.",
       tone: "text-emerald-700 bg-emerald-50 border-emerald-200",
       icon: CheckCircle2,
     }
@@ -126,8 +125,8 @@ function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
     || status.qrAvailable
   ) {
     return {
-      title: "جاري الربط",
-      description: "امسح الباركود من واتساب وانتظر اكتمال الربط.",
+      title: "Ø¬Ø§Ø±ÙŠ Ø§Ù„Ø±Ø¨Ø·",
+      description: "Ø§Ù…Ø³Ø­ Ø§Ù„Ø¨Ø§Ø±ÙƒÙˆØ¯ Ù…Ù† ÙˆØ§ØªØ³Ø§Ø¨ ÙˆØ§Ù†ØªØ¸Ø± Ø§ÙƒØªÙ…Ø§Ù„ Ø§Ù„Ø±Ø¨Ø·.",
       tone: "text-amber-700 bg-amber-50 border-amber-200",
       icon: QrCode,
     }
@@ -135,16 +134,16 @@ function getWhatsappHeaderStatusText(status: WhatsAppHeaderStatus) {
 
   if (!status.workerOnline) {
     return {
-      title: "لم يتم الربط",
-      description: "لن يظهر باركود جديد حتى يعمل العامل مرة أخرى.",
+      title: "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø±Ø¨Ø·",
+      description: "Ù„Ù† ÙŠØ¸Ù‡Ø± Ø¨Ø§Ø±ÙƒÙˆØ¯ Ø¬Ø¯ÙŠØ¯ Ø­ØªÙ‰ ÙŠØ¹Ù…Ù„ Ø§Ù„Ø¹Ø§Ù…Ù„ Ù…Ø±Ø© Ø£Ø®Ø±Ù‰.",
       tone: "text-rose-700 bg-rose-50 border-rose-200",
       icon: AlertTriangle,
     }
   }
 
   return {
-    title: "لم يتم الربط",
-    description: "يتم الآن تجهيز الجلسة أو انتظار باركود جديد.",
+    title: "Ù„Ù… ÙŠØªÙ… Ø§Ù„Ø±Ø¨Ø·",
+    description: "ÙŠØªÙ… Ø§Ù„Ø¢Ù† ØªØ¬Ù‡ÙŠØ² Ø§Ù„Ø¬Ù„Ø³Ø© Ø£Ùˆ Ø§Ù†ØªØ¸Ø§Ø± Ø¨Ø§Ø±ÙƒÙˆØ¯ Ø¬Ø¯ÙŠØ¯.",
     tone: "text-slate-700 bg-slate-50 border-slate-200",
     icon: Smartphone,
   }
@@ -164,10 +163,10 @@ const ROLE_CACHE_DURATION = 5 * 60 * 1000;
 const CONTACT_REPORTS_CACHE_DURATION = 60 * 1000;
 
 const PERMISSION_ALIASES: Record<string, string[]> = {
-  "الإختبارات": ["الإختبارات", "إدارة المسار"],
-  "إدارة المسار": ["إدارة المسار", "الإختبارات"],
-  "يوم السرد": ["يوم السرد", "التقارير"],
-  "التقارير": ["التقارير", "يوم السرد"],
+  "Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª": ["Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª", "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³Ø§Ø±"],
+  "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³Ø§Ø±": ["Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³Ø§Ø±", "Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª"],
+  "ÙŠÙˆÙ… Ø§Ù„Ø³Ø±Ø¯": ["ÙŠÙˆÙ… Ø§Ù„Ø³Ø±Ø¯", "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±"],
+  "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±": ["Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±", "ÙŠÙˆÙ… Ø§Ù„Ø³Ø±Ø¯"],
 }
 
 const scheduleIdleTask = (callback: () => void, timeout = 1200) => {
@@ -404,13 +403,13 @@ function StudentStatsCluster({
     <div className={`${compact ? "student-drawer-stats" : "student-header-stats"} ${className}`} style={{ direction: "ltr" }}>
       {showLevel ? <StudentLevelBadge currentLevel={currentLevel} displayProgress={displayProgress} /> : null}
       <StudentStatPill
-        label="الترتيب العام"
+        label="Ø§Ù„ØªØ±ØªÙŠØ¨ Ø§Ù„Ø¹Ø§Ù…"
         value={globalRank ?? "-"}
         compact={compact}
         icon={<StudentRankIcon className="student-stat-icon text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)]" />}
       />
       <StudentStatPill
-        label="النقاط"
+        label="Ø§Ù„Ù†Ù‚Ø§Ø·"
         value={points}
         compact={compact}
         icon={<Star className="student-stat-icon fill-[#ffd766] text-[#ffd766] drop-shadow-[0_0_7px_rgba(255,215,102,0.30)]" strokeWidth={1.9} />}
@@ -516,11 +515,11 @@ export function Header() {
 
   const [validAdminRoles, setValidAdminRoles] = useState<string[]>([
     "admin",
-    "مدير",
-    "سكرتير",
-    "مشرف تعليمي",
-    "مشرف تربوي",
-    "مشرف برامج",
+    "Ù…Ø¯ÙŠØ±",
+    "Ø³ÙƒØ±ØªÙŠØ±",
+    "Ù…Ø´Ø±Ù ØªØ¹Ù„ÙŠÙ…ÙŠ",
+    "Ù…Ø´Ø±Ù ØªØ±Ø¨ÙˆÙŠ",
+    "Ù…Ø´Ø±Ù Ø¨Ø±Ø§Ù…Ø¬",
   ]);
 
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
@@ -545,7 +544,7 @@ export function Header() {
 
   const isAdmin = userAccountNumber === 2 || validAdminRoles.includes(userRole || "");
 
-  const isFullAccess = userAccountNumber === 2 || userRole === "admin" || userRole === "مدير" || userPermissions.includes("all");
+  const isFullAccess = userAccountNumber === 2 || userRole === "admin" || userRole === "Ù…Ø¯ÙŠØ±" || userPermissions.includes("all");
 
   const hasPermission = (key: string) => {
     if (isFullAccess) {
@@ -657,7 +656,7 @@ export function Header() {
 
   useEffect(() => {
       const cleanups: Array<() => void> = [];
-        // جلب الترتيب العام للطالب عند تحميل القائمة الجانبية
+        // Ø¬Ù„Ø¨ Ø§Ù„ØªØ±ØªÙŠØ¨ Ø§Ù„Ø¹Ø§Ù… Ù„Ù„Ø·Ø§Ù„Ø¨ Ø¹Ù†Ø¯ ØªØ­Ù…ÙŠÙ„ Ø§Ù„Ù‚Ø§Ø¦Ù…Ø© Ø§Ù„Ø¬Ø§Ù†Ø¨ÙŠØ©
         const fetchGlobalRank = async () => {
           const accNum = localStorage.getItem("accountNumber");
           const role = localStorage.getItem("userRole");
@@ -672,7 +671,7 @@ export function Header() {
           }
           if (accNum && role === "student") {
             try {
-              // جلب بيانات الطالب للحصول على studentId
+              // Ø¬Ù„Ø¨ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø·Ø§Ù„Ø¨ Ù„Ù„Ø­ØµÙˆÙ„ Ø¹Ù„Ù‰ studentId
               const resStudents = await fetch(`/api/students?account_number=${accNum}`);
               const dataStudents = await resStudents.json();
               const student = (dataStudents.students || []).find((s:any) => String(s.account_number) === String(accNum));
@@ -789,7 +788,7 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    if (!authResolved || !hasPermission("التقارير")) {
+    if (!authResolved || !hasPermission("Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±")) {
       setContactReportsUnreadCount(0);
       return;
     }
@@ -812,7 +811,7 @@ export function Header() {
   }, [authResolved, userPermissions, userRole, userAccountNumber]);
 
   useEffect(() => {
-    if (!authResolved || !isLoggedIn || userRole === "student" || !hasPermission("الإرسال إلى أولياء الأمور")) {
+    if (!authResolved || !isLoggedIn || userRole === "student" || !hasPermission("Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¥Ù„Ù‰ Ø£ÙˆÙ„ÙŠØ§Ø¡ Ø§Ù„Ø£Ù…ÙˆØ±")) {
       setHasResolvedWhatsappQrStatus(false);
       return;
     }
@@ -852,10 +851,10 @@ export function Header() {
 
   const handleWhatsappQrDisconnect = async () => {
     const confirmed = await confirmDialog({
-      title: "إلغاء ربط واتساب",
-      description: "سيتم فصل الجوال الحالي وإنشاء باركود جديد. هل تريد المتابعة؟",
-      confirmText: "إلغاء الربط",
-      cancelText: "تراجع",
+      title: "Ø¥Ù„ØºØ§Ø¡ Ø±Ø¨Ø· ÙˆØ§ØªØ³Ø§Ø¨",
+      description: "Ø³ÙŠØªÙ… ÙØµÙ„ Ø§Ù„Ø¬ÙˆØ§Ù„ Ø§Ù„Ø­Ø§Ù„ÙŠ ÙˆØ¥Ù†Ø´Ø§Ø¡ Ø¨Ø§Ø±ÙƒÙˆØ¯ Ø¬Ø¯ÙŠØ¯. Ù‡Ù„ ØªØ±ÙŠØ¯ Ø§Ù„Ù…ØªØ§Ø¨Ø¹Ø©ØŸ",
+      confirmText: "Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø±Ø¨Ø·",
+      cancelText: "ØªØ±Ø§Ø¬Ø¹",
     });
 
     if (!confirmed) {
@@ -893,7 +892,7 @@ export function Header() {
 
   useEffect(() => {
     const handleContactMessagesChanged = () => {
-      if (!authResolved || !hasPermission("التقارير")) {
+      if (!authResolved || !hasPermission("Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±")) {
         return;
       }
 
@@ -921,12 +920,12 @@ export function Header() {
 
       // Fetch valid admin roles dynamically from API
       let freshAdminRoles = [
-        "ادمين",
-        "مدير",
-        "سكرتير",
-        "مشرف تعليمي",
-        "مشرف تربوي",
-        "مشرف برامج",
+        "Ø§Ø¯Ù…ÙŠÙ†",
+        "Ù…Ø¯ÙŠØ±",
+        "Ø³ÙƒØ±ØªÙŠØ±",
+        "Ù…Ø´Ø±Ù ØªØ¹Ù„ÙŠÙ…ÙŠ",
+        "Ù…Ø´Ø±Ù ØªØ±Ø¨ÙˆÙŠ",
+        "Ù…Ø´Ø±Ù Ø¨Ø±Ø§Ù…Ø¬",
       ];
       try {
         const res = await fetch("/api/roles");
@@ -957,7 +956,7 @@ export function Header() {
           freshRole !== "teacher" &&
           freshRole !== "deputy_teacher")
       ) {
-        // No redirect here — just update sidebar. Redirect happens on admin pages via useAdminAuth.
+        // No redirect here â€” just update sidebar. Redirect happens on admin pages via useAdminAuth.
       }
     } catch {}
   };
@@ -1054,13 +1053,13 @@ export function Header() {
         setSidebarPlanProgress(planData.progressPercent ?? 0);
         setSidebarQuranProgress(planData.quranProgressPercent ?? 0);
         setSidebarQuranLevel(planData.quranLevel ?? 0);
-        setSidebarPlanName(`${planData.plan.start_surah_name} ← ${planData.plan.end_surah_name}`);
+        setSidebarPlanName(`${planData.plan.start_surah_name} â† ${planData.plan.end_surah_name}`);
         localStorage.setItem(`studentHeaderStats_${accNum}`, JSON.stringify({
           sidebarPlanProgress: planData.progressPercent ?? 0,
           sidebarQuranProgress: planData.quranProgressPercent ?? 0,
           sidebarQuranLevel: planData.quranLevel ?? 0,
           sidebarStudentPoints: Number(student.points) || 0,
-          sidebarPlanName: `${planData.plan.start_surah_name} ← ${planData.plan.end_surah_name}`,
+          sidebarPlanName: `${planData.plan.start_surah_name} â† ${planData.plan.end_surah_name}`,
         }));
       } else {
         const quranProgress = planData.quranProgressPercent ?? 0;
@@ -1098,13 +1097,13 @@ export function Header() {
 
   const handleLogout = async () => {
     const confirmed = await confirmDialog({
-      title: "تأكيد تسجيل الخروج",
+      title: "ØªØ£ÙƒÙŠØ¯ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬",
 
-      description: "هل أنت متأكد من أنك تريد تسجيل الخروج؟",
+      description: "Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø£Ù†Ùƒ ØªØ±ÙŠØ¯ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬ØŸ",
 
-      confirmText: "نعم، تسجيل الخروج",
+      confirmText: "Ù†Ø¹Ù…ØŒ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬",
 
-      cancelText: "إلغاء",
+      cancelText: "Ø¥Ù„ØºØ§Ø¡",
     });
 
     if (confirmed) {
@@ -1152,13 +1151,13 @@ export function Header() {
   };
 
   const roleLabel = isAdmin
-    ? (userAccountNumber === 2 ? "مدير" : (userRole || "مشرف"))
+    ? (userAccountNumber === 2 ? "Ù…Ø¯ÙŠØ±" : (userRole || "Ù…Ø´Ø±Ù"))
     : userRole === "teacher"
-      ? "معلم"
+      ? "Ù…Ø¹Ù„Ù…"
       : userRole === "deputy_teacher"
-        ? "نائب معلم"
+        ? "Ù†Ø§Ø¦Ø¨ Ù…Ø¹Ù„Ù…"
         : userRole === "student"
-        ? "طالب"
+        ? "Ø·Ø§Ù„Ø¨"
         : "";
 
   const isStudentHeaderStatsReady =
@@ -1188,7 +1187,7 @@ export function Header() {
           <button
             className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-white/10 transition-colors"
             onClick={() => setIsMobileMenuOpen(true)}
-            aria-label="القائمة"
+            aria-label="Ø§Ù„Ù‚Ø§Ø¦Ù…Ø©"
           >
             <Menu size={26} />
           </button>
@@ -1198,7 +1197,7 @@ export function Header() {
                 className="h-10 rounded-full bg-white/10 px-4 text-sm font-black text-white transition-colors hover:bg-white/15"
                 onClick={openDailyExecution}
               >
-                التنفيذ
+                Ø§Ù„ØªÙ†ÙÙŠØ°
               </button>
               <DropdownMenu onOpenChange={async (open) => {
                 if (!open) return;
@@ -1231,7 +1230,7 @@ export function Header() {
                 <DropdownMenuTrigger asChild>
                   <button
                     className="relative w-10 h-10 rounded-full flex items-center justify-center hover:bg-white/10 transition-colors"
-                    aria-label="الإشعارات"
+                    aria-label="Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª"
                   >
                     <Bell size={22} className="text-white" />
                     {unreadCount > 0 && (
@@ -1247,7 +1246,7 @@ export function Header() {
                       <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
                         <Bell size={13} className="text-[#003f55]" />
                       </div>
-                      <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
+                      <span className="font-bold text-gray-800 text-sm">Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª</span>
                     </div>
                     {notifications.length > 0 && (
                       <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
@@ -1265,7 +1264,7 @@ export function Header() {
                         <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
                           <Bell size={24} className="text-[#003f55]/60" />
                         </div>
-                        <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                        <p className="text-sm text-gray-400 font-medium">Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª</p>
                       </div>
                     ) : (
                       <div>
@@ -1309,8 +1308,8 @@ export function Header() {
 
           <div className="absolute left-1/2 -translate-x-1/2 top-1/2 -translate-y-1/2 z-10">
             <Image
-              src="/ربوة.png"
-              alt="ربوة"
+              src="/Ø±Ø¨ÙˆØ©.png"
+              alt="Ø±Ø¨ÙˆØ©"
               width={100}
               height={60}
               className="w-20 md:w-24 h-auto cursor-pointer"
@@ -1321,11 +1320,11 @@ export function Header() {
           <div className="absolute left-4 top-1/2 z-20 flex -translate-y-1/2 items-center gap-2">
             {isLoggedIn && userRole !== "student" && (
               <>
-                {hasPermission("الإرسال إلى أولياء الأمور") && (
+                {hasPermission("Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¥Ù„Ù‰ Ø£ÙˆÙ„ÙŠØ§Ø¡ Ø§Ù„Ø£Ù…ÙˆØ±") && (
                   <button
                     type="button"
                     className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 transition-colors hover:bg-white/15"
-                    aria-label="باركود الواتساب"
+                    aria-label="Ø¨Ø§Ø±ÙƒÙˆØ¯ Ø§Ù„ÙˆØ§ØªØ³Ø§Ø¨"
                     onClick={() => setIsWhatsappQrDialogOpen(true)}
                   >
                     <QrCode size={21} className="text-white" />
@@ -1367,7 +1366,7 @@ export function Header() {
                   <DropdownMenuTrigger asChild>
                     <button
                       className="relative flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 transition-colors hover:bg-white/15"
-                      aria-label="الإشعارات"
+                      aria-label="Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª"
                     >
                       <Bell size={22} className="text-white" />
                       {unreadCount > 0 && (
@@ -1383,7 +1382,7 @@ export function Header() {
                         <div className="w-6 h-6 rounded-full bg-[#3453a7]/12 flex items-center justify-center">
                           <Bell size={13} className="text-[#003f55]" />
                         </div>
-                        <span className="font-bold text-gray-800 text-sm">الإشعارات</span>
+                        <span className="font-bold text-gray-800 text-sm">Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª</span>
                       </div>
                       {notifications.length > 0 && (
                         <span className="text-[11px] bg-[#3453a7]/10 text-[#3453a7] px-2 py-0.5 rounded-full font-semibold">
@@ -1401,7 +1400,7 @@ export function Header() {
                           <div className="w-14 h-14 rounded-full bg-[#3453a7]/10 flex items-center justify-center">
                             <Bell size={24} className="text-[#003f55]/60" />
                           </div>
-                          <p className="text-sm text-gray-400 font-medium">لا توجد إشعارات</p>
+                          <p className="text-sm text-gray-400 font-medium">Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª</p>
                         </div>
                       ) : (
                         <div>
@@ -1444,7 +1443,7 @@ export function Header() {
                 onClick={() => handleNav("/login")}
                 className="h-10 rounded-full bg-white/10 px-5 text-sm font-extrabold text-white transition-colors hover:bg-white/15"
               >
-                دخول
+                Ø¯Ø®ÙˆÙ„
               </Button>
             )}
           </div>
@@ -1452,24 +1451,24 @@ export function Header() {
         <GlobalAddStudentDialog />
         <Dialog open={isWhatsappQrDialogOpen} onOpenChange={setIsWhatsappQrDialogOpen}>
           <DialogContent className="max-w-[92vw] rounded-[24px] border border-[#e5e7eb] p-6 sm:max-w-[360px] shadow-2xl bg-white" dir="rtl" showCloseButton={false}>
-            <DialogTitle className="sr-only">ربط واتساب</DialogTitle>
+            <DialogTitle className="sr-only">Ø±Ø¨Ø· ÙˆØ§ØªØ³Ø§Ø¨</DialogTitle>
             <div className="flex flex-col items-center justify-center bg-white">
               <div className="flex w-full items-center justify-start gap-2 mb-5">
                 <QrCode className="h-6 w-6 text-[#3453a7]" />
-                <span className="text-xl font-black text-[#1a2332]">ربط الهاتف</span>
+                <span className="text-xl font-black text-[#1a2332]">Ø±Ø¨Ø· Ø§Ù„Ù‡Ø§ØªÙ</span>
               </div>
               
               <div className="relative flex w-full flex-col items-center justify-center">
                 {isWhatsappQrLoading ? (
                   <div className="flex flex-col items-center justify-center gap-3 py-4 mb-5">
                     <SiteLoader size="md" color="#3453a7" />
-                    <p className="text-sm font-semibold text-[#64748b]">جاري التحديث...</p>
+                    <p className="text-sm font-semibold text-[#64748b]">Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ø¯ÙŠØ«...</p>
                   </div>
                 ) : !isWhatsappHeaderConnected(whatsappQrStatus) && whatsappQrStatus.qrAvailable && whatsappQrStatus.qrImageUrl && !whatsappQrImageFailed ? (
                   <div className="relative flex w-full flex-col items-center justify-center gap-3 h-auto mix-blend-multiply mb-5">
                     <img
                       src={`${whatsappQrStatus.qrImageUrl}&refresh=${Date.now()}`}
-                      alt="باركود واتساب"
+                      alt="Ø¨Ø§Ø±ÙƒÙˆØ¯ ÙˆØ§ØªØ³Ø§Ø¨"
                       className="h-auto w-full max-w-[210px] rounded-xl"
                       onError={() => setWhatsappQrImageFailed(true)}
                     />
@@ -1510,7 +1509,7 @@ export function Header() {
                     className="w-full h-12 rounded-2xl border-[#dbe7ff] bg-[#f8faff] text-[15px] font-bold text-[#3453a7] shadow-[0_6px_18px_rgba(59,130,246,0.05)] transition-all hover:bg-[#eff4ff] hover:border-[#c5d6f8] disabled:opacity-70"
                   >
                     <RefreshCw className={`me-2 h-4 w-4 ${isWhatsappQrLoading ? 'animate-spin' : ''}`} />
-                    تحديث الباركود
+                    ØªØ­Ø¯ÙŠØ« Ø§Ù„Ø¨Ø§Ø±ÙƒÙˆØ¯
                   </Button>
                 ) : null}
 
@@ -1523,7 +1522,7 @@ export function Header() {
                   disabled={isWhatsappQrDisconnecting}
                 >
                   <LogOut className="me-2 h-4 w-4" />
-                  {isWhatsappQrDisconnecting ? "يُفصل..." : "إلغاء الربط"}
+                  {isWhatsappQrDisconnecting ? "ÙŠÙÙØµÙ„..." : "Ø¥Ù„ØºØ§Ø¡ Ø§Ù„Ø±Ø¨Ø·"}
                 </Button>
                 ) : null}
 
@@ -1533,7 +1532,7 @@ export function Header() {
                   onClick={() => setIsWhatsappQrDialogOpen(false)}
                   className="w-full h-12 rounded-2xl text-[15px] font-bold text-[#64748b] hover:bg-gray-100 hover:text-[#334155]"
                 >
-                  إغلاق
+                  Ø¥ØºÙ„Ø§Ù‚
                 </Button>
               </div>
             </div>
@@ -1541,30 +1540,30 @@ export function Header() {
         </Dialog>
     </header>
 
-      {/* خلفية مظللة */}
+      {/* Ø®Ù„ÙÙŠØ© Ù…Ø¸Ù„Ù„Ø© */}
 
       <div
         className={`fixed inset-0 bg-black/50 z-[80] backdrop-blur-sm transition-opacity duration-300 ${isMobileMenuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
         onClick={() => setIsMobileMenuOpen(false)}
       />
 
-      {/* الدرج الجانبي */}
+      {/* Ø§Ù„Ø¯Ø±Ø¬ Ø§Ù„Ø¬Ø§Ù†Ø¨ÙŠ */}
 
       <div
         dir="rtl"
         className={`fixed top-0 right-0 h-full w-[300px] bg-[#f9fafb] z-[90] flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? "translate-x-0" : "translate-x-full"}`}
       >
-        {/* رأس الدرج */}
+        {/* Ø±Ø£Ø³ Ø§Ù„Ø¯Ø±Ø¬ */}
 
         <div
           className="px-4 pt-3 pb-4 flex-shrink-0"
           style={{ background: "linear-gradient(135deg, #0f2f6d 0%, #1f4d9a 55%, #3667b2 100%)" }}
         >
-          {/* الصف العلوي: اللوغو + إغلاق */}
+          {/* Ø§Ù„ØµÙ Ø§Ù„Ø¹Ù„ÙˆÙŠ: Ø§Ù„Ù„ÙˆØºÙˆ + Ø¥ØºÙ„Ø§Ù‚ */}
           <div className="flex items-center justify-between mb-3">
             <Image
-              src="/ربوة.png"
-              alt="ربوة"
+              src="/Ø±Ø¨ÙˆØ©.png"
+              alt="Ø±Ø¨ÙˆØ©"
               width={120}
               height={70}
               className="h-12 w-auto cursor-pointer"
@@ -1578,7 +1577,7 @@ export function Header() {
             </button>
           </div>
 
-          {/* معلومات المستخدم */}
+          {/* Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù… */}
           {isLoggedIn && (
             <>
               <div className="flex flex-col gap-1">
@@ -1590,7 +1589,7 @@ export function Header() {
                     <User size={18} className="text-white" />
                   </div>
                   <div className="flex-1 text-right min-w-0">
-                    <p className="text-white font-bold text-sm truncate">{userName || "المستخدم"}</p>
+                    <p className="text-white font-bold text-sm truncate">{userName || "Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…"}</p>
                     <p className="text-white/60 text-xs mt-0.5">{roleLabel}</p>
                   </div>
                   <ChevronLeft size={16} className="text-white/40 flex-shrink-0" />
@@ -1614,65 +1613,65 @@ export function Header() {
 
         </div>
 
-        {/* محتوى الدرج */}
+        {/* Ù…Ø­ØªÙˆÙ‰ Ø§Ù„Ø¯Ø±Ø¬ */}
 
         <div className="flex-1 overflow-y-auto bg-[#f9fafb] [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400">
 
           {isLoggedIn && (userRole === "teacher" || userRole === "deputy_teacher") && (
             <>
-              <SectionHeader title="الإدارة" />
+              <SectionHeader title="Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©" />
               <div className="px-2 mb-0">
                 {userRole === "teacher" && (
                   <NavItem
                     icon={BookMarked}
-                    label="خطط الطلاب"
+                    label="Ø®Ø·Ø· Ø§Ù„Ø·Ù„Ø§Ø¨"
                     onClick={() => handleNav("/teacher/student-plans")}
                   />
                 )}
                 <NavItem
                   icon={Users}
-                  label="إدارة الحلقة"
+                  label="Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ù„Ù‚Ø©"
                   onClick={() => handleNav("/teacher/halaqah/1")}
                 />
                 <NavItem
                   icon={BarChart3}
-                  label="تقارير الأسابيع"
+                  label="ØªÙ‚Ø§Ø±ÙŠØ± Ø§Ù„Ø£Ø³Ø§Ø¨ÙŠØ¹"
                   onClick={() => handleNav("/teacher/weekly-reports")}
                 />
               </div>
             </>
           )}
 
-          <SectionHeader title="المعلومات العامة" />
+          <SectionHeader title="Ø§Ù„Ù…Ø¹Ù„ÙˆÙ…Ø§Øª Ø§Ù„Ø¹Ø§Ù…Ø©" />
 
           <div className="px-2 mb-2">
             <NavItem
               icon={Home}
-              label="الرئيسية"
+              label="Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ©"
               onClick={() => handleNav("/")}
             />
 
             <NavItem
               icon={Trophy}
-              label="الإنجازات"
+              label="Ø§Ù„Ø¥Ù†Ø¬Ø§Ø²Ø§Øª"
               onClick={() => handleNav("/achievements")}
             />
 
             <NavItem
               icon={MessageSquare}
-              label="تواصل معنا"
+              label="ØªÙˆØ§ØµÙ„ Ù…Ø¹Ù†Ø§"
               onClick={() => handleNav("/contact")}
             />
 
             <NavItem
               icon={BookOpen}
-              label="أفضل الحلقات"
+              label="Ø£ÙØ¶Ù„ Ø§Ù„Ø­Ù„Ù‚Ø§Øª"
               onClick={() => handleNav("/halaqat/all")}
             />
 
             <CollapseSection
               icon={Star}
-              label="أفضل الطلاب"
+              label="Ø£ÙØ¶Ù„ Ø§Ù„Ø·Ù„Ø§Ø¨"
               isOpen={isTopStudentsOpen}
               onToggle={handleTopStudentsToggle}
             >
@@ -1684,7 +1683,7 @@ export function Header() {
                 <>
                   <NavItem
                     icon={Users}
-                    label="جميع الطلاب"
+                    label="Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø·Ù„Ø§Ø¨"
                     onClick={() => handleNav("/students/all?scope=all")}
                     indent
                   />
@@ -1705,36 +1704,36 @@ export function Header() {
 
           {isLoggedIn && userRole === "student" && (
             <>
-              <SectionHeader title="البيانات" />
+              <SectionHeader title="Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª" />
               <div className="px-2 mb-0">
                 <NavItem
                   icon={User}
-                  label="الملف الشخصي"
+                  label="Ø§Ù„Ù…Ù„Ù Ø§Ù„Ø´Ø®ØµÙŠ"
                   onClick={() => { handleNav("/profile?tab=profile"); setIsMobileMenuOpen(false); }}
                 />
                 <NavItem
                   icon={Award}
-                  label="الإنجازات"
+                  label="Ø§Ù„Ø¥Ù†Ø¬Ø§Ø²Ø§Øª"
                   onClick={() => { handleNav("/profile?tab=achievements"); setIsMobileMenuOpen(false); }}
                 />
                 <NavItem
                   icon={BarChart3}
-                  label="السجلات"
+                  label="Ø§Ù„Ø³Ø¬Ù„Ø§Øª"
                   onClick={() => { handleNav("/profile?tab=records"); setIsMobileMenuOpen(false); }}
                 />
                 <NavItem
                   icon={ClipboardCheck}
-                  label="التنفيذ اليومي"
+                  label="Ø§Ù„ØªÙ†ÙÙŠØ° Ø§Ù„ÙŠÙˆÙ…ÙŠ"
                   onClick={openDailyExecution}
                 />
                 <NavItem
                   icon={BookMarked}
-                  label="الخطة"
+                  label="Ø§Ù„Ø®Ø·Ø©"
                   onClick={() => { handleNav("/profile?tab=plan"); setIsMobileMenuOpen(false); }}
                 />
                 <NavItem
                   icon={Map}
-                  label="الإختبارات"
+                  label="Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª"
                   onClick={() => handleNav("/exams")}
                 />
               </div>
@@ -1743,22 +1742,22 @@ export function Header() {
 
           {isLoggedIn && isAdmin && (
             <>
-              <SectionHeader title="لوحة التحكم" />
+              <SectionHeader title="Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ…" />
 
               <div className="px-2 mb-0.5">
                 <NavItem
                   icon={ClipboardCheck}
-                  label="التحضير"
+                  label="Ø§Ù„ØªØ­Ø¶ÙŠØ±"
                   onClick={() => handleNav("/admin/staff-attendance")}
                 />
               </div>
 
-              {/* فئة إدارة الطلاب */}
+              {/* ÙØ¦Ø© Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø·Ù„Ø§Ø¨ */}
 
-              {hasPermission("إدارة الطلاب") && <div className="px-2 mb-0.5">
+              {hasPermission("Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø·Ù„Ø§Ø¨") && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={Users}
-                  label="إدارة الطلاب"
+                  label="Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø·Ù„Ø§Ø¨"
                   isOpen={isAdminStudentsOpen}
                   onToggle={() => setIsAdminStudentsOpen(!isAdminStudentsOpen)}
                 >
@@ -1766,7 +1765,7 @@ export function Header() {
                     {
                       icon: UserPlus,
 
-                      label: "إضافة طالب",
+                      label: "Ø¥Ø¶Ø§ÙØ© Ø·Ø§Ù„Ø¨",
 
                       path: "?action=add-student",
                     },
@@ -1774,7 +1773,7 @@ export function Header() {
                     {
                       icon: Users,
 
-                      label: "إضافة جماعية",
+                      label: "Ø¥Ø¶Ø§ÙØ© Ø¬Ù…Ø§Ø¹ÙŠØ©",
 
                       path: "?action=bulk-add",
                     },
@@ -1782,7 +1781,7 @@ export function Header() {
                     {
                       icon: UserMinus,
 
-                      label: "إزالة طالب",
+                      label: "Ø¥Ø²Ø§Ù„Ø© Ø·Ø§Ù„Ø¨",
 
                       path: "?action=remove-student",
                     },
@@ -1790,7 +1789,7 @@ export function Header() {
                     {
                       icon: ArrowRightLeft,
 
-                      label: "نقل طالب",
+                      label: "Ù†Ù‚Ù„ Ø·Ø§Ù„Ø¨",
 
                       path: "?action=transfer-student",
                     },
@@ -1798,7 +1797,7 @@ export function Header() {
                     {
                       icon: Settings,
 
-                      label: "تعديل بيانات الطالب",
+                      label: "ØªØ¹Ø¯ÙŠÙ„ Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„Ø·Ø§Ù„Ø¨",
 
                       path: "?action=edit-student",
                     },
@@ -1806,7 +1805,7 @@ export function Header() {
                     {
                       icon: Edit2,
 
-                      label: "تعديل نقاط الطالب",
+                      label: "ØªØ¹Ø¯ÙŠÙ„ Ù†Ù‚Ø§Ø· Ø§Ù„Ø·Ø§Ù„Ø¨",
 
                       path: "?action=edit-points",
                     },
@@ -1814,7 +1813,7 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "سجلات الطلاب",
+                      label: "Ø³Ø¬Ù„Ø§Øª Ø§Ù„Ø·Ù„Ø§Ø¨",
 
                       path: "?action=student-records",
                     },
@@ -1822,14 +1821,14 @@ export function Header() {
                     {
                       icon: Award,
 
-                      label: "إنجازات الطلاب",
+                      label: "Ø¥Ù†Ø¬Ø§Ø²Ø§Øª Ø§Ù„Ø·Ù„Ø§Ø¨",
 
                       path: "/admin/students-achievements",
                     },
                     {
                       icon: BookMarked,
 
-                      label: "خطط الطلاب",
+                      label: "Ø®Ø·Ø· Ø§Ù„Ø·Ù„Ø§Ø¨",
 
                       path: "/admin/student-plans",
                     },
@@ -1845,12 +1844,12 @@ export function Header() {
                 </CollapseSection>
               </div>}
 
-              {/* فئة إدارة المستخدمين */}
+              {/* ÙØ¦Ø© Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ† */}
 
-              {["إدارة المعلمين", "إدارة الحلقات", "الهيكل الإداري", "طلبات التسجيل"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
+              {["Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø¹Ù„Ù…ÙŠÙ†", "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ù„Ù‚Ø§Øª", "Ø§Ù„Ù‡ÙŠÙƒÙ„ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ", "Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªØ³Ø¬ÙŠÙ„"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={ShieldCheck}
-                  label="إدارة المستخدمين"
+                  label="Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³ØªØ®Ø¯Ù…ÙŠÙ†"
                   isOpen={isAdminCommOpen}
                   onToggle={() => setIsAdminCommOpen(!isAdminCommOpen)}
                 >
@@ -1858,7 +1857,7 @@ export function Header() {
                     {
                       icon: Settings,
 
-                      label: "إدارة المعلمين",
+                      label: "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø¹Ù„Ù…ÙŠÙ†",
 
                       path: "?action=teachers",
                     },
@@ -1866,7 +1865,7 @@ export function Header() {
                     {
                       icon: BookOpen,
 
-                      label: "إدارة الحلقات",
+                      label: "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø­Ù„Ù‚Ø§Øª",
 
                       path: "?action=circles",
                     },
@@ -1874,7 +1873,7 @@ export function Header() {
                     {
                       icon: ShieldCheck,
 
-                      label: "الهيكل الإداري",
+                      label: "Ø§Ù„Ù‡ÙŠÙƒÙ„ Ø§Ù„Ø¥Ø¯Ø§Ø±ÙŠ",
 
                       path: "?action=admins",
                     },
@@ -1882,7 +1881,7 @@ export function Header() {
                     {
                       icon: UserPlus,
 
-                      label: "طلبات التسجيل",
+                      label: "Ø·Ù„Ø¨Ø§Øª Ø§Ù„ØªØ³Ø¬ÙŠÙ„",
 
                       path: "/admin/enrollment-requests",
                     },
@@ -1898,12 +1897,12 @@ export function Header() {
                 </CollapseSection>
               </div>}
 
-              {/* فئة التقارير */}
+              {/* ÙØ¦Ø© Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ± */}
 
-              {["التقارير", "يوم السرد"].some((permission) => hasPermission(permission)) && <div className="px-2 mb-0.5">
+              {["Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±", "ÙŠÙˆÙ… Ø§Ù„Ø³Ø±Ø¯"].some((permission) => hasPermission(permission)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={FileText}
-                  label="التقارير"
+                  label="Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±"
                   badgeCount={contactReportsUnreadCount}
                   isOpen={isAdminReportsOpen}
                   onToggle={() => setIsAdminReportsOpen(!isAdminReportsOpen)}
@@ -1912,9 +1911,9 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "متابعة التنفيذ",
+                      label: "Ù…ØªØ§Ø¨Ø¹Ø© Ø§Ù„ØªÙ†ÙÙŠØ°",
 
-                      permKey: "التقارير",
+                      permKey: "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±",
 
                       path: "/admin/student-daily-attendance",
                     },
@@ -1922,9 +1921,9 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "تقرير الحلقات المختصر",
+                      label: "ØªÙ‚Ø±ÙŠØ± Ø§Ù„Ø­Ù„Ù‚Ø§Øª Ø§Ù„Ù…Ø®ØªØµØ±",
 
-                      permKey: "التقارير",
+                      permKey: "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±",
 
                       path: "/admin/reports/circle-short-report",
                     },
@@ -1932,9 +1931,9 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "تقارير المعلمين",
+                      label: "ØªÙ‚Ø§Ø±ÙŠØ± Ø§Ù„Ù…Ø¹Ù„Ù…ÙŠÙ†",
 
-                      permKey: "التقارير",
+                      permKey: "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±",
 
                       path: "/admin/teacher-attendance",
                     },
@@ -1942,9 +1941,9 @@ export function Header() {
                     {
                       icon: MessageSquare,
 
-                      label: "تقارير الرسائل",
+                      label: "ØªÙ‚Ø§Ø±ÙŠØ± Ø§Ù„Ø±Ø³Ø§Ø¦Ù„",
 
-                      permKey: "التقارير",
+                      permKey: "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±",
 
                       path: "/admin/reports",
                     },
@@ -1952,9 +1951,9 @@ export function Header() {
                     {
                       icon: BarChart3,
 
-                      label: "الإحصائيات",
+                      label: "Ø§Ù„Ø¥Ø­ØµØ§Ø¦ÙŠØ§Øª",
 
-                      permKey: "التقارير",
+                      permKey: "Ø§Ù„ØªÙ‚Ø§Ø±ÙŠØ±",
 
                       path: "/admin/statistics",
                     },
@@ -1965,18 +1964,18 @@ export function Header() {
                       label={label}
                       onClick={() => handleNav(path)}
                       indent
-                      badgeCount={label === "تقارير الرسائل" ? contactReportsUnreadCount : undefined}
+                      badgeCount={label === "ØªÙ‚Ø§Ø±ÙŠØ± Ø§Ù„Ø±Ø³Ø§Ø¦Ù„" ? contactReportsUnreadCount : undefined}
                     />
                   ))}
                 </CollapseSection>
               </div>}
 
-              {/* فئة الإدارة العامة */}
+              {/* ÙØ¦Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ø§Ù…Ø© */}
 
-              {["الإشعارات", "الإختبارات", "إدارة المسار", "إنهاء الفصل", "الإرسال إلى أولياء الأمور", "الصلاحيات", "المالية"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
+              {["Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª", "Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª", "Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ù…Ø³Ø§Ø±", "Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØµÙ„", "Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¥Ù„Ù‰ Ø£ÙˆÙ„ÙŠØ§Ø¡ Ø§Ù„Ø£Ù…ÙˆØ±", "Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ§Øª", "Ø§Ù„Ù…Ø§Ù„ÙŠØ©"].some(p => hasPermission(p)) && <div className="px-2 mb-0.5">
                 <CollapseSection
                   icon={Settings}
-                  label="الإدارة العامة"
+                  label="Ø§Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ø§Ù…Ø©"
                   isOpen={isAdminGeneralOpen}
                   onToggle={() => setIsAdminGeneralOpen(!isAdminGeneralOpen)}
                 >
@@ -1984,9 +1983,9 @@ export function Header() {
                     {
                       icon: Map,
 
-                      label: "الإختبارات",
+                      label: "Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª",
 
-                      permKey: "الإختبارات",
+                      permKey: "Ø§Ù„Ø¥Ø®ØªØ¨Ø§Ø±Ø§Øª",
 
                       path: "/admin/exams",
                     },
@@ -1994,9 +1993,9 @@ export function Header() {
                     {
                       icon: FileText,
 
-                      label: "الإشعارات",
+                      label: "Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª",
 
-                      permKey: "الإشعارات",
+                      permKey: "Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª",
 
                       path: "/admin/notifications",
                     },
@@ -2004,9 +2003,9 @@ export function Header() {
                     {
                       icon: ShieldCheck,
 
-                      label: "الصلاحيات",
+                      label: "Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ§Øª",
 
-                      permKey: "الصلاحيات",
+                      permKey: "Ø§Ù„ØµÙ„Ø§Ø­ÙŠØ§Øª",
 
                       path: "/admin/permissions",
                     },
@@ -2014,9 +2013,9 @@ export function Header() {
                     {
                       icon: Banknote,
 
-                      label: "المالية",
+                      label: "Ø§Ù„Ù…Ø§Ù„ÙŠØ©",
 
-                      permKey: "المالية",
+                      permKey: "Ø§Ù„Ù…Ø§Ù„ÙŠØ©",
 
                       path: "/admin/finance",
                     },
@@ -2024,9 +2023,9 @@ export function Header() {
                     {
                       icon: Send,
 
-                      label: "الإرسال إلى أولياء الأمور",
+                      label: "Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¥Ù„Ù‰ Ø£ÙˆÙ„ÙŠØ§Ø¡ Ø§Ù„Ø£Ù…ÙˆØ±",
 
-                      permKey: "الإرسال إلى أولياء الأمور",
+                      permKey: "Ø§Ù„Ø¥Ø±Ø³Ø§Ù„ Ø¥Ù„Ù‰ Ø£ÙˆÙ„ÙŠØ§Ø¡ Ø§Ù„Ø£Ù…ÙˆØ±",
 
                       path: "/admin/whatsapp-send",
                     },
@@ -2034,9 +2033,9 @@ export function Header() {
                     {
                       icon: Calendar,
 
-                      label: "إنهاء الفصل",
+                      label: "Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØµÙ„",
 
-                      permKey: "إنهاء الفصل",
+                      permKey: "Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„ÙØµÙ„",
 
                       path: "?action=end-semester",
                     },
@@ -2055,7 +2054,7 @@ export function Header() {
             </>
           )}
 
-          {/* تسجيل الخروج */}
+          {/* ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬ */}
           {isLoggedIn && (
             <div className="px-2 mt-1 mb-4">
               <button
@@ -2065,7 +2064,7 @@ export function Header() {
                 <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0">
                   <LogOut size={16} className="text-red-500" />
                 </div>
-                <span>تسجيل الخروج</span>
+                <span>ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬</span>
               </button>
             </div>
           )}
@@ -2076,3 +2075,6 @@ export function Header() {
 }
 
 export default Header;
+
+
+
