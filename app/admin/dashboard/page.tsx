@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic'
 
 import type React from "react"
 
-import { useEffect, useState, Suspense } from "react"
+import { useEffect, useRef, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -166,6 +166,8 @@ function AdminDashboard() {
   const [isStudentRecordsDialogOpen, setIsStudentRecordsDialogOpen] = useState(false)
   const [selectedCircleForRecords, setSelectedCircleForRecords] = useState("")
   const [selectedStudentForRecords, setSelectedStudentForRecords] = useState("")
+  const [recordStudents, setRecordStudents] = useState<any[]>([])
+  const [isLoadingRecordStudents, setIsLoadingRecordStudents] = useState(false)
   const [studentRecords, setStudentRecords] = useState<StudentTimelineRecord[]>([])
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
   const [selectedStudentName, setSelectedStudentName] = useState("")
@@ -207,6 +209,13 @@ function AdminDashboard() {
 
   const availableStudentsToRemove = getStudentsForCircle(selectedCircleToRemove)
   const availableStudentsToMove = getStudentsForCircle(moveSourceCircle)
+  const recordCircleOptions = Array.from(new Set([
+    ...circles.map((circle) => normalizeCircleKey(circle.name)),
+    ...Object.keys(studentsInCircles).map((circleName) => normalizeCircleKey(circleName)),
+  ].filter(Boolean))).sort((left, right) => left.localeCompare(right, "ar"))
+  const availableStudentsForRecords = recordStudents
+    .slice()
+    .sort((left, right) => String(left.name || "").localeCompare(String(right.name || ""), "ar"))
 
   const [isDragging, setIsDragging] = useState(false)
   const [isAchievementDragging, setIsAchievementDragging] = useState(false)
@@ -279,9 +288,17 @@ function AdminDashboard() {
   }
 
   const searchParams = useSearchParams()
+  const isMountedRef = useRef(false)
+  const recordStudentsRequestRef = useRef(0)
+  const studentRecordsRequestRef = useRef(0)
 
   useEffect(() => {
+    isMountedRef.current = true
     setIsMounted(true)
+
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
@@ -303,6 +320,8 @@ function AdminDashboard() {
   }
 
   useEffect(() => {
+    let cancelled = false
+
     const loggedIn = localStorage.getItem("isLoggedIn") === "true"
     const accountNumber = getNormalizedAccountNumber(
       localStorage.getItem("accountNumber") || localStorage.getItem("account_number")
@@ -334,15 +353,18 @@ function AdminDashboard() {
         localStorage.setItem("userRole", freshRole)
 
         const fullAccess = ["admin", "مدير"].includes(freshRole) || accountNumber === 2
+        if (cancelled || !isMountedRef.current) return
         setIsFullAccess(fullAccess)
 
         await Promise.all([fetchCircles(), fetchStudents(), fetchTeachers(), fetchAdmins()])
+        if (cancelled || !isMountedRef.current) return
 
         if (!fullAccess) {
           try {
             const res = await fetch("/api/roles")
             const data = await res.json()
             const perms: Record<string, string[]> = data.permissions || {}
+            if (cancelled || !isMountedRef.current) return
             setUserPermissions(perms[freshRole] || [])
           } catch {}
         }
@@ -350,9 +372,14 @@ function AdminDashboard() {
         router.push("/login")
         return
       }
+      if (cancelled || !isMountedRef.current) return
       setIsLoading(false)
     }
     loadData()
+
+    return () => {
+      cancelled = true
+    }
   }, [router])
 
   const fetchTeachers = async () => {
@@ -365,7 +392,7 @@ function AdminDashboard() {
         return
       }
 
-      if (data) {
+      if (data && isMountedRef.current) {
         setTotalTeachers(data.length)
         console.log("[v0] Teachers count:", data.length)
       }
@@ -384,7 +411,7 @@ function AdminDashboard() {
         return
       }
 
-      if (data) {
+      if (data && isMountedRef.current) {
         setTotalAdmins(data.length)
         console.log("[v0] Admins count:", data.length)
       }
@@ -398,7 +425,7 @@ function AdminDashboard() {
       const response = await fetch("/api/circles")
       const data = await response.json()
       console.log("[v0] Circles fetched:", data.circles)
-      if (data.circles) {
+      if (data.circles && isMountedRef.current) {
         setCircles(data.circles)
         setTotalCircles(data.circles.length)
         if (data.circles.length > 0 && !selectedCircleToAdd) {
@@ -416,7 +443,7 @@ function AdminDashboard() {
       const response = await fetch("/api/students")
       const data = await response.json()
 
-      if (data.students) {
+      if (data.students && isMountedRef.current) {
         setTotalStudents(data.students.length)
 
         const grouped: Record<string, any[]> = {}
@@ -434,15 +461,54 @@ function AdminDashboard() {
     }
   }
 
+  useEffect(() => {
+    if (!isStudentRecordsDialogOpen) {
+      return
+    }
+
+    void Promise.all([fetchCircles(), fetchStudents()])
+  }, [isStudentRecordsDialogOpen])
+
+  useEffect(() => {
+    if (!isStudentRecordsDialogOpen || !selectedCircleForRecords) {
+      setRecordStudents([])
+      return
+    }
+
+    const requestId = recordStudentsRequestRef.current + 1
+    recordStudentsRequestRef.current = requestId
+
+    const loadRecordStudents = async () => {
+      try {
+        setIsLoadingRecordStudents(true)
+        const response = await fetch(`/api/students?circle=${encodeURIComponent(selectedCircleForRecords)}`)
+        const data = await response.json()
+        if (!isMountedRef.current || recordStudentsRequestRef.current !== requestId) return
+        setRecordStudents(Array.isArray(data.students) ? data.students : [])
+      } catch (error) {
+        console.error("[dashboard] Error fetching record students:", error)
+        if (!isMountedRef.current || recordStudentsRequestRef.current !== requestId) return
+        setRecordStudents([])
+      } finally {
+        if (!isMountedRef.current || recordStudentsRequestRef.current !== requestId) return
+        setIsLoadingRecordStudents(false)
+      }
+    }
+
+    void loadRecordStudents()
+  }, [isStudentRecordsDialogOpen, selectedCircleForRecords])
+
   const fetchAchievements = async () => {
     setIsLoadingAchievements(true)
     try {
       const response = await fetch("/api/achievements")
       const data = await response.json()
+      if (!isMountedRef.current) return
       setAchievements(data.achievements || [])
     } catch (error) {
       console.error("[v0] Error fetching achievements:", error)
     } finally {
+      if (!isMountedRef.current) return
       setIsLoadingAchievements(false)
     }
   }
@@ -514,10 +580,12 @@ function AdminDashboard() {
       combinedUsers.push(...admins, ...teachers, ...students_list)
 
       console.log("[v0] Combined users:", combinedUsers)
+      if (!isMountedRef.current) return
       setAllUsers(combinedUsers)
     } catch (error) {
       console.error("[v0] Error fetching all users:", error)
     } finally {
+      if (!isMountedRef.current) return
       setIsLoadingAllUsers(false)
     }
   }
@@ -1013,6 +1081,8 @@ function AdminDashboard() {
   }
 
   const fetchStudentRecords = async (studentId: string) => {
+    const requestId = studentRecordsRequestRef.current + 1
+    studentRecordsRequestRef.current = requestId
     setIsLoadingRecords(true)
     try {
       const supabase = createClient()
@@ -1094,17 +1164,19 @@ function AdminDashboard() {
         }
       })
 
+      if (!isMountedRef.current || studentRecordsRequestRef.current !== requestId) return
       setStudentRecords(mergedTimeline)
     } catch (error) {
       console.error("[dashboard] Error fetching student records timeline:", error)
     } finally {
+      if (!isMountedRef.current || studentRecordsRequestRef.current !== requestId) return
       setIsLoadingRecords(false)
     }
   }
 
   const handleSelectStudentForRecords = (studentId: string) => {
     setSelectedStudentForRecords(studentId)
-    const student = getStudentsForCircle(selectedCircleForRecords).find((s) => s.id === studentId)
+    const student = availableStudentsForRecords.find((s) => s.id === studentId)
     if (student) {
       setSelectedStudentName(student.name)
       fetchStudentRecords(studentId)
@@ -1864,47 +1936,51 @@ function AdminDashboard() {
                   <Label htmlFor="recordsCircleSelect" className="text-sm font-medium text-neutral-600">
                     اختر الحلقة
                   </Label>
-                  <Select
+                  <select
+                    id="recordsCircleSelect"
                     value={selectedCircleForRecords}
-                    onValueChange={(value) => {
+                    onChange={(event) => {
+                      const value = event.target.value
                       setSelectedCircleForRecords(value)
                       setSelectedStudentForRecords("")
+                      setRecordStudents([])
                       setStudentRecords([])
                       setSelectedStudentName("")
                     }}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3453a7]/25 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <SelectTrigger className="w-full text-base">
-                      <SelectValue placeholder="اختر الحلقة" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {circles.map((circle) => (
-                        <SelectItem key={circle.name} value={circle.name}>
-                          {circle.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <option value="">اختر الحلقة</option>
+                    {recordCircleOptions.map((circleName) => (
+                      <option key={circleName} value={circleName}>
+                        {circleName}
+                      </option>
+                    ))}
+                  </select>
+                  {recordCircleOptions.length === 0 && (
+                    <p className="text-xs text-amber-600">تعذر تحميل الحلقات حاليًا، جاري إعادة المحاولة عند فتح النافذة.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="recordsStudentSelect" className="text-sm font-medium text-neutral-600">
                     اختر الطالب
                   </Label>
-                  <Select
+                  <select
+                    id="recordsStudentSelect"
                     value={selectedStudentForRecords}
-                    onValueChange={handleSelectStudentForRecords}
-                    disabled={!selectedCircleForRecords}
+                    onChange={(event) => handleSelectStudentForRecords(event.target.value)}
+                    disabled={!selectedCircleForRecords || isLoadingRecordStudents}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3453a7]/25 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <SelectTrigger className="w-full text-base">
-                      <SelectValue placeholder={selectedCircleForRecords ? "اختر الطالب" : "اختر الحلقة أولاً"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {getStudentsForCircle(selectedCircleForRecords).map((student: any) => (
-                        <SelectItem key={student.id} value={student.id}>
-                          {student.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    <option value="">{selectedCircleForRecords ? (isLoadingRecordStudents ? "جاري تحميل الطلاب..." : "اختر الطالب") : "اختر الحلقة أولاً"}</option>
+                    {availableStudentsForRecords.map((student: any) => (
+                      <option key={student.id} value={student.id}>
+                        {student.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCircleForRecords && !isLoadingRecordStudents && availableStudentsForRecords.length === 0 && (
+                    <p className="text-xs text-amber-600">لا يوجد طلاب ظاهرون لهذه الحلقة حاليًا، تم طلب تحديث البيانات من الخادم.</p>
+                  )}
                 </div>
 
                 {selectedStudentForRecords && (

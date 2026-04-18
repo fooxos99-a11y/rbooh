@@ -5,7 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import { WHATSAPP_WORKER_STATE_SETTING_ID } from "@/lib/site-settings-constants"
 
 const STATUS_FILE_PATH = process.env.RBOH_WHATSAPP_STATUS_FILE_PATH || path.join(process.cwd(), "whatsapp-worker", "status.json")
-const QR_IMAGE_PATH = process.env.RBOH_WHATSAPP_QR_IMAGE_PATH || path.join(process.cwd(), "whatsapp-worker", "current-qr.png")
+const QR_IMAGE_PATH = process.env.RBOH_WHATSAPP_QR_IMAGE_PATH || path.join(process.cwd(), "whatsapp-worker", "current-qr.txt")
 const ONLINE_THRESHOLD_MS = 45000
 
 type WorkerStatusPayload = {
@@ -57,6 +57,45 @@ function finalizeStatus(payload: WorkerStatusPayload, qrExists: boolean) {
 	}
 }
 
+function getStatusFreshness(payload: WorkerStatusPayload | null | undefined) {
+	const updatedAt = payload?.lastUpdatedAt ? new Date(payload.lastUpdatedAt).getTime() : 0
+	const heartbeatAt = payload?.lastHeartbeatAt ? new Date(payload.lastHeartbeatAt).getTime() : 0
+	const qrUpdatedAt = payload?.qrUpdatedAt ? new Date(payload.qrUpdatedAt).getTime() : 0
+
+	return Math.max(updatedAt, heartbeatAt, qrUpdatedAt)
+}
+
+function choosePreferredStatusPayload(localPayload: WorkerStatusPayload, sharedPayload: WorkerStatusPayload | null) {
+	if (!sharedPayload) {
+		return localPayload
+	}
+
+	const localFreshness = getStatusFreshness(localPayload)
+	const sharedFreshness = getStatusFreshness(sharedPayload)
+
+	if (localFreshness > sharedFreshness) {
+		return localPayload
+	}
+
+	if (sharedFreshness > localFreshness) {
+		return sharedPayload
+	}
+
+	if (localPayload.status === "authenticating" && sharedPayload.status === "waiting_for_qr") {
+		return localPayload
+	}
+
+	if (localPayload.status === "connected" && sharedPayload.status !== "connected") {
+		return localPayload
+	}
+
+	if (localPayload.qrAvailable === false && sharedPayload.qrAvailable === true) {
+		return localPayload
+	}
+
+	return sharedPayload
+}
+
 function readLocalWhatsAppWorkerStatus() {
 	const fallback = getDefaultWhatsAppWorkerStatus()
 
@@ -77,7 +116,28 @@ function readLocalWhatsAppWorkerStatus() {
 	}
 }
 
+function readLocalWhatsAppWorkerStatusPayload() {
+	const fallback = getDefaultWhatsAppWorkerStatus()
+
+	try {
+		if (!fs.existsSync(STATUS_FILE_PATH)) {
+			return fallback as WorkerStatusPayload
+		}
+
+		const rawStatus = fs.readFileSync(STATUS_FILE_PATH, "utf8")
+		return {
+			...fallback,
+			...JSON.parse(rawStatus),
+		} as WorkerStatusPayload
+	} catch {
+		return fallback as WorkerStatusPayload
+	}
+}
+
 export async function readWhatsAppWorkerStatus() {
+	const localPayload = readLocalWhatsAppWorkerStatusPayload()
+	const localQrExists = fs.existsSync(QR_IMAGE_PATH)
+
 	try {
 		const supabase = createAdminClient()
 		const { data, error } = await supabase
@@ -87,13 +147,15 @@ export async function readWhatsAppWorkerStatus() {
 			.maybeSingle()
 
 		if (!error && data?.value) {
-			return finalizeStatus(data.value as WorkerStatusPayload, false)
+			const sharedPayload = data.value as WorkerStatusPayload
+			const preferredPayload = choosePreferredStatusPayload(localPayload, sharedPayload)
+			return finalizeStatus(preferredPayload, localQrExists)
 		}
 	} catch {
 		// Fall back to local status files when shared state is unavailable.
 	}
 
-	return readLocalWhatsAppWorkerStatus()
+	return finalizeStatus(localPayload, localQrExists)
 }
 
 export function isWhatsAppWorkerReady(status: ReturnType<typeof getDefaultWhatsAppWorkerStatus>) {

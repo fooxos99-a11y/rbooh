@@ -558,6 +558,7 @@ function mergeAyahRanges(ranges: AyahRange[]) {
 
 function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous" | "prev_start_surah" | "prev_start_verse" | "prev_end_surah" | "prev_end_verse" | "completed_juzs" | "previous_memorization_ranges">) {
   const ranges: AyahRange[] = []
+  let hasExplicitPreviousRange = false
 
   if (plan.has_previous && plan.prev_start_surah && plan.prev_end_surah) {
     ranges.push({
@@ -566,6 +567,7 @@ function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous"
       endSurahNumber: Number(plan.prev_end_surah),
       endVerseNumber: getEffectiveEndVerse(Number(plan.prev_end_surah), plan.prev_end_verse),
     })
+    hasExplicitPreviousRange = true
   }
 
   for (const range of Array.isArray(plan.previous_memorization_ranges) ? plan.previous_memorization_ranges : []) {
@@ -584,18 +586,21 @@ function getPreviousMemorizedRanges(plan: Pick<SegmentedPlanLike, "has_previous"
       endSurahNumber,
       endVerseNumber: getEffectiveEndVerse(endSurahNumber, endVerseNumber),
     })
+    hasExplicitPreviousRange = true
   }
 
-  for (const juzNumber of getNormalizedCompletedJuzs(plan.completed_juzs)) {
-    const juzBounds = getJuzBounds(juzNumber)
-    if (!juzBounds) continue
+  if (!hasExplicitPreviousRange) {
+    for (const juzNumber of getNormalizedCompletedJuzs(plan.completed_juzs)) {
+      const juzBounds = getJuzBounds(juzNumber)
+      if (!juzBounds) continue
 
-    ranges.push({
-      startSurahNumber: juzBounds.startSurahNumber,
-      startVerseNumber: juzBounds.startVerseNumber,
-      endSurahNumber: juzBounds.endSurahNumber,
-      endVerseNumber: juzBounds.endVerseNumber,
-    })
+      ranges.push({
+        startSurahNumber: juzBounds.startSurahNumber,
+        startVerseNumber: juzBounds.startVerseNumber,
+        endSurahNumber: juzBounds.endSurahNumber,
+        endVerseNumber: juzBounds.endVerseNumber,
+      })
+    }
   }
 
   return mergeAyahRanges(ranges)

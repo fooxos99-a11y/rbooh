@@ -7,6 +7,7 @@ import { Footer } from "@/components/footer"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { MonitorPlay, X } from "lucide-react"
 import { StudentRankCard } from "@/components/student-rank-card"
+import { normalizeCircleName } from "@/lib/circle-name"
 
 type Student = {
   id: string
@@ -23,7 +24,7 @@ type Student = {
 export default function CircleLeaderboard() {
   const params = useParams()
   const circleNameParam = typeof params?.circleName === "string" ? params.circleName : ""
-  const circleName = decodeURIComponent(circleNameParam)
+  const circleName = normalizeCircleName(decodeURIComponent(circleNameParam))
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [isAutoScrolling, setIsAutoScrolling] = useState(false)
@@ -57,7 +58,7 @@ export default function CircleLeaderboard() {
     const fetchStudents = async () => {
       try {
         const [studentsRes, themesRes, badgesRes, fontsRes] = await Promise.all([
-          fetch("/api/students", { cache: "no-store" }),
+          fetch(`/api/students?circle=${encodeURIComponent(circleName)}`, { cache: "no-store" }),
           fetch("/api/themes", { cache: "no-store" }),
           fetch("/api/badges", { cache: "no-store" }),
           fetch("/api/fonts", { cache: "no-store" }),
@@ -74,7 +75,6 @@ export default function CircleLeaderboard() {
         const fonts = (fontsJson.fonts ?? {}) as Record<string, string>
 
         const rankedStudents = rawStudents
-          .filter((student) => (student.halaqah ?? "").trim() === circleName)
           .map((student) => {
             const effectKey = localStorage.getItem(`active_effect_${student.id}`)
 

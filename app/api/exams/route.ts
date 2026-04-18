@@ -313,6 +313,8 @@ export async function POST(request: NextRequest) {
 		const alertsCount = parseCount(body.alerts_count)
 		const mistakesCount = parseCount(body.mistakes_count)
 		const notes = String(body.notes || "").trim() || null
+		const failedAction = body.failed_action === "reschedule_exam" ? "reschedule_exam" : "repeat_memorization"
+		const retryExamDate = String(body.retry_exam_date || "").trim()
 
 		if (!studentId) {
 			return NextResponse.json({ error: "الطالب مطلوب" }, { status: 400 })
@@ -324,6 +326,11 @@ export async function POST(request: NextRequest) {
 
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(examDate)) {
 			return NextResponse.json({ error: "تاريخ الاختبار غير صالح" }, { status: 400 })
+		}
+
+		const score = calculateExamScore({ alerts: alertsCount, mistakes: mistakesCount }, settings)
+		if (!score.passed && failedAction === "reschedule_exam" && !/^\d{4}-\d{2}-\d{2}$/.test(retryExamDate)) {
+			return NextResponse.json({ error: "حدد موعد الإعادة عند اختيار إعادة جدولة الاختبار" }, { status: 400 })
 		}
 
 		if (!isAdminRole(actor.role)) {
@@ -357,7 +364,6 @@ export async function POST(request: NextRequest) {
 			return NextResponse.json({ error: portionType === "hizb" ? "لا يمكن اختبار حزب غير متاح حاليًا لهذا الطالب" : "لا يمكن اختبار جزء غير متاح حاليًا لهذا الطالب" }, { status: 400 })
 		}
 
-		const score = calculateExamScore({ alerts: alertsCount, mistakes: mistakesCount }, settings)
 		const examPortionLabel = formatExamPortionLabel(portionNumber, portionType === "hizb" ? `الحزب ${portionNumber}` : `الجزء ${portionNumber}`, portionType)
 		const juzNumber = getJuzNumberForPortion(portionType, portionNumber)
 
@@ -398,7 +404,7 @@ export async function POST(request: NextRequest) {
 		if (juzNumber) {
 			if (score.passed) {
 				updatedStudent = await markPassedJuzAsMemorized(supabase, student, juzNumber)
-			} else {
+			} else if (failedAction === "repeat_memorization") {
 				updatedStudent = await markFailedJuzForRememorization(supabase, student, juzNumber)
 			}
 		}
@@ -410,6 +416,47 @@ export async function POST(request: NextRequest) {
 			.eq("portion_type", portionType)
 			.eq("portion_number", portionNumber)
 			.eq("status", "scheduled")
+
+		let rescheduledSchedule: Record<string, unknown> | null = null
+
+		if (!score.passed && failedAction === "reschedule_exam") {
+			const { data: insertedRescheduledSchedule, error: rescheduleInsertError } = await supabase
+				.from("exam_schedules")
+				.insert({
+					student_id: student.id,
+					halaqah: student.halaqah,
+					exam_portion_label: examPortionLabel,
+					portion_type: portionType,
+					portion_number: portionNumber,
+					juz_number: juzNumber,
+					exam_date: retryExamDate,
+					status: "scheduled",
+					notification_sent_at: new Date().toISOString(),
+					scheduled_by_name: testedByName,
+					scheduled_by_role: actor.role,
+					updated_at: new Date().toISOString(),
+				})
+				.select("id, student_id, halaqah, exam_portion_label, portion_type, portion_number, juz_number, exam_date, status, notification_sent_at, completed_exam_id, completed_at, cancelled_at, scheduled_by_name, scheduled_by_role, created_at, updated_at")
+				.single()
+
+			if (rescheduleInsertError) {
+				throw rescheduleInsertError
+			}
+
+			rescheduledSchedule = insertedRescheduledSchedule
+
+			try {
+				await notifyGuardian(supabase, {
+					accountNumber: student.account_number,
+					appMessage: `تمت إعادة جدولة اختبار ${examPortionLabel} للطالب ${student.name || "الطالب"} بتاريخ ${formatScheduledDate(retryExamDate)}.`,
+					phoneNumber: student.guardian_phone,
+					whatsappMessage: `تمت إعادة جدولة اختبار ${examPortionLabel} للطالب ${student.name || "الطالب"} بتاريخ ${formatScheduledDate(retryExamDate)}.`,
+					userId: actor.id,
+				})
+			} catch (rescheduleNotificationError) {
+				console.error("[exams][POST][reschedule-notify]", rescheduleNotificationError)
+			}
+		}
 
 		try {
 			const guardianMessage = buildExamResultGuardianMessage({
@@ -432,7 +479,7 @@ export async function POST(request: NextRequest) {
 			console.error("[exams][POST][guardian-notify]", notificationError)
 		}
 
-		return NextResponse.json({ success: true, exam: insertedExam, score, student: updatedStudent })
+		return NextResponse.json({ success: true, exam: insertedExam, score, student: updatedStudent, rescheduledSchedule })
 	} catch (error) {
 		console.error("[exams][POST]", error)
 		return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })

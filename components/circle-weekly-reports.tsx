@@ -7,10 +7,10 @@ import { ArrowRight, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
-import { createClient } from "@/lib/supabase/client";
 import { getSaudiDateString, getSaudiWeekday } from "@/lib/saudi-time";
 import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data";
 import { isPassingMemorizationLevel, type EvaluationLevelValue } from "@/lib/student-attendance";
+import { getClientAuthHeaders } from "@/lib/client-auth";
 
 type StudentRow = {
   id: string;
@@ -364,199 +364,22 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
       setError("");
 
       try {
-        const supabase = createClient();
-        const previousWeek = getStudyWeek(weekOffset + 1);
+        const params = new URLSearchParams({
+          circle: circleName,
+          weekOffset: String(weekOffset),
+        });
+        const response = await fetch(`/api/statistics/circle-weekly?${params.toString()}`, {
+          cache: "no-store",
+          headers: getClientAuthHeaders(),
+        });
+        const payload = await response.json().catch(() => ({}));
 
-        const studentsResponse = await fetch(`/api/students?circle=${encodeURIComponent(circleName)}`, { cache: "no-store" });
-        const studentsPayload = await studentsResponse.json().catch(() => ({}));
-
-        if (!studentsResponse.ok) {
-          throw new Error(studentsPayload.error || TEXT.loadError);
+        if (!response.ok) {
+          throw new Error(payload.error || TEXT.loadError);
         }
 
-        const studentRows = (studentsPayload.students ?? []) as StudentRow[];
-        const studentIds = studentRows.map((student) => student.id).filter(Boolean);
-
-        if (studentIds.length === 0) {
-          setHasPreviousWeek(false);
-          setStudents([]);
-          return;
-        }
-
-        const [plansResult, attendanceResult, dailyReportsResult, previousWeekAttendanceResult, previousWeekReportsResult] = await Promise.all([
-          supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
-          supabase
-            .from("attendance_records")
-            .select(`
-              id,
-              student_id,
-              date,
-              status,
-              evaluations (hafiz_level, tikrar_level, samaa_level, rabet_level)
-            `)
-            .in("student_id", studentIds)
-            .gte("date", studyWeek.startDate)
-            .lte("date", studyWeek.endDate),
-          supabase
-            .from("student_daily_reports")
-            .select("student_id, report_date, memorization_done, memorization_pages_count, review_done, review_pages_count, linking_done, linking_pages_count")
-            .in("student_id", studentIds)
-            .gte("report_date", studyWeek.startDate)
-            .lte("report_date", studyWeek.endDate),
-          supabase
-            .from("attendance_records")
-            .select("id", { count: "exact", head: true })
-            .in("student_id", studentIds)
-            .gte("date", previousWeek.startDate)
-            .lte("date", previousWeek.endDate),
-          supabase
-            .from("student_daily_reports")
-            .select("student_id", { count: "exact", head: true })
-            .in("student_id", studentIds)
-            .gte("report_date", previousWeek.startDate)
-            .lte("report_date", previousWeek.endDate),
-        ]);
-
-        if (plansResult.error) {
-          throw plansResult.error;
-        }
-
-        if (attendanceResult.error) {
-          throw attendanceResult.error;
-        }
-
-        if (dailyReportsResult.error) {
-          throw dailyReportsResult.error;
-        }
-
-        if (previousWeekAttendanceResult.error) {
-          throw previousWeekAttendanceResult.error;
-        }
-
-        if (previousWeekReportsResult.error) {
-          throw previousWeekReportsResult.error;
-        }
-
-        const plans = (plansResult.data ?? []) as PlanRow[];
-        const attendanceRows = ((attendanceResult.data ?? []) as AttendanceRow[]).filter((record) => studyDates.includes(record.date));
-        const dailyReports = ((dailyReportsResult.data ?? []) as DailyReportRow[]).filter((report) => studyDates.includes(report.report_date));
-
-        const plansByStudent = new Map(plans.map((plan) => [plan.student_id, plan]));
-        const attendanceByStudent = new Map<string, Map<string, AttendanceRow>>();
-        const dailyReportsByStudent = new Map<string, Map<string, DailyReportRow>>();
-
-        for (const record of attendanceRows) {
-          const byDate = attendanceByStudent.get(record.student_id) ?? new Map<string, AttendanceRow>();
-          byDate.set(record.date, record);
-          attendanceByStudent.set(record.student_id, byDate);
-        }
-
-        for (const report of dailyReports) {
-          const byDate = dailyReportsByStudent.get(report.student_id) ?? new Map<string, DailyReportRow>();
-          byDate.set(report.report_date, report);
-          dailyReportsByStudent.set(report.student_id, byDate);
-        }
-
-        const cardRows = studentRows
-          .map((student) => {
-            const plan = plansByStudent.get(student.id);
-            const byDate = attendanceByStudent.get(student.id) ?? new Map<string, AttendanceRow>();
-            const reportsByDate = dailyReportsByStudent.get(student.id) ?? new Map<string, DailyReportRow>();
-            let memorized = 0;
-            let revised = 0;
-            let tied = 0;
-            let presentCount = 0;
-            let absentCount = 0;
-            let memorizationCompletedCount = 0;
-            let reviewCompletedCount = 0;
-            let linkingCompletedCount = 0;
-            let tasmeeCompletedCount = 0;
-            let memorizedPoolPages = plan ? calculatePreviousMemorizedPages(plan) : 0;
-            let successfulMemorizationCount = 0;
-
-            const statuses = studyDates.map((date) => {
-              const record = byDate.get(date);
-              const dailyReport = reportsByDate.get(date);
-              const status = getDayStatus(record, dailyReport);
-              const isReviewOnlyDay = isSaturdayReviewOnlyDay(date);
-
-              if (isAttendanceDay(date) && (record?.status === "present" || record?.status === "late")) {
-                presentCount += 1;
-              }
-
-              if (isAttendanceDay(date) && (record?.status === "absent" || record?.status === "excused")) {
-                absentCount += 1;
-              }
-
-              if (dailyReport?.memorization_done && !isReviewOnlyDay) {
-                memorizationCompletedCount += 1;
-              }
-
-              if (dailyReport?.review_done) {
-                reviewCompletedCount += 1;
-              }
-
-              if (dailyReport?.linking_done && !isReviewOnlyDay) {
-                linkingCompletedCount += 1;
-              }
-
-              if (plan) {
-                const reviewPoolPages = resolvePlanReviewPoolPages(plan, memorizedPoolPages);
-                const reviewPages = resolvePlanReviewPagesPreference(plan, reviewPoolPages);
-                const tiePages = resolvePlanLinkingPagesPreference(plan, successfulMemorizationCount);
-
-                if (dailyReport?.review_done) {
-                  revised += Math.max(Number(dailyReport.review_pages_count ?? reviewPages), 0);
-                }
-
-                if (dailyReport?.linking_done) {
-                  tied += Math.max(Number(dailyReport.linking_pages_count ?? tiePages), 0);
-                }
-
-                if (hasPassingMemorization(record)) {
-                  const dailyPages = Number(plan.daily_pages ?? 1);
-                  tasmeeCompletedCount += 1;
-                  memorized += dailyPages;
-                  memorizedPoolPages += dailyPages;
-                  successfulMemorizationCount += 1;
-                }
-              }
-
-              return { date, status };
-            });
-
-            const totalActivity = memorized + revised + tied;
-
-            return {
-              id: student.id,
-              name: student.name?.trim() || TEXT.unknownStudent,
-              memorized,
-              revised,
-              tied,
-              presentCount,
-              absentCount,
-              memorizationCompletedCount,
-              reviewCompletedCount,
-              linkingCompletedCount,
-              tasmeeCompletedCount,
-              statuses,
-              totalActivity,
-            } satisfies StudentCardData;
-          })
-          .sort((left, right) => {
-            if (right.totalActivity !== left.totalActivity) {
-              return right.totalActivity - left.totalActivity;
-            }
-
-            if (right.presentCount !== left.presentCount) {
-              return right.presentCount - left.presentCount;
-            }
-
-            return left.name.localeCompare(right.name, "ar");
-          });
-
-        setHasPreviousWeek((previousWeekAttendanceResult.count ?? 0) > 0 || (previousWeekReportsResult.count ?? 0) > 0);
-        setStudents(cardRows);
+        setHasPreviousWeek(Boolean(payload.hasPreviousWeek));
+        setStudents((payload.students ?? []) as StudentCardData[]);
       } catch (caughtError) {
         const message = caughtError instanceof Error ? caughtError.message : String(caughtError);
         setError(`${TEXT.loadError}: ${message}`);

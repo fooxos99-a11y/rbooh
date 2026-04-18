@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { NextResponse } from "next/server"
+import { normalizeCircleName } from "@/lib/circle-name"
 
-// Enable route caching for 30 seconds
-export const revalidate = 30
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 // GET all circles
 export async function GET() {
@@ -26,15 +27,16 @@ export async function GET() {
     } else {
       students?.forEach((student) => {
         if (student.halaqah) {
-          studentCounts.set(student.halaqah, (studentCounts.get(student.halaqah) || 0) + 1)
+          const normalizedHalaqah = normalizeCircleName(student.halaqah)
+          studentCounts.set(normalizedHalaqah, (studentCounts.get(normalizedHalaqah) || 0) + 1)
         }
       })
     }
 
     const circlesWithCounts = circles?.map((circle) => ({
       id: circle.id,
-      name: circle.name,
-      studentCount: studentCounts.get(circle.name) || 0,
+      name: normalizeCircleName(circle.name),
+      studentCount: studentCounts.get(normalizeCircleName(circle.name)) || 0,
       created_at: circle.created_at,
     }))
 
@@ -42,7 +44,7 @@ export async function GET() {
       { circles: circlesWithCounts || [] },
       {
         headers: {
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60'
+          'Cache-Control': 'private, no-store'
         }
       }
     )

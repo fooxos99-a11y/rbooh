@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       attendanceRecordIds.length > 0
         ? supabase
             .from("evaluations")
-            .select("attendance_record_id, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
+            .select("attendance_record_id, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
             .in("attendance_record_id", attendanceRecordIds)
         : Promise.resolve({ data: [], error: null }),
     ])
@@ -133,7 +133,9 @@ export async function GET(request: NextRequest) {
     const studentNameById = new Map((students || []).map((student: any) => [student.id, student.name] as const))
     const evaluationByAttendanceId = new Map<string, any>()
 
-    ;(evaluations || []).forEach((evaluation: any) => {
+    ;(evaluations || [])
+      .sort((left: any, right: any) => String(right?.created_at || "").localeCompare(String(left?.created_at || "")))
+      .forEach((evaluation: any) => {
       if (!evaluation?.attendance_record_id) {
         return
       }
@@ -141,9 +143,22 @@ export async function GET(request: NextRequest) {
       if (!evaluationByAttendanceId.has(evaluation.attendance_record_id)) {
         evaluationByAttendanceId.set(evaluation.attendance_record_id, evaluation)
       }
-    })
+      })
 
-    const formattedRecords = attendanceRecords.map((record: any) => {
+    const latestRecordByStudentDate = new Map<string, any>()
+
+    for (const record of attendanceRecords) {
+      const key = `${record.student_id}:${record.date}`
+      const current = latestRecordByStudentDate.get(key)
+      const currentStamp = String(current?.updated_at || current?.created_at || "")
+      const nextStamp = String(record?.updated_at || record?.created_at || "")
+
+      if (!current || nextStamp >= currentStamp) {
+        latestRecordByStudentDate.set(key, record)
+      }
+    }
+
+    const formattedRecords = Array.from(latestRecordByStudentDate.values()).map((record: any) => {
       const evaluation = evaluationByAttendanceId.get(record.id)
 
       return {

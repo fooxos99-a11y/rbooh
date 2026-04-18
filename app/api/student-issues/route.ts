@@ -4,6 +4,7 @@ import { isMemorizationOffDay } from "@/lib/plan-session-progress"
 import { getSaudiAttendanceAnchorDate, getSaudiWeekday } from "@/lib/saudi-time"
 import { createClient } from "@/lib/supabase/server"
 import { countAbsenceStatuses } from "@/lib/student-absence"
+import { circleNamesMatch, normalizeCircleName } from "@/lib/circle-name"
 
 type IssueSeverity = "warning" | "alert"
 type IssueCategory = "attendance" | "execution"
@@ -207,17 +208,18 @@ export async function GET(request: NextRequest) {
 			.order("halaqah", { ascending: true })
 			.order("name", { ascending: true })
 
-		if (selectedCircle !== "all") {
-			studentsQuery = studentsQuery.eq("halaqah", selectedCircle)
-		}
-
 		const { data: students, error: studentsError } = await studentsQuery
 
 		if (studentsError) {
 			return NextResponse.json({ error: "تعذر جلب بيانات الطلاب" }, { status: 500 })
 		}
 
-		const studentIds = ((students || []) as Array<{ id: string }>).map((student) => student.id)
+		const normalizedSelectedCircle = normalizeCircleName(selectedCircle)
+		const filteredStudents = selectedCircle === "all"
+			? (students || [])
+			: (students || []).filter((student) => circleNamesMatch(student.halaqah, normalizedSelectedCircle))
+
+		const studentIds = (filteredStudents as Array<{ id: string }>).map((student) => student.id)
 		const attendanceAnchorDates = getAnchorDatesInRange(rangeStart, rangeEnd)
 		const reportDatesInRange = getSaudiDatesInRange(rangeStart, rangeEnd)
 
@@ -291,7 +293,7 @@ export async function GET(request: NextRequest) {
 			return acc
 		}, new Map())
 
-		const rows = (students || [])
+		const rows = filteredStudents
 			.map((student) => {
 				const studentAttendance = attendanceByStudent.get(student.id) || []
 				const normalizedAttendance = uniqAttendanceByAnchorDate(studentAttendance)

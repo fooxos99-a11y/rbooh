@@ -15,6 +15,8 @@ interface Circle {
   name: string
 }
 
+const ALL_CIRCLES_ID = "all"
+
 export default function StudentRecordsPage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("إدارة الطلاب");
 
@@ -25,7 +27,7 @@ export default function StudentRecordsPage() {
   useEffect(() => {
     const fetchCircles = async () => {
       try {
-        const response = await fetch("/api/circles")
+        const response = await fetch("/api/circles", { cache: "no-store" })
         const data = await response.json()
         setCircles(data.circles || [])
       } catch (error) {
@@ -41,6 +43,8 @@ export default function StudentRecordsPage() {
   const handleCircleClick = (circleId: string) => {
     router.push(`/admin/student-records/${circleId}`)
   }
+
+  const circleOptions = [{ id: ALL_CIRCLES_ID, name: "جميع الحلقات" }, ...circles]
 
     if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>);
 
@@ -58,13 +62,13 @@ export default function StudentRecordsPage() {
             <div className="text-center py-12">
               <div className="flex justify-center"><SiteLoader size="md" /></div>
             </div>
-          ) : circles.length === 0 ? (
+          ) : circleOptions.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-xl text-gray-600">لا توجد حلقات متاحة</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {circles.map((circle) => (
+              {circleOptions.map((circle) => (
                 <Card
                   key={circle.id}
                   className="border-2 border-[#d8a355] hover:shadow-xl transition-all duration-300 hover:scale-105 cursor-pointer"
@@ -81,7 +85,7 @@ export default function StudentRecordsPage() {
                         onClick={() => handleCircleClick(circle.id)}
                         className="w-full bg-[#3453a7] hover:bg-[#27428d] text-white font-bold py-3 text-lg"
                       >
-                        عرض أفضل الطلاب
+                        {circle.id === ALL_CIRCLES_ID ? "عرض جميع الطلاب" : "عرض أفضل الطلاب"}
                       </Button>
                     </div>
                   </CardContent>

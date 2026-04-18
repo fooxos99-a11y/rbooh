@@ -87,6 +87,20 @@ type StudentIssueRow = {
   } | null
 }
 
+type ExecutionStudentRow = {
+  studentId: string
+  studentName: string
+  circleName: string
+  reportDate: string
+  memorizationDone: boolean
+  memorizationPagesCount: number
+  reviewDone: boolean
+  reviewPagesCount: number
+  linkingDone: boolean
+  linkingPagesCount: number
+  tikrarDone: boolean
+}
+
 function SeverityBadge({ severity }: { severity: IssueSeverity }) {
 	return severity === "alert" ? (
     <Badge className="border-red-200 bg-red-50 text-red-700 hover:bg-red-50">إنذار</Badge>
@@ -173,6 +187,22 @@ function formatActionDate(value: string) {
   }).format(date)
 }
 
+function formatPagesLabel(value: number) {
+  const normalizedValue = Math.round(Math.max(0, value) * 100) / 100
+  if (normalizedValue <= 0) {
+    return "—"
+  }
+
+  return `${new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: normalizedValue % 1 === 0 ? 0 : 1,
+    maximumFractionDigits: 2,
+  }).format(normalizedValue)} وجه`
+}
+
+function hasExecutedMemorizationTask(row: ExecutionStudentRow) {
+  return row.memorizationDone && row.memorizationPagesCount > 0
+}
+
 export default function StudentDailyAttendancePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth(["يوم السرد", "التقارير"])
   const { toast } = useToast()
@@ -181,7 +211,9 @@ export default function StudentDailyAttendancePage() {
   const [isFetchingRecords, setIsFetchingRecords] = useState(false)
   const [isSavingTemplates, setIsSavingTemplates] = useState(false)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
+  const [isFetchingExecution, setIsFetchingExecution] = useState(false)
   const [issueRows, setIssueRows] = useState<StudentIssueRow[]>([])
+  const [executionRows, setExecutionRows] = useState<ExecutionStudentRow[]>([])
   const [circles, setCircles] = useState<string[]>([])
   const [selectedCircle, setSelectedCircle] = useState("all")
   const [rangeStartDate, setRangeStartDate] = useState("")
@@ -221,13 +253,13 @@ export default function StudentDailyAttendancePage() {
 
   useEffect(() => {
     if (!authLoading && authVerified) {
-      void Promise.all([fetchIssueRows(), fetchTemplates()]).finally(() => setIsLoading(false))
+      void Promise.all([fetchIssueRows(), fetchExecutionRows(), fetchTemplates()]).finally(() => setIsLoading(false))
     }
   }, [authLoading, authVerified])
 
   useEffect(() => {
     if (!authLoading && authVerified) {
-      void fetchIssueRows()
+      void Promise.all([fetchIssueRows(), fetchExecutionRows()])
     }
   }, [authLoading, authVerified, selectedCircle, rangeStartDate, rangeEndDate])
 
@@ -266,6 +298,106 @@ export default function StudentDailyAttendancePage() {
       })
     } finally {
       setIsFetchingRecords(false)
+    }
+  }
+
+  const fetchExecutionRows = async () => {
+    if (effectiveSelectedDate > getSaudiDate()) {
+      setExecutionRows([])
+      return
+    }
+
+    setIsFetchingExecution(true)
+    try {
+      const studentsUrl = selectedCircle === "all"
+        ? "/api/students"
+        : `/api/students?circle=${encodeURIComponent(selectedCircle)}`
+      const studentsResponse = await fetch(studentsUrl, { cache: "no-store" })
+      const studentsData = await studentsResponse.json()
+
+      if (!studentsResponse.ok) {
+        throw new Error(studentsData.error || "تعذر جلب الطلاب")
+      }
+
+      const students = Array.isArray(studentsData.students) ? studentsData.students : []
+      if (students.length === 0) {
+        setExecutionRows([])
+        return
+      }
+
+      const studentMap = new Map(
+        students.map((student: { id: string; name?: string; halaqah?: string; circle_name?: string }) => [
+          student.id,
+          {
+            name: student.name || "طالب غير معرّف",
+            circleName: student.halaqah || student.circle_name || "بدون حلقة",
+          },
+        ] as const),
+      )
+
+      const reportsResponse = await fetch(
+        `/api/student-daily-reports?student_ids=${encodeURIComponent(students.map((student: { id: string }) => student.id).join(","))}&days=1&date=${encodeURIComponent(effectiveSelectedDate)}`,
+        { cache: "no-store" },
+      )
+      const reportsData = await reportsResponse.json()
+
+      if (!reportsResponse.ok) {
+        throw new Error(reportsData.error || "تعذر جلب تنفيذ اليوم")
+      }
+
+      const nextExecutionRows = (Array.isArray(reportsData.reports) ? reportsData.reports : [])
+        .map((report: {
+          student_id: string
+          report_date: string
+          memorization_done?: boolean | null
+          memorization_pages_count?: number | null
+          review_done?: boolean | null
+          review_pages_count?: number | null
+          linking_done?: boolean | null
+          linking_pages_count?: number | null
+          tikrar_done?: boolean | null
+        }) => {
+          const student = studentMap.get(report.student_id)
+          if (!student) {
+            return null
+          }
+
+          return {
+            studentId: report.student_id,
+            studentName: student.name,
+            circleName: student.circleName,
+            reportDate: report.report_date,
+            memorizationDone: Boolean(report.memorization_done),
+            memorizationPagesCount: Math.max(Number(report.memorization_pages_count) || 0, 0),
+            reviewDone: Boolean(report.review_done),
+            reviewPagesCount: Math.max(Number(report.review_pages_count) || 0, 0),
+            linkingDone: Boolean(report.linking_done),
+            linkingPagesCount: Math.max(Number(report.linking_pages_count) || 0, 0),
+            tikrarDone: Boolean(report.tikrar_done),
+          } satisfies ExecutionStudentRow
+        })
+        .filter((row): row is ExecutionStudentRow => Boolean(row))
+        .filter(hasExecutedMemorizationTask)
+        .sort((left, right) => {
+          const circleComparison = left.circleName.localeCompare(right.circleName, "ar")
+          if (circleComparison !== 0) {
+            return circleComparison
+          }
+
+          return left.studentName.localeCompare(right.studentName, "ar")
+        })
+
+      setExecutionRows(nextExecutionRows)
+    } catch (error) {
+      console.error("[student-daily-attendance] fetch execution error:", error)
+      setExecutionRows([])
+      toast({
+        title: "خطأ",
+        description: error instanceof Error ? error.message : "تعذر جلب تنفيذ اليوم",
+        variant: "destructive",
+      })
+    } finally {
+      setIsFetchingExecution(false)
     }
   }
 
@@ -444,6 +576,7 @@ export default function StudentDailyAttendancePage() {
     return effectiveSelectedDate > getSaudiDate()
   })()
 
+  const executionRowByStudentId = Object.fromEntries(executionRows.map((row) => [row.studentId, row])) as Record<string, ExecutionStudentRow>
   if (authLoading || !authVerified) return (<div className="min-h-screen flex items-center justify-center bg-[#fafaf9]"><SiteLoader size="md" /></div>)
 
   return (
@@ -528,6 +661,7 @@ export default function StudentDailyAttendancePage() {
                     <TableRow className="bg-[#eaf1ff] border-b border-[#8fb1ff] hover:bg-[#eaf1ff]">
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">مقدار حفظ اليوم</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">السبب</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">{getIssueCountColumnTitle(effectiveScope)}</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">{getHistoryColumnTitle(effectiveScope)}</TableHead>
@@ -537,13 +671,13 @@ export default function StudentDailyAttendancePage() {
                   <TableBody>
                     {isFuture ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-gray-400">
+                        <TableCell colSpan={8} className="text-center py-12 text-gray-400">
                           لا يمكن عرض مشاكل الطلاب لتاريخ مستقبلي
                         </TableCell>
                       </TableRow>
                     ) : isFetchingRecords ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="py-12">
+                        <TableCell colSpan={8} className="py-12">
                           <div className="flex justify-center">
                             <SiteLoader size="md" />
                           </div>
@@ -564,6 +698,9 @@ export default function StudentDailyAttendancePage() {
                             <span className="font-semibold text-[#1a2332]">
                             {row.studentName}
                           </span>
+                        </TableCell>
+                        <TableCell className="text-center font-black text-[#1a2332]">
+                          {formatPagesLabel(executionRowByStudentId[row.studentId]?.memorizationPagesCount || 0)}
                         </TableCell>
                         <TableCell className="text-center">
                             <span className="font-semibold text-[#27428d]">{getIssueReasonSummary(row)}</span>
@@ -597,9 +734,62 @@ export default function StudentDailyAttendancePage() {
                       </TableRow>
                     )) : (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-12 text-gray-400">
+                        <TableCell colSpan={8} className="text-center py-12 text-gray-400">
                           لا توجد مشاكل نشطة للعرض وفق الفلاتر الحالية
                         </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-[#3453a7]/20 shadow-sm transition-shadow duration-300 hover:shadow-md animate-in fade-in slide-in-from-bottom-3 duration-500">
+            <CardContent className="pt-4">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-[#1a2332]">الطلاب المنفذون</h2>
+                  <p className="text-sm text-gray-500">يظهر هنا فقط من نفّذ حفظ اليوم في التاريخ المحدد</p>
+                </div>
+                <div className="text-sm font-semibold text-[#3453a7]">{effectiveSelectedDate}</div>
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-[#3453a7]/15">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-[#eef4ff] border-b border-[#c9d8ff] hover:bg-[#eef4ff]">
+                      <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
+                      <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">حفظ اليوم</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">التكرار</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">المراجعة</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">الربط</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {isFuture ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-10 text-gray-400">لا يمكن عرض تنفيذ يوم مستقبلي</TableCell>
+                      </TableRow>
+                    ) : isFetchingExecution ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="py-10">
+                          <div className="flex justify-center"><SiteLoader size="md" /></div>
+                        </TableCell>
+                      </TableRow>
+                    ) : executionRows.length > 0 ? executionRows.map((row) => (
+                      <TableRow key={`${row.studentId}-${row.reportDate}`} className="border-b border-[#3453a7]/10">
+                        <TableCell className="font-medium text-[#27428d]">{row.circleName}</TableCell>
+                        <TableCell className="font-semibold text-[#1a2332]">{row.studentName}</TableCell>
+                        <TableCell className="text-center font-black text-[#1a2332]">{formatPagesLabel(row.memorizationPagesCount)}</TableCell>
+                        <TableCell className="text-center">{row.tikrarDone ? <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50">تم</Badge> : <span className="text-gray-300">—</span>}</TableCell>
+                        <TableCell className="text-center">{row.reviewDone ? <span className="font-bold text-[#1d4ed8]">{formatPagesLabel(row.reviewPagesCount)}</span> : <span className="text-gray-300">—</span>}</TableCell>
+                        <TableCell className="text-center">{row.linkingDone ? <span className="font-bold text-[#a16207]">{formatPagesLabel(row.linkingPagesCount)}</span> : <span className="text-gray-300">—</span>}</TableCell>
+                      </TableRow>
+                    )) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-10 text-gray-400">لا يوجد طلاب نفذوا حفظ اليوم وفق الفلاتر الحالية</TableCell>
                       </TableRow>
                     )}
                   </TableBody>

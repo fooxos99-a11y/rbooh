@@ -58,6 +58,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SiteLoader } from "@/components/ui/site-loader";
 import { getClientAuthHeaders } from "@/lib/client-auth";
+import { normalizeCircleName } from "@/lib/circle-name";
 
 const StudentDailyExecutionDialog = dynamic(
   () => import("@/components/student-daily-execution-dialog").then((mod) => mod.StudentDailyExecutionDialog),
@@ -73,6 +74,15 @@ interface Circle {
   name: string;
 
   studentCount: number;
+}
+
+function normalizeCircleOptions(circles: Circle[]) {
+  return circles
+    .map((circle) => ({
+      ...circle,
+      name: normalizeCircleName(circle.name),
+    }))
+    .filter((circle) => Boolean(circle.name))
 }
 
 type WhatsAppHeaderStatus = {
@@ -597,7 +607,7 @@ export function Header() {
     }
 
     try {
-      const parsedCircles = JSON.parse(cachedCircles || "[]");
+      const parsedCircles = normalizeCircleOptions(JSON.parse(cachedCircles || "[]"));
       setCircles(parsedCircles);
       setCirclesLoaded(true);
       return true;
@@ -854,7 +864,7 @@ export function Header() {
 
     const intervalId = window.setInterval(() => {
       void fetchWhatsappQrStatus(true);
-    }, 1500);
+    }, 350);
 
     return () => window.clearInterval(intervalId);
   }, [isWhatsappQrDialogOpen]);
@@ -1014,16 +1024,17 @@ export function Header() {
     try {
       setCirclesLoading(true);
 
-      const res = await fetch("/api/circles");
+      const res = await fetch("/api/circles", { cache: "no-store" });
 
       const data = await res.json();
 
       if (data.circles) {
-        setCircles(data.circles);
+        const normalizedCircles = normalizeCircleOptions(data.circles);
+        setCircles(normalizedCircles);
         setCirclesLoaded(true);
         void router.prefetch("/students/all?scope=all");
 
-        localStorage.setItem("circlesCache", JSON.stringify(data.circles));
+        localStorage.setItem("circlesCache", JSON.stringify(normalizedCircles));
 
         localStorage.setItem("circlesCacheTime", Date.now().toString());
       }

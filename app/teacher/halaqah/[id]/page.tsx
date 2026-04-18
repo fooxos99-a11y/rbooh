@@ -763,6 +763,7 @@ export default function HalaqahManagement() {
 					teacher_id: teacherData.id,
 					halaqah: teacherHalaqah,
 					status: student.attendance,
+					report_date: todayKsaDate,
 					hafiz_level: level,
 					tikrar_level: student.evaluation?.tikrar || "0",
 					samaa_level: student.evaluation?.samaa || "0",
@@ -921,11 +922,12 @@ export default function HalaqahManagement() {
 				let savedReportEvaluationMap: Record<string, Record<string, EvaluationLevel>> = {}
 				let savedReportDatesMap: Record<string, string[]> = {}
 				let savedRecordsByStudent: Record<string, SavedAttendanceRecord[]> = {}
+				let attendanceRecordsByStudent: Record<string, SavedAttendanceRecord[]> = {}
 
 				if (studentIds.length > 0) {
 					try {
 						if (editMode) {
-							const [reportsResponse, savedTodayResponse] = await Promise.all([
+							const [reportsResponse, savedTodayResponse, attendanceHistoryResults] = await Promise.all([
 								fetch(
 									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&days=14`,
 									{ cache: "no-store" },
@@ -933,6 +935,19 @@ export default function HalaqahManagement() {
 								fetch(
 									`/api/attendance-by-date?date=${todayKsaDate}&circle=${encodeURIComponent(halaqah)}`,
 									{ cache: "no-store", headers: getClientAuthHeaders() },
+								),
+								Promise.all(
+									studentIds.map(async (studentId) => {
+										const response = await fetch(`/api/attendance?student_id=${encodeURIComponent(studentId)}`, {
+											cache: "no-store",
+											headers: getClientAuthHeaders(),
+										})
+										const payload = await response.json().catch(() => ({}))
+										return {
+											studentId,
+											records: Array.isArray(payload.records) ? payload.records : [],
+										}
+									}),
 								),
 							])
 
@@ -953,13 +968,20 @@ export default function HalaqahManagement() {
 								return acc
 							}, {})
 
+							attendanceRecordsByStudent = attendanceHistoryResults.reduce<Record<string, SavedAttendanceRecord[]>>((acc, result) => {
+								acc[result.studentId] = (result.records || []).filter(
+									(record: SavedAttendanceRecord) => isEvaluatedAttendance(record.status) && !!record.hafiz_level,
+								)
+								return acc
+							}, {})
+
 							if (reportsResponse.ok && reportsData.reportsByStudent) {
 								const rawReportsByStudent = reportsData.reportsByStudent as Record<string, StudentDailyReport[]>
 
 								savedReportDatesMap = Object.fromEntries(
 									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
 										const savedAnchorDates = new Set(
-											(savedRecordsByStudent[currentStudentId] || [])
+											(attendanceRecordsByStudent[currentStudentId] || [])
 												.map((record) => record.date)
 												.filter((value): value is string => !!value),
 										)
@@ -976,7 +998,7 @@ export default function HalaqahManagement() {
 								savedReportEvaluationMap = Object.fromEntries(
 									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
 										const recordsByAnchorDate = new Map(
-											(savedRecordsByStudent[currentStudentId] || [])
+											(attendanceRecordsByStudent[currentStudentId] || [])
 												.filter((record) => !!record.date && !!record.hafiz_level)
 												.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel] as const),
 										)
@@ -1106,7 +1128,7 @@ export default function HalaqahManagement() {
 				<main className="flex-1 py-4 px-4">
 					<div className="container mx-auto max-w-7xl">
 						<div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-							<h1 className="text-3xl font-bold text-[#1a2332]">إدارة الحلقة متاحة يوم الأحد ويوم الأربعاء فقط</h1>
+							<h1 className="text-3xl font-bold text-[#1a2332]">التقييم اليومي متاح يوم الأحد ويوم الأربعاء فقط</h1>
 						</div>
 					</div>
 				</main>
@@ -1295,6 +1317,7 @@ export default function HalaqahManagement() {
 						teacher_id: teacherData.id,
 						halaqah: teacherHalaqah,
 						status: student.attendance,
+						report_date: todayKsaDate,
 						hafiz_level: "0",
 						tikrar_level: "0",
 						samaa_level: "0",
@@ -1335,7 +1358,7 @@ export default function HalaqahManagement() {
 
 					const response = await fetch("/api/attendance", {
 						method: "POST",
-						headers: { "Content-Type": "application/json" },
+						headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
 						body: JSON.stringify(requestBody),
 					})
 					const data = await response.json().catch(() => ({}))
@@ -1526,7 +1549,7 @@ export default function HalaqahManagement() {
 					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
 							<div className="text-right">
-								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">إدارة الحلقة</p>
+								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">التقييم اليومي</p>
 								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
 							<Button

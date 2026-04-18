@@ -107,6 +107,15 @@ type ExamScheduleRow = {
 	students?: { name?: string | null } | Array<{ name?: string | null }> | null
 }
 
+type UntestedExamAlertRow = {
+	studentId: string
+	studentName: string
+	halaqah: string
+	pendingPortions: StudentExamPortionOption[]
+	unscheduledPendingPortions: StudentExamPortionOption[]
+	nextScheduledPendingDate: string | null
+}
+
 type SettingsForm = {
 	maxScore: string
 	alertDeduction: string
@@ -133,6 +142,8 @@ type ExamFormState = {
 	testedByName: string
 	alertsCount: string
 	mistakesCount: string
+	failedAction: "repeat_memorization" | "reschedule_exam"
+	retryExamDate: string
 }
 
 type ScheduleFormState = {
@@ -280,6 +291,7 @@ export default function AdminExamsPage() {
 	const [isExamDialogOpen, setIsExamDialogOpen] = useState(false)
 	const [isSchedulesViewerOpen, setIsSchedulesViewerOpen] = useState(false)
 	const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false)
+	const [isUntestedAlertsDialogOpen, setIsUntestedAlertsDialogOpen] = useState(false)
 	const [settingsSection, setSettingsSection] = useState<"settings" | "templates">("settings")
 	const [examForm, setExamForm] = useState<ExamFormState>({
 		circle: ALL_CIRCLES,
@@ -288,6 +300,8 @@ export default function AdminExamsPage() {
 		testedByName: "",
 		alertsCount: "0",
 		mistakesCount: "0",
+		failedAction: "repeat_memorization",
+		retryExamDate: getTodayDate(),
 	})
 	const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>({
 		circle: ALL_CIRCLES,
@@ -375,6 +389,7 @@ export default function AdminExamsPage() {
 				setExamForm((current) => ({
 					...current,
 					testedByName: current.testedByName || savedUserName,
+					retryExamDate: current.retryExamDate || getTodayDate(),
 				}))
 			} catch (error) {
 				console.error("[admin-exams] bootstrap:", error)
@@ -394,7 +409,7 @@ export default function AdminExamsPage() {
 	}, [students, examForm.circle])
 
 	const scheduleStudents = useMemo(() => {
-		if (scheduleForm.circle === ALL_CIRCLES) return []
+		if (scheduleForm.circle === ALL_CIRCLES) return students
 		const selectedCircle = normalizeCircleName(scheduleForm.circle)
 		return students.filter((student) => normalizeCircleName(student.halaqah) === selectedCircle)
 	}, [students, scheduleForm.circle])
@@ -422,6 +437,76 @@ export default function AdminExamsPage() {
 			return [student.id, availablePortions]
 		}))
 	}, [scheduleStudents, studentPlanProgressMap, exams, portionMode, schedules])
+
+	const untestedExamAlerts = useMemo<UntestedExamAlertRow[]>(() => {
+		return scheduleStudents
+			.map((student) => {
+				const studentPlan = studentPlanProgressMap[student.id] || null
+				const eligiblePortions = getEligibleExamPortions(student, studentPlan, portionMode)
+				if (eligiblePortions.length === 0) {
+					return null
+				}
+
+				const testedPortionNumbers = new Set(
+					exams
+						.filter((exam) => exam.student_id === student.id)
+						.map((exam) => Number(exam.portion_number || exam.juz_number))
+						.filter((portionNumber) => Number.isFinite(portionNumber) && portionNumber > 0),
+				)
+
+				const pendingPortions = eligiblePortions.filter((portion) => !testedPortionNumbers.has(Number(portion.portionNumber)))
+				if (pendingPortions.length === 0) {
+					return null
+				}
+
+				const scheduledPendingRows = pendingPortions
+					.map((portion) => {
+						const matchedSchedule = schedules.find((schedule) => (
+							schedule.student_id === student.id
+							&& schedule.status === "scheduled"
+							&& Number(schedule.portion_number || schedule.juz_number) === Number(portion.portionNumber)
+						))
+
+						return matchedSchedule ? { portion, schedule: matchedSchedule } : null
+					})
+					.filter((entry): entry is { portion: StudentExamPortionOption; schedule: ExamScheduleRow } => Boolean(entry))
+					.sort((left, right) => left.schedule.exam_date.localeCompare(right.schedule.exam_date))
+
+				const scheduledPendingNumbers = new Set(scheduledPendingRows.map((entry) => Number(entry.portion.portionNumber)))
+
+				return {
+					studentId: student.id,
+					studentName: student.name,
+					halaqah: student.halaqah,
+					pendingPortions,
+					unscheduledPendingPortions: pendingPortions.filter((portion) => !scheduledPendingNumbers.has(Number(portion.portionNumber))),
+					nextScheduledPendingDate: scheduledPendingRows[0]?.schedule.exam_date || null,
+				}
+			})
+			.filter((row): row is UntestedExamAlertRow => Boolean(row))
+			.sort((left, right) => {
+				if (right.pendingPortions.length !== left.pendingPortions.length) {
+					return right.pendingPortions.length - left.pendingPortions.length
+				}
+
+				const halaqahCompare = left.halaqah.localeCompare(right.halaqah, "ar")
+				if (halaqahCompare !== 0) {
+					return halaqahCompare
+				}
+
+				return left.studentName.localeCompare(right.studentName, "ar")
+			})
+	}, [scheduleStudents, studentPlanProgressMap, portionMode, exams, schedules])
+
+	function openExamForAlert(alertRow: UntestedExamAlertRow) {
+		setExamForm((current) => ({
+			...current,
+			circle: alertRow.halaqah || ALL_CIRCLES,
+			studentId: alertRow.studentId,
+			selectedPortion: String(alertRow.pendingPortions[0]?.portionNumber || ""),
+		}))
+		setIsExamDialogOpen(true)
+	}
 
 	const displayedSchedules = useMemo(() => {
 		return schedules.filter((schedule) => {
@@ -570,29 +655,37 @@ export default function AdminExamsPage() {
 					tested_by_name: examForm.testedByName,
 					alerts_count: parseCount(examForm.alertsCount),
 					mistakes_count: parseCount(examForm.mistakesCount),
+					failed_action: examForm.failedAction,
+					retry_exam_date: examForm.retryExamDate,
 				}),
 			})
-			const payload = await parseApiResponse<{ exam?: ExamRow; student?: Student }>(response, "فشل تسجيل الاختبار")
+			const payload = await parseApiResponse<{ exam?: ExamRow; student?: Student; rescheduledSchedule?: ExamScheduleRow }>(response, "فشل تسجيل الاختبار")
 
 			setExams((current) => [payload.exam as ExamRow, ...current])
 			if (payload.student?.id) {
 				setStudents((current) => current.map((student) => student.id === payload.student.id ? { ...student, ...payload.student } : student))
 			}
-			setSchedules((current) => current.map((schedule) => {
-				if (schedule.student_id === examForm.studentId && schedule.status === "scheduled" && Number(schedule.portion_number || schedule.juz_number) === Number(examForm.selectedPortion)) {
-					return {
-						...schedule,
-						status: "completed",
-						completed_exam_id: payload.exam?.id || schedule.completed_exam_id,
-						completed_at: new Date().toISOString(),
+			setSchedules((current) => {
+				const nextSchedules = current.map((schedule) => {
+					if (schedule.student_id === examForm.studentId && schedule.status === "scheduled" && Number(schedule.portion_number || schedule.juz_number) === Number(examForm.selectedPortion)) {
+						return {
+							...schedule,
+							status: "completed",
+							completed_exam_id: payload.exam?.id || schedule.completed_exam_id,
+							completed_at: new Date().toISOString(),
+						}
 					}
-				}
-				return schedule
-			}))
+					return schedule
+				})
+
+				return payload.rescheduledSchedule ? [payload.rescheduledSchedule, ...nextSchedules] : nextSchedules
+			})
 			setExamForm((current) => ({
 				...current,
 				alertsCount: "0",
 				mistakesCount: "0",
+				failedAction: "repeat_memorization",
+				retryExamDate: getTodayDate(),
 			}))
 			setIsExamDialogOpen(false)
 			await showAlert(`تم تسجيل نتيجة ${selectedPortion?.label || formatExamPortionLabel(Number(examForm.selectedPortion), "", portionMode)}`)
@@ -679,13 +772,26 @@ export default function AdminExamsPage() {
 						<div>
 							<h1 className="text-3xl font-black text-[#1a2332]">إدارة الاختبارات</h1>
 						</div>
-						<div className="flex flex-wrap gap-4">
-							<Button onClick={() => setIsExamDialogOpen(true)} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">اختبار الطلاب</Button>
-							<Button onClick={() => setIsSchedulesViewerOpen(true)} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">المواعيد</Button>
-							<Button onClick={() => {
-								setSettingsSection("settings")
-								setIsSettingsDialogOpen(true)
-							}} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">إعدادات الاختبار</Button>
+						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+							<div className="flex flex-wrap gap-4">
+								<Button onClick={() => setIsExamDialogOpen(true)} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">اختبار الطلاب</Button>
+								<Button onClick={() => setIsSchedulesViewerOpen(true)} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">المواعيد</Button>
+								<Button onClick={() => {
+									setSettingsSection("settings")
+									setIsSettingsDialogOpen(true)
+								}} className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3453a7] to-[#4a67b7] px-8 py-3.5 text-base font-semibold text-white shadow-[0_14px_28px_-18px_rgba(52,83,167,0.45)] transition-all hover:from-[#2f4b98] hover:to-[#4360ae] hover:shadow-[0_18px_34px_-18px_rgba(52,83,167,0.5)]">إعدادات الاختبار</Button>
+							</div>
+							{untestedExamAlerts.length > 0 ? (
+								<Button
+									type="button"
+									onClick={() => setIsUntestedAlertsDialogOpen(true)}
+									variant="outline"
+									className="flex items-center gap-2 self-start rounded-2xl border-[#dbe7ff] bg-white px-5 py-3 text-sm font-bold text-[#3453a7] shadow-[0_10px_24px_-18px_rgba(52,83,167,0.45)] hover:bg-[#f7faff]"
+								>
+									<BellRing className="h-4 w-4" />
+									الطلاب الغير مختبرين
+								</Button>
+							) : null}
 						</div>
 					</div>
 
@@ -706,7 +812,7 @@ export default function AdminExamsPage() {
 									<Select value={scheduleForm.circle} onValueChange={(value) => setScheduleForm((current) => ({ ...current, circle: value }))}>
 										<SelectTrigger className="h-12 rounded-2xl border-[#dbe7ff] bg-white px-4 text-right text-base shadow-[0_6px_18px_rgba(59,130,246,0.08)]"><SelectValue placeholder="اختر الحلقة" /></SelectTrigger>
 										<SelectContent>
-											<SelectItem value={ALL_CIRCLES}>اختر الحلقة</SelectItem>
+											<SelectItem value={ALL_CIRCLES}>جميع الحلقات</SelectItem>
 											{circles.map((circle) => <SelectItem key={circle.id || circle.name} value={circle.name}>{circle.name}</SelectItem>)}
 										</SelectContent>
 									</Select>
@@ -719,9 +825,7 @@ export default function AdminExamsPage() {
 										<div>التاريخ</div>
 										<div>الإجراء</div>
 									</div>
-									{scheduleForm.circle === ALL_CIRCLES ? (
-										<div className="px-6 py-12 text-center text-base text-[#64748b]">اختر حلقة أولاً لعرض الطلاب.</div>
-									) : scheduleStudents.length === 0 ? (
+									{scheduleStudents.length === 0 ? (
 										<div className="px-6 py-12 text-center text-base text-[#64748b]">لا يوجد طلاب في هذه الحلقة.</div>
 									) : (
 										<div className="divide-y divide-[#eef2f7]">
@@ -787,7 +891,7 @@ export default function AdminExamsPage() {
 									<Select value={examForm.circle} onValueChange={(value) => setExamForm((current) => ({ ...current, circle: value }))}>
 										<SelectTrigger className="h-12 w-full rounded-2xl border-[#dbe7ff] bg-white px-4 text-right text-base"><SelectValue placeholder="اختر الحلقة" /></SelectTrigger>
 										<SelectContent>
-											<SelectItem value={ALL_CIRCLES}>اختر الحلقة</SelectItem>
+											<SelectItem value={ALL_CIRCLES}>جميع الحلقات</SelectItem>
 											{circles.map((circle) => <SelectItem key={circle.id || circle.name} value={circle.name}>{circle.name}</SelectItem>)}
 										</SelectContent>
 									</Select>
@@ -828,6 +932,24 @@ export default function AdminExamsPage() {
 								<div className="w-full space-y-2 text-right">
 									<Label className="block text-base font-bold text-[#334155]">عدد الأخطاء</Label>
 									<Input inputMode="numeric" value={examForm.mistakesCount} onChange={(event) => setExamForm((current) => ({ ...current, mistakesCount: event.target.value }))} className="h-12 w-full rounded-2xl border-[#dbe7ff] bg-white px-4 text-right text-base" />
+								</div>
+							</div>
+
+							<div className="grid gap-6 sm:grid-cols-2">
+								<div className="w-full space-y-2 text-right">
+									<Label className="block text-base font-bold text-[#334155]">إجراء الرسوب</Label>
+									<Select value={examForm.failedAction} onValueChange={(value) => setExamForm((current) => ({ ...current, failedAction: value as ExamFormState["failedAction"] }))}>
+										<SelectTrigger className="h-12 w-full rounded-2xl border-[#dbe7ff] bg-white px-4 text-right text-base"><SelectValue /></SelectTrigger>
+										<SelectContent>
+											<SelectItem value="repeat_memorization">إعادة الحفظ</SelectItem>
+											<SelectItem value="reschedule_exam">إعادة موعد الاختبار</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+
+								<div className="w-full space-y-2 text-right">
+									<Label className="block text-base font-bold text-[#334155]">موعد الإعادة عند الرسوب</Label>
+									<Input type="date" value={examForm.retryExamDate} onChange={(event) => setExamForm((current) => ({ ...current, retryExamDate: event.target.value }))} className="h-12 w-full rounded-2xl border-[#dbe7ff] bg-white px-4 text-right text-base" disabled={examForm.failedAction !== "reschedule_exam"} />
 								</div>
 							</div>
 
@@ -909,6 +1031,37 @@ export default function AdminExamsPage() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+
+				<Dialog open={isUntestedAlertsDialogOpen} onOpenChange={setIsUntestedAlertsDialogOpen}>
+					<DialogContent className="sm:max-w-lg" dir="rtl">
+						<DialogHeader>
+							<DialogTitle className="text-right text-xl font-black text-[#1a2332]">الطلاب الذين عليهم أجزاء غير مختبرة</DialogTitle>
+							<DialogDescription className="text-right text-sm text-[#64748b]">تظهر هنا أسماء الطلاب فقط ممن بقيت لهم أجزاء متاحة للاختبار ولم تُسجل لها نتيجة بعد.</DialogDescription>
+						</DialogHeader>
+						<div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-[#e5ecfb] bg-[#fbfdff] p-3">
+							{untestedExamAlerts.length === 0 ? (
+								<div className="px-3 py-6 text-center text-sm font-medium text-[#64748b]">لا يوجد طلاب عليهم أجزاء غير مختبرة حاليًا.</div>
+							) : (
+								<div className="space-y-2">
+									{untestedExamAlerts.map((alertRow) => (
+										<button
+											key={alertRow.studentId}
+											type="button"
+											onClick={() => {
+												openExamForAlert(alertRow)
+												setIsUntestedAlertsDialogOpen(false)
+											}}
+											className="flex w-full items-center justify-between rounded-2xl border border-[#dbe7ff] bg-white px-4 py-3 text-right text-[#1a2332] transition-colors hover:bg-[#f7faff]"
+										>
+											<span className="font-bold">{alertRow.studentName}</span>
+											<span className="text-xs font-semibold text-[#64748b]">فتح الاختبار</span>
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					</DialogContent>
+				</Dialog>
 
 			<Dialog open={isSettingsDialogOpen} onOpenChange={setIsSettingsDialogOpen}>
 				<DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">

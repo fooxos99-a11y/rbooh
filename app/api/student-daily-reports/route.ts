@@ -244,6 +244,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
     const studentId = searchParams.get("student_id")?.trim() || ""
+    const targetDateParam = searchParams.get("date")?.trim() || ""
     const studentIds = (searchParams.get("student_ids") || "")
       .split(",")
       .map((value) => value.trim())
@@ -260,7 +261,9 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient()
     const todayDate = getKsaDateString()
-    const queryEndDate = excludeToday ? getEarlierKsaDateString(todayDate, 1) : todayDate
+  const normalizedTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(targetDateParam) ? targetDateParam : ""
+  const baseDate = normalizedTargetDate || todayDate
+  const queryEndDate = excludeToday ? getEarlierKsaDateString(baseDate, 1) : baseDate
     const lookbackDays = skipMemorizationOffDays ? Math.min(31, Math.max(days * 2, days + 7)) : days
     const fromDate = getEarlierKsaDateString(queryEndDate, lookbackDays - 1)
 

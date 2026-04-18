@@ -176,7 +176,7 @@ export async function DELETE(request: Request) {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const { searchParams } = new URL(request.url)
     const circleName = searchParams.get("circle")
     const accountNumber = searchParams.get("account_number")

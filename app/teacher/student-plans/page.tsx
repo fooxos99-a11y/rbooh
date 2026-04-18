@@ -59,6 +59,14 @@ interface StudentPlan {
   review_distribution_days?: number | null
   review_minimum_pages?: number | null
   review_start_mode?: "auto" | "oldest" | "newest" | null
+  previous_memorization_ranges?: PreviousRangeForm[] | null
+}
+
+type PreviousRangeForm = {
+  startSurah: string
+  startVerse: string
+  endSurah: string
+  endVerse: string
 }
 
 const WEEKLY_REVIEW_OPTION_VALUE = "weekly"
@@ -229,6 +237,7 @@ function getAdjustedPreviewRange({
   prevStartVerse,
   prevEndSurah,
   prevEndVerse,
+  previousMemorizationRanges,
   completedJuzs,
 }: {
   startSurahNumber: number
@@ -241,12 +250,13 @@ function getAdjustedPreviewRange({
   prevStartVerse?: string
   prevEndSurah?: string
   prevEndVerse?: string
+  previousMemorizationRanges?: PreviousRangeForm[]
   completedJuzs?: number[]
 }) {
   let adjustedStartSurahNumber = startSurahNumber
   let adjustedStartVerseNumber = startVerseNumber
 
-  const nextStartFromPrevious = prevStartSurah && prevEndSurah && prevEndVerse
+  const nextStartFromPrevious = (!previousMemorizationRanges || previousMemorizationRanges.length <= 1) && prevStartSurah && prevEndSurah && prevEndVerse
     ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
     : null
 
@@ -311,6 +321,12 @@ function getAdjustedPreviewRange({
         prev_start_verse: prevStartVerse ? parseInt(prevStartVerse, 10) : null,
         prev_end_surah: prevEndSurah ? parseInt(prevEndSurah, 10) : null,
         prev_end_verse: prevEndVerse ? parseInt(prevEndVerse, 10) : null,
+        previous_memorization_ranges: previousMemorizationRanges?.map((range) => ({
+          startSurahNumber: parseInt(range.startSurah, 10),
+          startVerseNumber: parseInt(range.startVerse || "1", 10),
+          endSurahNumber: parseInt(range.endSurah, 10),
+          endVerseNumber: parseInt(range.endVerse, 10),
+        })),
         completed_juzs: completedJuzs,
       })
     : 0
@@ -328,6 +344,12 @@ function getAdjustedPreviewRange({
         prev_start_verse: prevStartVerse ? parseInt(prevStartVerse, 10) : null,
         prev_end_surah: prevEndSurah ? parseInt(prevEndSurah, 10) : null,
         prev_end_verse: prevEndVerse ? parseInt(prevEndVerse, 10) : null,
+        previous_memorization_ranges: previousMemorizationRanges?.map((range) => ({
+          startSurahNumber: parseInt(range.startSurah, 10),
+          startVerseNumber: parseInt(range.startVerse || "1", 10),
+          endSurahNumber: parseInt(range.endSurah, 10),
+          endVerseNumber: parseInt(range.endVerse, 10),
+        })),
         completed_juzs: completedJuzs,
       })
     : 0
@@ -340,6 +362,127 @@ function getAdjustedPreviewRange({
     totalPages,
     totalDays,
   }
+}
+
+function createEmptyPreviousRange(): PreviousRangeForm {
+  return {
+    startSurah: "",
+    startVerse: "1",
+    endSurah: "",
+    endVerse: "",
+  }
+}
+
+function isPreviousRangeComplete(range?: PreviousRangeForm | null) {
+  return Boolean(range?.startSurah && range?.startVerse && range?.endSurah && range?.endVerse)
+}
+
+function normalizePreviousRange(range?: PreviousRangeForm | null) {
+  if (!range?.startSurah || !range?.endSurah || !range?.endVerse) {
+    return null
+  }
+
+  return {
+    startSurahNumber: parseInt(range.startSurah, 10),
+    startVerseNumber: parseInt(range.startVerse || "1", 10) || 1,
+    endSurahNumber: parseInt(range.endSurah, 10),
+    endVerseNumber: parseInt(range.endVerse, 10),
+  }
+}
+
+function getPreviousRangeKey(range: NonNullable<ReturnType<typeof normalizePreviousRange>>) {
+  return `${range.startSurahNumber}:${range.startVerseNumber}:${range.endSurahNumber}:${range.endVerseNumber}`
+}
+
+function hasDuplicatePreviousRanges(ranges: Array<NonNullable<ReturnType<typeof normalizePreviousRange>>>) {
+  const keys = new Set<string>()
+
+  for (const range of ranges) {
+    const key = getPreviousRangeKey(range)
+    if (keys.has(key)) {
+      return true
+    }
+
+    keys.add(key)
+  }
+
+  return false
+}
+
+function getOrderedPreviousRange(range: NonNullable<ReturnType<typeof normalizePreviousRange>>) {
+  return compareAyahRefs(
+    range.startSurahNumber,
+    range.startVerseNumber,
+    range.endSurahNumber,
+    range.endVerseNumber,
+  ) <= 0
+    ? range
+    : {
+        startSurahNumber: range.endSurahNumber,
+        startVerseNumber: range.endVerseNumber,
+        endSurahNumber: range.startSurahNumber,
+        endVerseNumber: range.startVerseNumber,
+      }
+}
+
+function doPreviousRangesOverlap(
+  firstRange: NonNullable<ReturnType<typeof normalizePreviousRange>>,
+  secondRange: NonNullable<ReturnType<typeof normalizePreviousRange>>,
+) {
+  const first = getOrderedPreviousRange(firstRange)
+  const second = getOrderedPreviousRange(secondRange)
+
+  return (
+    compareAyahRefs(
+      first.startSurahNumber,
+      first.startVerseNumber,
+      second.endSurahNumber,
+      second.endVerseNumber,
+    ) <= 0
+    && compareAyahRefs(
+      second.startSurahNumber,
+      second.startVerseNumber,
+      first.endSurahNumber,
+      first.endVerseNumber,
+    ) <= 0
+  )
+}
+
+function hasConflictingPreviousRanges(ranges: Array<NonNullable<ReturnType<typeof normalizePreviousRange>>>) {
+  if (hasDuplicatePreviousRanges(ranges)) {
+    return true
+  }
+
+  for (let firstIndex = 0; firstIndex < ranges.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < ranges.length; secondIndex += 1) {
+      if (doPreviousRangesOverlap(ranges[firstIndex], ranges[secondIndex])) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+function getCoveredVerseNumbersForPreviousRangeInSurah(
+  range: NonNullable<ReturnType<typeof normalizePreviousRange>>,
+  surahNumber: number,
+) {
+  const orderedRange = getOrderedPreviousRange(range)
+  const surah = SURAHS.find((item) => item.number === surahNumber)
+
+  if (!surah) {
+    return [] as number[]
+  }
+
+  if (surahNumber < orderedRange.startSurahNumber || surahNumber > orderedRange.endSurahNumber) {
+    return [] as number[]
+  }
+
+  const minVerse = surahNumber === orderedRange.startSurahNumber ? orderedRange.startVerseNumber : 1
+  const maxVerse = surahNumber === orderedRange.endSurahNumber ? orderedRange.endVerseNumber : surah.verseCount
+
+  return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index)
 }
 
 function getLockedPreviousRange(student: Student, plan: StudentPlan | null, completedDays: number) {
@@ -471,6 +614,9 @@ export default function TeacherStudentPlansPage() {
   const [prevStartOpen, setPrevStartOpen] = useState(false)
   const [prevEndOpen, setPrevEndOpen] = useState(false)
   const [isPreviousLocked, setIsPreviousLocked] = useState(false)
+  const [additionalPreviousRanges, setAdditionalPreviousRanges] = useState<PreviousRangeForm[]>([])
+  const [additionalPrevStartOpenIndex, setAdditionalPrevStartOpenIndex] = useState<number | null>(null)
+  const [additionalPrevEndOpenIndex, setAdditionalPrevEndOpenIndex] = useState<number | null>(null)
   const [reviewDistributionDays, setReviewDistributionDays] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_DAYS))
   const [reviewMinimumPages, setReviewMinimumPages] = useState<string>(String(REVIEW_DISTRIBUTION_DEFAULT_MINIMUM_PAGES))
   const [muraajaaPages, setMuraajaaPages] = useState<string>("20")
@@ -478,6 +624,23 @@ export default function TeacherStudentPlansPage() {
 
   const [isSaving, setIsSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
+
+  const updateAdditionalPreviousRange = (index: number, patch: Partial<PreviousRangeForm>) => {
+    setAdditionalPreviousRanges((current) => {
+      const next = current.map((item, currentIndex) => currentIndex === index ? { ...item, ...patch } : item)
+      const normalizedRanges = [
+        normalizePreviousRange({ startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse }),
+        ...next.map((range) => normalizePreviousRange(range)),
+      ].filter((range): range is NonNullable<ReturnType<typeof normalizePreviousRange>> => Boolean(range))
+
+      if (hasConflictingPreviousRanges(normalizedRanges)) {
+        setSaveMsg({ type: "error", text: "لا يمكن تكرار أو تداخل المحفوظ السابق" })
+        return current
+      }
+
+      return next
+    })
+  }
 
   useEffect(() => {
     const init = async () => {
@@ -567,6 +730,25 @@ export default function TeacherStudentPlansPage() {
   const openAddDialog = (student: Student) => {
     const currentPlan = studentPlans[student.id]
     const lockedPreviousRange = getLockedPreviousRange(student, currentPlan, studentCompletedDays[student.id] || 0)
+    const storedPreviousRanges = Array.isArray(currentPlan?.previous_memorization_ranges)
+      ? currentPlan.previous_memorization_ranges
+      : []
+    const fallbackPreviousRange = currentPlan?.prev_start_surah && currentPlan?.prev_end_surah && currentPlan?.prev_end_verse
+      ? [{
+          startSurah: String(currentPlan.prev_start_surah),
+          startVerse: String(currentPlan.prev_start_verse || 1),
+          endSurah: String(currentPlan.prev_end_surah),
+          endVerse: String(currentPlan.prev_end_verse),
+        }]
+      : []
+    const initialPreviousRanges = lockedPreviousRange
+      ? [{
+          startSurah: String(lockedPreviousRange.startSurahNumber),
+          startVerse: String(lockedPreviousRange.startVerseNumber),
+          endSurah: String(lockedPreviousRange.endSurahNumber),
+          endVerse: String(lockedPreviousRange.endVerseNumber),
+        }]
+      : (storedPreviousRanges.length > 0 ? storedPreviousRanges : fallbackPreviousRange)
     const hasLockedPrevious = !!lockedPreviousRange
     const shouldLockPrevious = !!currentPlan || hasLockedPrevious
     const nextPlanStart = lockedPreviousRange
@@ -586,12 +768,15 @@ export default function TeacherStudentPlansPage() {
     setSaveMsg(null)
     setStartOpen(false)
     setEndOpen(false)
-    setHasPrevious(shouldLockPrevious)
+    setHasPrevious(shouldLockPrevious || initialPreviousRanges.length > 0)
     setIsPreviousLocked(shouldLockPrevious)
-    setPrevStartSurah(lockedPreviousRange ? String(lockedPreviousRange.startSurahNumber) : "")
-    setPrevEndSurah(lockedPreviousRange ? String(lockedPreviousRange.endSurahNumber) : "")
-    setPrevStartVerse(lockedPreviousRange ? String(lockedPreviousRange.startVerseNumber) : "")
-    setPrevEndVerse(lockedPreviousRange ? String(lockedPreviousRange.endVerseNumber) : "")
+    setPrevStartSurah(initialPreviousRanges[0]?.startSurah || "")
+    setPrevEndSurah(initialPreviousRanges[0]?.endSurah || "")
+    setPrevStartVerse(initialPreviousRanges[0]?.startVerse || "")
+    setPrevEndVerse(initialPreviousRanges[0]?.endVerse || "")
+    setAdditionalPreviousRanges(initialPreviousRanges.slice(1))
+    setAdditionalPrevStartOpenIndex(null)
+    setAdditionalPrevEndOpenIndex(null)
     setPrevStartOpen(false)
     setPrevEndOpen(false)
     setMuraajaaPages(currentPlan?.review_distribution_mode === "weekly"
@@ -607,35 +792,61 @@ export default function TeacherStudentPlansPage() {
   }
 
   const handleSavePlan = async () => {
-    if (!selectedStudent || !startSurah || !endSurah || !dailyPages) {
-      setSaveMsg({ type: "error", text: "يرجى تعبئة جميع الحقول" })
+    if (!selectedStudent || !startSurah || !startVerse || !endSurah || !endVerse || !dailyPages) {
+      setSaveMsg({ type: "error", text: "يجب اختيار الآية لبداية ونهاية الخطة قبل الحفظ" })
+      return
+    }
+
+    const primaryPreviousForm = {
+      startSurah: prevStartSurah,
+      startVerse: prevStartVerse,
+      endSurah: prevEndSurah,
+      endVerse: prevEndVerse,
+    }
+
+    if (hasPrevious && (!isPreviousRangeComplete(primaryPreviousForm) || additionalPreviousRanges.some((range) => !isPreviousRangeComplete(range)))) {
+      setSaveMsg({ type: "error", text: "يجب اختيار السورة والآية لكل محفوظ سابق قبل الحفظ" })
       return
     }
 
     const startNum = parseInt(startSurah)
     const endNum = parseInt(endSurah)
+    const normalizedPreviousRanges = [
+      normalizePreviousRange({ startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse }),
+      ...additionalPreviousRanges.map((range) => normalizePreviousRange(range)),
+    ].filter((range): range is NonNullable<ReturnType<typeof normalizePreviousRange>> => Boolean(range))
+
+    if (hasConflictingPreviousRanges(normalizedPreviousRanges)) {
+      setSaveMsg({ type: "error", text: "لا يمكن تكرار أو تداخل المحفوظ السابق" })
+      return
+    }
+
+    const primaryPreviousRange = normalizedPreviousRanges[0] || null
+    const hasSinglePreviousRange = normalizedPreviousRanges.length === 1
 
     if (hasPrevious) {
-      if (!prevStartSurah || !prevEndSurah || !prevEndVerse) {
+      if (normalizedPreviousRanges.length === 0) {
         setSaveMsg({ type: "error", text: "يجب تعبئة بيانات الحفظ السابق كاملة" })
         return
       }
 
-      if (!nextStartFromPrevious) {
+      if (hasSinglePreviousRange && !nextStartFromPrevious) {
         setSaveMsg({ type: "error", text: "تعذر تحديد البداية الصحيحة بعد الحفظ السابق" })
         return
       }
 
       const normalizedStartVerse = startVerse ? parseInt(startVerse) : 1
-      const startInsidePreviousRange = isAyahWithinRange(
-        startNum,
-        normalizedStartVerse,
-        parseInt(prevStartSurah, 10),
-        prevStartVerse ? parseInt(prevStartVerse, 10) : 1,
-        parseInt(prevEndSurah, 10),
-        parseInt(prevEndVerse, 10),
-      )
-      if (startInsidePreviousRange) {
+      const startInsidePreviousRange = primaryPreviousRange
+        ? isAyahWithinRange(
+            startNum,
+            normalizedStartVerse,
+            primaryPreviousRange.startSurahNumber,
+            primaryPreviousRange.startVerseNumber,
+            primaryPreviousRange.endSurahNumber,
+            primaryPreviousRange.endVerseNumber,
+          )
+        : false
+      if (hasSinglePreviousRange && startInsidePreviousRange) {
         const expectedSurah = SURAHS.find((surah) => surah.number === nextStartFromPrevious.surahNumber)?.name || "السورة"
         setSaveMsg({
           type: "error",
@@ -663,6 +874,10 @@ export default function TeacherStudentPlansPage() {
       prevStartVerse,
       prevEndSurah,
       prevEndVerse,
+      previousMemorizationRanges: [
+        { startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse },
+        ...additionalPreviousRanges,
+      ],
       completedJuzs: selectedStudent?.completed_juzs,
     })
     const total = adjustedPreview.totalPages
@@ -697,11 +912,12 @@ export default function TeacherStudentPlansPage() {
           daily_pages: parseFloat(dailyPages),
           total_days: days,
           direction,
-          has_previous: hasPrevious,
-          prev_start_surah: hasPrevious && prevStartSurah ? parseInt(prevStartSurah) : null,
-          prev_start_verse: hasPrevious && prevStartVerse ? parseInt(prevStartVerse) : null,
-          prev_end_surah: hasPrevious && prevEndSurah ? parseInt(prevEndSurah) : null,
-          prev_end_verse: hasPrevious && prevEndVerse ? parseInt(prevEndVerse) : null,
+          has_previous: hasPrevious && normalizedPreviousRanges.length > 0,
+          prev_start_surah: hasPrevious && primaryPreviousRange ? primaryPreviousRange.startSurahNumber : null,
+          prev_start_verse: hasPrevious && primaryPreviousRange ? primaryPreviousRange.startVerseNumber : null,
+          prev_end_surah: hasPrevious && primaryPreviousRange ? primaryPreviousRange.endSurahNumber : null,
+          prev_end_verse: hasPrevious && primaryPreviousRange ? primaryPreviousRange.endVerseNumber : null,
+          previous_memorization_ranges: hasPrevious ? normalizedPreviousRanges : [],
           muraajaa_pages: reviewDistributionMode === "weekly" ? null : parseFloat(muraajaaPages),
           rabt_pages: parseFloat(rabtPages),
           review_distribution_mode: reviewDistributionMode,
@@ -796,7 +1012,12 @@ export default function TeacherStudentPlansPage() {
   const endNum = endSurah ? parseInt(endSurah) : null
   const direction = startNum && endNum && startNum > endNum ? "desc" : "asc"
   const isEditingPlan = !!(selectedStudent && studentPlans[selectedStudent.id])
+  const previousRangesCount = [
+    normalizePreviousRange({ startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse }),
+    ...additionalPreviousRanges.map((range) => normalizePreviousRange(range)),
+  ].filter(Boolean).length
   const nextStartFromPrevious = hasPrevious && prevStartSurah && prevEndSurah && prevEndVerse
+    && previousRangesCount === 1
     ? getNextStartFromPrevious(prevStartSurah, prevEndSurah, prevEndVerse)
     : null
   const selectedStudentPlan = selectedStudent ? studentPlans[selectedStudent.id] ?? null : null
@@ -840,44 +1061,75 @@ export default function TeacherStudentPlansPage() {
     const safeMaxVerse = Math.min(maxVerse ?? surah.verseCount, surah.verseCount)
     return getAvailableVerseNumbers(surahNumber, Math.max(1, minVerse), safeMaxVerse).length === 0
   }
+  const getNormalizedPreviousRanges = (options?: { excludePrimary?: boolean; excludeAdditionalIndex?: number }) => {
+    const ranges: Array<NonNullable<ReturnType<typeof normalizePreviousRange>>> = []
 
-  const startSurahOptions = (() => {
-    let options = SURAHS
-
-    options = options.filter((surah) => {
-      if (startSurah && surah.number === parseInt(startSurah, 10)) return true
-      if (nextStartFromPrevious?.surahNumber === surah.number) return true
-
-      let minVerse = 1
-      let maxVerse = surah.verseCount
-
-      if (nextStartFromPrevious?.surahNumber === surah.number) {
-        const previousStartNumber = parseInt(prevStartSurah || "0", 10)
-        const previousEndNumber = parseInt(prevEndSurah || "0", 10)
-        const isDescendingPrevious = previousStartNumber > previousEndNumber
-
-        if (isDescendingPrevious) {
-          maxVerse = nextStartFromPrevious.verseNumber
-        } else {
-          minVerse = nextStartFromPrevious.verseNumber
-        }
-      }
-
-      return !isSurahBlockedByCompletedJuzs(surah.number, minVerse, maxVerse)
-    })
-
-    if (hasPrevious && prevStartSurah && prevEndSurah) {
-      const previousStart = parseInt(prevStartSurah)
-      const previousEnd = parseInt(prevEndSurah)
-      const min = Math.min(previousStart, previousEnd)
-      const max = Math.max(previousStart, previousEnd)
-      options = options.filter((surah) => {
-        if (nextStartFromPrevious?.surahNumber === surah.number) return true
-        return surah.number < min || surah.number > max
+    if (!options?.excludePrimary) {
+      const primaryRange = normalizePreviousRange({
+        startSurah: prevStartSurah,
+        startVerse: prevStartVerse || "1",
+        endSurah: prevEndSurah,
+        endVerse: prevEndVerse,
       })
+
+      if (primaryRange) {
+        ranges.push(primaryRange)
+      }
     }
 
-    return options
+    additionalPreviousRanges.forEach((range, index) => {
+      if (options?.excludeAdditionalIndex === index) {
+        return
+      }
+
+      const normalizedRange = normalizePreviousRange(range)
+      if (normalizedRange) {
+        ranges.push(normalizedRange)
+      }
+    })
+
+    return ranges
+  }
+  const getBlockedPreviousVerseNumbers = (surahNumber: number, options?: { excludePrimary?: boolean; excludeAdditionalIndex?: number }) => {
+    return new Set(
+      getNormalizedPreviousRanges(options).flatMap((range) => getCoveredVerseNumbersForPreviousRangeInSurah(range, surahNumber)),
+    )
+  }
+  const getPreviousVerseOptionsForSurah = (surahValue: string, options?: { excludePrimary?: boolean; excludeAdditionalIndex?: number; minVerse?: number }) => {
+    const surahNumber = parseInt(surahValue || "0", 10)
+    const surah = SURAHS.find((item) => item.number === surahNumber)
+
+    if (!surah) {
+      return []
+    }
+
+    const minVerse = Math.max(1, options?.minVerse || 1)
+    const blockedVerseNumbers = getBlockedPreviousVerseNumbers(surah.number, options)
+
+    return getAvailableVerseNumbers(surah.number, minVerse, surah.verseCount)
+      .filter((verseNumber) => !blockedVerseNumbers.has(verseNumber))
+  }
+  const getPlanVerseOptionsForSurah = (surahValue: string) => {
+    const surahNumber = parseInt(surahValue || "0", 10)
+    const surah = SURAHS.find((item) => item.number === surahNumber)
+
+    if (!surah) {
+      return []
+    }
+
+    return getAvailableVerseNumbers(surah.number, 1, surah.verseCount)
+      .filter((verseNumber) => !getBlockedPreviousVerseNumbers(surah.number).has(verseNumber))
+  }
+  const getSelectablePreviousSurahs = (currentValue: string, options?: { excludePrimary?: boolean; excludeAdditionalIndex?: number }) => {
+    return SURAHS.filter((surah) => (
+      currentValue === String(surah.number) || getPreviousVerseOptionsForSurah(String(surah.number), options).length > 0
+    ))
+  }
+  const primaryPrevStartSurahOptions = getSelectablePreviousSurahs(prevStartSurah, { excludePrimary: true })
+  const primaryPrevEndSurahOptions = getSelectablePreviousSurahs(prevEndSurah, { excludePrimary: true })
+
+  const startSurahOptions = (() => {
+    return SURAHS.filter((surah) => getPlanVerseOptionsForSurah(String(surah.number)).length > 0)
   })()
 
   const startVerseOptions = (() => {
@@ -886,31 +1138,13 @@ export default function TeacherStudentPlansPage() {
     const selectedSurah = SURAHS.find((surah) => surah.number === parseInt(startSurah))
     if (!selectedSurah) return []
 
-    let minVerse = 1
-    let maxVerse = selectedSurah.verseCount
-
-    if (nextStartFromPrevious?.surahNumber === selectedSurah.number) {
-      const previousStartNumber = parseInt(prevStartSurah || "0", 10)
-      const previousEndNumber = parseInt(prevEndSurah || "0", 10)
-      const isDescendingPrevious = previousStartNumber > previousEndNumber
-
-      if (isDescendingPrevious) {
-        maxVerse = nextStartFromPrevious.verseNumber
-      } else {
-        minVerse = nextStartFromPrevious.verseNumber
-      }
-    }
-
-    return getAvailableVerseNumbers(selectedSurah.number, minVerse, maxVerse)
+    return getPlanVerseOptionsForSurah(String(selectedSurah.number))
   })()
 
   const prevStartVerseOptions = (() => {
     if (!prevStartSurah) return []
 
-    const selectedSurah = SURAHS.find((surah) => surah.number === parseInt(prevStartSurah, 10))
-    if (!selectedSurah) return []
-
-    return Array.from({ length: selectedSurah.verseCount }, (_, index) => index + 1)
+    return getPreviousVerseOptionsForSurah(prevStartSurah, { excludePrimary: true })
   })()
 
   const endSurahOptions = (() => {
@@ -949,17 +1183,12 @@ export default function TeacherStudentPlansPage() {
   const prevEndVerseOptions = (() => {
     if (!prevEndSurah) return []
 
-    const selectedSurah = SURAHS.find((surah) => surah.number === parseInt(prevEndSurah, 10))
-    if (!selectedSurah) return []
-
-    let minVerse = 1
-    const maxVerse = selectedSurah.verseCount
-
-    if (prevStartSurah && prevStartVerse && prevStartSurah === prevEndSurah) {
-      minVerse = parseInt(prevStartVerse, 10)
-    }
-
-    return Array.from({ length: Math.max(0, maxVerse - minVerse + 1) }, (_, index) => minVerse + index)
+    return getPreviousVerseOptionsForSurah(prevEndSurah, {
+      excludePrimary: true,
+      minVerse: prevStartSurah && prevStartVerse && prevStartSurah === prevEndSurah
+        ? parseInt(prevStartVerse, 10)
+        : 1,
+    })
   })()
 
   const isEndValid = endNum !== null && endSurahOptions.some((surah) => surah.number === endNum)
@@ -975,6 +1204,10 @@ export default function TeacherStudentPlansPage() {
         prevStartVerse,
         prevEndSurah,
         prevEndVerse,
+        previousMemorizationRanges: [
+          { startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse },
+          ...additionalPreviousRanges,
+        ],
         completedJuzs: selectedStudent?.completed_juzs,
       }).totalPages
     : 0
@@ -990,6 +1223,10 @@ export default function TeacherStudentPlansPage() {
         prevStartVerse,
         prevEndSurah,
         prevEndVerse,
+        previousMemorizationRanges: [
+          { startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse },
+          ...additionalPreviousRanges,
+        ],
         completedJuzs: selectedStudent?.completed_juzs,
       }).totalDays
     : 0
@@ -1251,7 +1488,7 @@ export default function TeacherStudentPlansPage() {
               )}
 
               {hasPrevious && !(isEditingPlan && isPreviousLocked) && (
-                <div className="bg-[#3453a7]/4 p-3 rounded-xl border border-[#3453a7]/15 space-y-3 mt-2">
+                <div className="mt-2 space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div className="space-y-1.5 flex flex-col w-full">
                       <label className="text-xs font-semibold text-[#1a2332]">بداية الحفظ السابق</label>
@@ -1278,7 +1515,7 @@ export default function TeacherStudentPlansPage() {
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
-                                {SURAHS.map((surah) => (
+                                {primaryPrevStartSurahOptions.map((surah) => (
                                   <CommandItem
                                     key={surah.number}
                                     id={`prev-start-surah-${surah.number}`}
@@ -1338,7 +1575,7 @@ export default function TeacherStudentPlansPage() {
                               <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
                               <CommandEmpty>لا توجد نتائج</CommandEmpty>
                               <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
-                                {SURAHS.map((surah) => (
+                                {primaryPrevEndSurahOptions.map((surah) => (
                                   <CommandItem
                                     key={surah.number}
                                     id={`prev-end-surah-${surah.number}`}
@@ -1372,6 +1609,183 @@ export default function TeacherStudentPlansPage() {
                         </Select>
                       </div>
                     </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setAdditionalPreviousRanges((current) => [...current, createEmptyPreviousRange()])}
+                      disabled={isPreviousLocked}
+                      className="h-9 rounded-lg border-[#3453a7]/25 px-3 text-xs text-[#3453a7] hover:bg-[#f1f6ff]"
+                    >
+                      <Plus className="ml-1 h-3.5 w-3.5" />
+                      إضافة محفوظ سابق
+                    </Button>
+
+                    {additionalPreviousRanges.map((range, index) => {
+                      const additionalStartSurahOptions = getSelectablePreviousSurahs(range.startSurah, { excludeAdditionalIndex: index })
+                      const additionalEndSurahOptions = getSelectablePreviousSurahs(range.endSurah, { excludeAdditionalIndex: index })
+                      const additionalStartVerseOptions = getPreviousVerseOptionsForSurah(range.startSurah, { excludeAdditionalIndex: index })
+                      const additionalEndVerseOptions = getPreviousVerseOptionsForSurah(range.endSurah, {
+                        excludeAdditionalIndex: index,
+                        minVerse: range.startSurah && range.startVerse && range.startSurah === range.endSurah
+                          ? parseInt(range.startVerse, 10)
+                          : 1,
+                      })
+
+                      return (
+                        <div key={`teacher-additional-previous-range-${index}`} className="space-y-3">
+                          <div className="flex justify-start">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAdditionalPreviousRanges((current) => current.filter((_, currentIndex) => currentIndex !== index))
+                                setAdditionalPrevStartOpenIndex(null)
+                                setAdditionalPrevEndOpenIndex(null)
+                              }}
+                              disabled={isPreviousLocked}
+                              className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+                            >
+                              حذف
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="space-y-1.5 flex flex-col w-full">
+                              <label className="text-xs font-semibold text-[#1a2332]">بداية الحفظ السابق</label>
+                              <div className="flex items-center gap-2 w-full">
+                                <Popover open={isPreviousLocked ? false : additionalPrevStartOpenIndex === index} onOpenChange={(open) => {
+                                  if (!isPreviousLocked) setAdditionalPrevStartOpenIndex(open ? index : null)
+                                }}>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      disabled={isPreviousLocked}
+                                      className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#3453a7]/25 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
+                                    >
+                                      <span className={range.startSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
+                                        {range.startSurah
+                                          ? SURAHS.find((surah) => surah.number === parseInt(range.startSurah, 10))?.name
+                                          : "اختر السورة"}
+                                      </span>
+                                      <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-48 p-0" align="start" dir="rtl">
+                                    <Command className="overflow-visible border-[#3453a7]/15">
+                                      <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
+                                      <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                                      <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
+                                        {additionalStartSurahOptions.map((surah) => (
+                                          <CommandItem
+                                            key={`teacher-additional-start-${index}-${surah.number}`}
+                                            id={`teacher-additional-start-${index}-${surah.number}`}
+                                            value={surah.name}
+                                            onSelect={() => {
+                                              const nextStartVerseOptions = getPreviousVerseOptionsForSurah(surah.number.toString(), { excludeAdditionalIndex: index })
+                                              updateAdditionalPreviousRange(index, {
+                                                startSurah: surah.number.toString(),
+                                                startVerse: nextStartVerseOptions[0] ? String(nextStartVerseOptions[0]) : "",
+                                              })
+                                              setAdditionalPrevStartOpenIndex(null)
+                                            }}
+                                          >
+                                            {surah.name}
+                                            {range.startSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
+                                          </CommandItem>
+                                        ))}
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+
+                                <Select value={range.startVerse} onValueChange={(value) => updateAdditionalPreviousRange(index, { startVerse: value })} disabled={isPreviousLocked || !range.startSurah || additionalStartVerseOptions.length === 0}>
+                                  <SelectTrigger className="w-[80px] h-9 border-[#3453a7]/25 text-xs bg-white px-2" dir="rtl">
+                                    <SelectValue placeholder="الآية" />
+                                  </SelectTrigger>
+                                  <SelectContent dir="rtl" className="max-h-48">
+                                    {additionalStartVerseOptions.map((verse) => (
+                                      <SelectItem key={`teacher-additional-start-verse-${index}-${verse}`} value={verse.toString()} className="text-xs text-right">
+                                        {verse}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5 flex flex-col w-full">
+                              <label className="text-xs font-semibold text-[#1a2332]">نهاية الحفظ السابق</label>
+                              <div className="flex items-center gap-2 w-full">
+                                <Popover open={isPreviousLocked ? false : additionalPrevEndOpenIndex === index} onOpenChange={(open) => {
+                                  if (!isPreviousLocked) setAdditionalPrevEndOpenIndex(open ? index : null)
+                                }}>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      type="button"
+                                      disabled={isPreviousLocked}
+                                      className={`flex-1 flex items-center justify-between px-3 h-9 rounded-lg border border-[#3453a7]/25 text-xs bg-white text-right transition-colors ${isPreviousLocked ? "cursor-not-allowed opacity-70" : "hover:border-[#3453a7]"}`}
+                                    >
+                                      <span className={range.endSurah ? "text-[#1a2332] font-medium" : "text-neutral-400"}>
+                                        {range.endSurah
+                                          ? SURAHS.find((surah) => surah.number === parseInt(range.endSurah, 10))?.name
+                                          : "اختر السورة"}
+                                      </span>
+                                      <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-48 p-0" align="start" dir="rtl">
+                                    <Command className="overflow-visible border-[#3453a7]/15">
+                                      <CommandInput placeholder="ابحث عن سورة..." className="text-xs h-8" />
+                                      <CommandEmpty>لا توجد نتائج</CommandEmpty>
+                                      <CommandList className="max-h-48 overflow-y-auto surah-scroll" onWheel={(e) => { e.stopPropagation(); e.currentTarget.scrollTop += e.deltaY }}>
+                                        {additionalEndSurahOptions.map((surah) => (
+                                          <CommandItem
+                                            key={`teacher-additional-end-${index}-${surah.number}`}
+                                            id={`teacher-additional-end-${index}-${surah.number}`}
+                                            value={surah.name}
+                                            onSelect={() => {
+                                              const nextEndVerseOptions = getPreviousVerseOptionsForSurah(surah.number.toString(), {
+                                                excludeAdditionalIndex: index,
+                                                minVerse: range.startSurah && range.startVerse && range.startSurah === surah.number.toString()
+                                                  ? parseInt(range.startVerse, 10)
+                                                  : 1,
+                                              })
+                                              updateAdditionalPreviousRange(index, {
+                                                endSurah: surah.number.toString(),
+                                                endVerse: nextEndVerseOptions.length > 0 ? String(nextEndVerseOptions[nextEndVerseOptions.length - 1]) : "",
+                                              })
+                                              setAdditionalPrevEndOpenIndex(null)
+                                            }}
+                                          >
+                                            {surah.name}
+                                            {range.endSurah === surah.number.toString() && <Check className="w-3.5 h-3.5 mr-auto text-[#003f55]" />}
+                                          </CommandItem>
+                                        ))}
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+
+                                <Select value={range.endVerse} onValueChange={(value) => updateAdditionalPreviousRange(index, { endVerse: value })} disabled={isPreviousLocked || !range.endSurah || additionalEndVerseOptions.length === 0}>
+                                  <SelectTrigger className="w-[80px] h-9 border-[#3453a7]/25 text-xs bg-white px-2" dir="rtl">
+                                    <SelectValue placeholder="الآية" />
+                                  </SelectTrigger>
+                                  <SelectContent dir="rtl" className="max-h-48">
+                                    {additionalEndVerseOptions.map((verse) => (
+                                      <SelectItem key={`teacher-additional-end-verse-${index}-${verse}`} value={verse.toString()} className="text-xs text-right">
+                                        {verse}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
@@ -1583,6 +1997,10 @@ export default function TeacherStudentPlansPage() {
                 prevStartVerse,
                 prevEndSurah,
                 prevEndVerse,
+                previousMemorizationRanges: [
+                  { startSurah: prevStartSurah, startVerse: prevStartVerse || "1", endSurah: prevEndSurah, endVerse: prevEndVerse },
+                  ...additionalPreviousRanges,
+                ],
                 completedJuzs: selectedStudent?.completed_juzs,
               })
               const previewStart = SURAHS.find((surah) => surah.number === adjustedPreview.startSurahNumber)

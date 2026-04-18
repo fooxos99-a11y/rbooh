@@ -1,24 +1,28 @@
 ﻿
 "use client"
 
-import React, { useEffect, useState, Suspense } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { FileText, Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react"
+import { FileText, Calendar as CalendarIcon, CheckCircle2, XCircle, Clock, AlertCircle, ChevronDown } from "lucide-react"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getEvaluationLevelLabel, isEvaluatedAttendance } from "@/lib/student-attendance"
 import { getClientAuthHeaders } from "@/lib/client-auth"
+import { normalizeCircleName } from "@/lib/circle-name"
 
 export function GlobalStudentRecordsDialog() {
   const router = useRouter()
+  const isMountedRef = useRef(true)
+  const studentsRequestRef = useRef(0)
+  const recordsRequestRef = useRef(0)
 
   const [isOpen, setIsOpen] = useState(true)
   const [circles, setCircles] = useState<any[]>([])
-  const [studentsInCircles, setStudentsInCircles] = useState<Record<string, any[]>>({})
+  const [students, setStudents] = useState<any[]>([])
+  const [studentsForCircle, setStudentsForCircle] = useState<any[]>([])
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false)
   
   const [selectedCircle, setSelectedCircle] = useState("")
   const [selectedStudent, setSelectedStudent] = useState("")
@@ -27,7 +31,12 @@ export function GlobalStudentRecordsDialog() {
   const [isLoadingRecords, setIsLoadingRecords] = useState(false)
 
   useEffect(() => {
+    isMountedRef.current = true
     fetchData()
+
+    return () => {
+      isMountedRef.current = false
+    }
   }, [])
 
   const fetchData = async () => {
@@ -38,17 +47,21 @@ export function GlobalStudentRecordsDialog() {
         supabase.from("students").select("*")
       ])
 
-      if (!circlesRes.error && circlesRes.data) setCircles(circlesRes.data)
+      if (!isMountedRef.current) return
+
+      if (!circlesRes.error && circlesRes.data) {
+        setCircles(circlesRes.data.map((circle) => ({
+          ...circle,
+          name: normalizeCircleName(circle.name),
+        })))
+      }
+
       if (!studentsRes.error && studentsRes.data) {
-        const grouped: Record<string, any[]> = {}
-        studentsRes.data.forEach((s) => {
-          const circleName = s.halaqah || s.circle_name;
-          if (circleName) {
-            if (!grouped[circleName]) grouped[circleName] = []
-            grouped[circleName].push(s)
-          }
-        })
-        setStudentsInCircles(grouped)
+        setStudents(studentsRes.data.map((student) => ({
+          ...student,
+          halaqah: normalizeCircleName(student.halaqah || student.circle_name),
+          circle_name: normalizeCircleName(student.circle_name || student.halaqah),
+        })))
       }
     } catch (e) {
       console.error(e)
@@ -56,19 +69,56 @@ export function GlobalStudentRecordsDialog() {
   }
 
   useEffect(() => {
+    if (!selectedCircle) {
+      setStudentsForCircle([])
+      return
+    }
+
+    const requestId = studentsRequestRef.current + 1
+    studentsRequestRef.current = requestId
+
+    const loadStudents = async () => {
+      try {
+        setIsLoadingStudents(true)
+        const res = await fetch(`/api/students?circle=${encodeURIComponent(selectedCircle)}`, { headers: getClientAuthHeaders() })
+        if (!res.ok) throw new Error("Failed to fetch students")
+        const data = await res.json()
+        if (!isMountedRef.current || studentsRequestRef.current !== requestId) return
+
+        setStudentsForCircle(Array.isArray(data.students) ? data.students : [])
+      } catch (error) {
+        console.error(error)
+        if (!isMountedRef.current || studentsRequestRef.current !== requestId) return
+
+        const normalizedSelectedCircle = normalizeCircleName(selectedCircle)
+        setStudentsForCircle(students.filter((student) => normalizeCircleName(student.halaqah || student.circle_name) === normalizedSelectedCircle))
+      } finally {
+        if (!isMountedRef.current || studentsRequestRef.current !== requestId) return
+        setIsLoadingStudents(false)
+      }
+    }
+
+    void loadStudents()
+  }, [selectedCircle, students])
+
+  useEffect(() => {
     if (selectedStudent) {
-      fetchStudentRecords(selectedStudent)
+      void fetchStudentRecords(selectedStudent)
     } else {
       setRecords([])
     }
   }, [selectedStudent])
 
   const fetchStudentRecords = async (studentId: string) => {
+    const requestId = recordsRequestRef.current + 1
+    recordsRequestRef.current = requestId
     setIsLoadingRecords(true)
     try {
       const res = await fetch(`/api/attendance?student_id=${studentId}`, { headers: getClientAuthHeaders() })
       if (!res.ok) throw new Error("Failed to fetch")
       const data = await res.json()
+      if (!isMountedRef.current || recordsRequestRef.current !== requestId) return
+
       if (data && data.records && Array.isArray(data.records)) {
         setRecords(data.records)
       } else {
@@ -76,8 +126,10 @@ export function GlobalStudentRecordsDialog() {
       }
     } catch (error) {
       console.error(error)
+      if (!isMountedRef.current || recordsRequestRef.current !== requestId) return
       setRecords([])
     } finally {
+      if (!isMountedRef.current || recordsRequestRef.current !== requestId) return
       setIsLoadingRecords(false)
     }
   }
@@ -104,13 +156,6 @@ export function GlobalStudentRecordsDialog() {
       default:
         return <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-200">{status}</span>;
     }
-  }
-
-  const getLevelLabel = (level: string) => {
-    const label = getEvaluationLevelLabel(level)
-    return label
-      ? <span className="text-emerald-600 font-medium">{label}</span>
-      : <span className="text-gray-400">-</span>
   }
 
   const getEvaluationText = (level: string | null) => {
@@ -192,33 +237,44 @@ export function GlobalStudentRecordsDialog() {
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-4 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium text-neutral-600">الحلقة</Label>
-              <Select value={selectedCircle} onValueChange={(val) => { setSelectedCircle(val); setSelectedStudent(""); setRecords([]); }}>
-                <SelectTrigger className="w-full text-sm rounded-xl border-[#3453a7]/25 h-10">
-                  <SelectValue placeholder="اختر الحلقة" />
-                </SelectTrigger>
-                <SelectContent>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="space-y-1.5 rounded-2xl border border-[#3453a7]/12 bg-gradient-to-b from-[#f8fbff] to-white p-3 shadow-sm">
+              <Label className="text-sm font-semibold text-[#1a2332]">الحلقة</Label>
+              <div className="relative">
+                <select
+                  value={selectedCircle}
+                  onChange={(event) => {
+                    setSelectedCircle(event.target.value)
+                    setSelectedStudent("")
+                    setRecords([])
+                  }}
+                  className="h-11 w-full appearance-none rounded-xl border border-[#3453a7]/20 bg-white pr-4 pl-10 text-sm font-medium text-[#1a2332] shadow-[0_1px_2px_rgba(0,0,0,0.04)] outline-none transition focus:border-[#3453a7]/45 focus:ring-4 focus:ring-[#3453a7]/10"
+                >
+                  <option value="">اختر الحلقة</option>
                   {circles.map((circle) => (
-                    <SelectItem key={circle.id} value={circle.name}>{circle.name}</SelectItem>
+                    <option key={circle.id || circle.name} value={circle.name}>{circle.name}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#3453a7]" />
+              </div>
             </div>
             
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium text-neutral-600">الطالب</Label>
-              <Select value={selectedStudent} onValueChange={setSelectedStudent} disabled={!selectedCircle}>
-                <SelectTrigger className="w-full text-sm rounded-xl border-[#3453a7]/25 h-10">
-                  <SelectValue placeholder={!selectedCircle ? "اختر الحلقة أولا" : "اختر الطالب"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {selectedCircle && studentsInCircles[selectedCircle]?.map((student) => (
-                    <SelectItem key={student.id} value={student.id}>{student.name}</SelectItem>
+            <div className="space-y-1.5 rounded-2xl border border-[#3453a7]/12 bg-gradient-to-b from-[#f8fbff] to-white p-3 shadow-sm">
+              <Label className="text-sm font-semibold text-[#1a2332]">الطالب</Label>
+              <div className="relative">
+                <select
+                  value={selectedStudent}
+                  onChange={(event) => setSelectedStudent(event.target.value)}
+                  disabled={!selectedCircle || isLoadingStudents}
+                  className="h-11 w-full appearance-none rounded-xl border border-[#3453a7]/20 bg-white pr-4 pl-10 text-sm font-medium text-[#1a2332] shadow-[0_1px_2px_rgba(0,0,0,0.04)] outline-none transition focus:border-[#3453a7]/45 focus:ring-4 focus:ring-[#3453a7]/10 disabled:cursor-not-allowed disabled:border-[#3453a7]/10 disabled:bg-[#f7f8fb] disabled:text-neutral-400"
+                >
+                  <option value="">{!selectedCircle ? "اختر الحلقة أولا" : isLoadingStudents ? "جاري تحميل الطلاب..." : "اختر الطالب"}</option>
+                  {studentsForCircle.map((student) => (
+                    <option key={student.id} value={student.id}>{student.name}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <ChevronDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#3453a7]" />
+              </div>
             </div>
           </div>
 

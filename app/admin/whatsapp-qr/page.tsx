@@ -52,9 +52,9 @@ function getAutoRefreshIntervalMs(status: WhatsAppStatusResponse) {
 		case "disconnecting":
 		case "fetching_qr":
 		case "starting":
-			return 1200
+				return 500
 		case "waiting_for_qr":
-			return 1500
+				return 500
 		default:
 			return 0
 	}

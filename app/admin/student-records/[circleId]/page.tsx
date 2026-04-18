@@ -21,10 +21,15 @@ interface Student {
 export default function CircleAttendancePage() {
   useAdminAuth();
 
+  const ALL_CIRCLES_ID = "all"
+
     // تحديث بيانات الطلاب
     const fetchStudents = async (circleName: string) => {
       try {
-        const studentsResponse = await fetch(`/api/students?circle=${encodeURIComponent(circleName)}`)
+        const url = circleId === ALL_CIRCLES_ID
+          ? "/api/students"
+          : `/api/students?circle=${encodeURIComponent(circleName)}`
+        const studentsResponse = await fetch(url, { cache: "no-store" })
         const studentsData = await studentsResponse.json()
         const allStudents = (studentsData.students || []).sort((a: any, b: any) => b.points - a.points)
         setStudents(allStudents)
@@ -54,9 +59,11 @@ export default function CircleAttendancePage() {
     const fetchData = async () => {
       try {
         setLoading(true)
-        const circleResponse = await fetch("/api/circles")
+        const circleResponse = await fetch("/api/circles", { cache: "no-store" })
         const circleData = await circleResponse.json()
-        const circle = circleData.circles?.find((c: any) => c.id === circleId)
+        const circle = circleId === ALL_CIRCLES_ID
+          ? { name: "جميع الحلقات" }
+          : circleData.circles?.find((c: any) => c.id === circleId)
         if (circle) {
           setCircleName(circle.name)
           await fetchStudents(circle.name)
@@ -106,7 +113,7 @@ export default function CircleAttendancePage() {
           ) : students.length === 0 ? (
             <Card className="border-2 border-[#d8a355]">
               <CardContent className="p-6 sm:p-12 text-center">
-                <p className="text-xl text-gray-600">لا يوجد طلاب في هذه الحلقة</p>
+                <p className="text-xl text-gray-600">لا يوجد طلاب في هذا العرض</p>
               </CardContent>
             </Card>
           ) : (

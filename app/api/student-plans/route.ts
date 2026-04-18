@@ -96,6 +96,76 @@ function isStartAllowedAfterPrevious(
   return previousDirection === "desc" ? comparison <= 0 : comparison >= 0
 }
 
+function normalizePreviousMemorizationRanges(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as Array<{
+      startSurahNumber: number
+      startVerseNumber: number
+      endSurahNumber: number
+      endVerseNumber: number
+    }>
+  }
+
+  return value
+    .map((range) => {
+      const candidate = range as {
+        startSurahNumber?: unknown
+        startVerseNumber?: unknown
+        endSurahNumber?: unknown
+        endVerseNumber?: unknown
+      }
+
+      const startSurahNumber = Number(candidate?.startSurahNumber)
+      const startVerseNumber = Math.max(1, Number(candidate?.startVerseNumber) || 1)
+      const endSurahNumber = Number(candidate?.endSurahNumber)
+      const endVerseNumber = Math.max(1, Number(candidate?.endVerseNumber) || 1)
+
+      if (!startSurahNumber || !endSurahNumber) {
+        return null
+      }
+
+      return {
+        startSurahNumber,
+        startVerseNumber,
+        endSurahNumber,
+        endVerseNumber,
+      }
+    })
+    .filter((range): range is {
+      startSurahNumber: number
+      startVerseNumber: number
+      endSurahNumber: number
+      endVerseNumber: number
+    } => Boolean(range))
+}
+
+function getErrorMessage(error: unknown) {
+  if (!error) return "حدث خطأ غير معروف"
+
+  if (error instanceof Error) {
+    return error.message || "حدث خطأ غير معروف"
+  }
+
+  if (typeof error === "object") {
+    const candidate = error as {
+      message?: string
+      details?: string
+      hint?: string
+      code?: string
+      error?: string
+    }
+
+    return candidate.message || candidate.details || candidate.hint || candidate.error || candidate.code || JSON.stringify(candidate)
+  }
+
+  return String(error)
+}
+
+function isMissingPreviousMemorizationRangesColumnError(error: unknown) {
+  const message = getErrorMessage(error)
+  return message.includes("previous_memorization_ranges") && message.includes("schema cache")
+}
+
 async function buildStudentPlanSummary(params: {
   supabase: Awaited<ReturnType<typeof createClient>>
   actor: Awaited<ReturnType<typeof getRequestActor>>
@@ -644,6 +714,7 @@ export async function POST(request: NextRequest) {
       review_distribution_days,
       review_minimum_pages,
       review_start_mode,
+      previous_memorization_ranges,
     } = body
 
     const canManageStudent = await canAccessStudent({
@@ -672,19 +743,22 @@ export async function POST(request: NextRequest) {
     const completedJuzRange = hasScatteredCompletedJuzs(normalizedCompletedJuzs)
       ? null
       : getContiguousCompletedJuzRange(normalizedCompletedJuzs)
+    const normalizedPreviousMemorizedRanges = normalizePreviousMemorizationRanges(previous_memorization_ranges)
+    const primaryPreviousRange = normalizedPreviousMemorizedRanges[0] || null
 
     const effectiveHasPrevious =
       Boolean(has_previous) ||
+      normalizedPreviousMemorizedRanges.length > 0 ||
       Boolean(
         (studentMemorizedData?.memorized_start_surah && studentMemorizedData?.memorized_end_surah) ||
         completedJuzRange ||
         normalizedCompletedJuzs.length > 0,
       )
 
-    const effectivePrevStartSurah = prev_start_surah || studentMemorizedData?.memorized_start_surah || completedJuzRange?.startSurahNumber || null
-    const effectivePrevStartVerse = prev_start_verse || studentMemorizedData?.memorized_start_verse || completedJuzRange?.startVerseNumber || null
-    const effectivePrevEndSurah = prev_end_surah || studentMemorizedData?.memorized_end_surah || completedJuzRange?.endSurahNumber || null
-    const effectivePrevEndVerse = prev_end_verse || studentMemorizedData?.memorized_end_verse || completedJuzRange?.endVerseNumber || null
+    const effectivePrevStartSurah = prev_start_surah || primaryPreviousRange?.startSurahNumber || studentMemorizedData?.memorized_start_surah || completedJuzRange?.startSurahNumber || null
+    const effectivePrevStartVerse = prev_start_verse || primaryPreviousRange?.startVerseNumber || studentMemorizedData?.memorized_start_verse || completedJuzRange?.startVerseNumber || null
+    const effectivePrevEndSurah = prev_end_surah || primaryPreviousRange?.endSurahNumber || studentMemorizedData?.memorized_end_surah || completedJuzRange?.endSurahNumber || null
+    const effectivePrevEndVerse = prev_end_verse || primaryPreviousRange?.endVerseNumber || studentMemorizedData?.memorized_end_verse || completedJuzRange?.endVerseNumber || null
 
     if (!student_id || !start_surah_number || !end_surah_number || !daily_pages) {
       return NextResponse.json({ error: "البيانات المطلوبة ناقصة" }, { status: 400 })
@@ -747,7 +821,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (effectiveHasPrevious && !hasScatteredCompletedJuzs(normalizedCompletedJuzs)) {
+    if (effectiveHasPrevious && normalizedPreviousMemorizedRanges.length <= 1 && !hasScatteredCompletedJuzs(normalizedCompletedJuzs)) {
       const expectedNextStart = getExpectedNextStart(effectivePrevStartSurah, effectivePrevEndSurah, effectivePrevEndVerse)
       if (!expectedNextStart) {
         return NextResponse.json({ error: "بيانات الحفظ السابق غير مكتملة" }, { status: 400 })
@@ -794,6 +868,7 @@ export async function POST(request: NextRequest) {
       prev_start_verse: effectivePrevStartVerse,
       prev_end_surah: effectivePrevEndSurah,
       prev_end_verse: effectivePrevEndVerse,
+      previous_memorization_ranges: normalizedPreviousMemorizedRanges,
       completed_juzs: normalizedCompletedJuzs,
     })
     const totalPagesForStorage = Math.max(1, Math.ceil(totalPages))
@@ -813,6 +888,7 @@ export async function POST(request: NextRequest) {
             prev_start_verse: effectivePrevStartVerse,
             prev_end_surah: effectivePrevEndSurah,
             prev_end_verse: effectivePrevEndVerse,
+            previous_memorization_ranges: normalizedPreviousMemorizedRanges,
             completed_juzs: normalizedCompletedJuzs,
           })
 
@@ -858,49 +934,82 @@ export async function POST(request: NextRequest) {
       .from("student_plans")
       .select("id")
       .eq("student_id", student_id)
+      .order("created_at", { ascending: false })
 
     if (existingPlansError) {
       throw existingPlansError
     }
 
-    const { data, error } = await supabase
-      .from("student_plans")
-      .insert([{
-        student_id,
-        start_surah_number: adjustedStartSurahNumber,
-        start_surah_name: SURAHS.find((surah) => surah.number === adjustedStartSurahNumber)?.name || start_surah_name,
-        start_verse: adjustedStartVerse || null,
-        end_surah_number,
-        end_surah_name,
-        end_verse: end_verse || null,
-        daily_pages,
-        total_pages: totalPagesForStorage,
-        total_days: totalDays,
-        start_date: start_date || getSaudiDateString(),
-        direction: normalizedDirection,
-        has_previous: effectiveHasPrevious,
-        prev_start_surah: effectivePrevStartSurah,
-        prev_start_verse: effectivePrevStartVerse,
-        prev_end_surah: effectivePrevEndSurah,
-        prev_end_verse: effectivePrevEndVerse,
-        muraajaa_pages: muraajaaPagesForStorage,
-        rabt_pages: rabt_pages || null,
-        review_distribution_mode: normalizedReviewDistributionMode,
-        review_distribution_days: normalizedReviewDistributionDays,
-        review_minimum_pages: normalizedReviewMinimumPages,
-        review_start_mode: normalizedReviewStartMode,
-      }])
-      .select()
-      .single()
+    const latestExistingPlanId = existingPlans?.[0]?.id || null
+    const redundantPlanIds = (existingPlans || []).slice(1).map((plan) => plan.id).filter(Boolean)
+
+    const basePlanPayload = {
+      student_id,
+      start_surah_number: adjustedStartSurahNumber,
+      start_surah_name: SURAHS.find((surah) => surah.number === adjustedStartSurahNumber)?.name || start_surah_name,
+      start_verse: adjustedStartVerse || null,
+      end_surah_number,
+      end_surah_name,
+      end_verse: end_verse || null,
+      daily_pages,
+      total_pages: totalPagesForStorage,
+      total_days: totalDays,
+      start_date: start_date || getSaudiDateString(),
+      direction: normalizedDirection,
+      has_previous: effectiveHasPrevious,
+      prev_start_surah: effectivePrevStartSurah,
+      prev_start_verse: effectivePrevStartVerse,
+      prev_end_surah: effectivePrevEndSurah,
+      prev_end_verse: effectivePrevEndVerse,
+      muraajaa_pages: muraajaaPagesForStorage,
+      rabt_pages: rabt_pages || null,
+      review_distribution_mode: normalizedReviewDistributionMode,
+      review_distribution_days: normalizedReviewDistributionDays,
+      review_minimum_pages: normalizedReviewMinimumPages,
+      review_start_mode: normalizedReviewStartMode,
+    }
+
+    const extendedPlanPayload = {
+      ...basePlanPayload,
+      previous_memorization_ranges: normalizedPreviousMemorizedRanges,
+    }
+
+    const executePlanWrite = async (payload: typeof basePlanPayload | typeof extendedPlanPayload) => {
+      const writeQuery = latestExistingPlanId
+        ? supabase
+            .from("student_plans")
+            .update(payload)
+            .eq("id", latestExistingPlanId)
+            .select()
+            .single()
+        : supabase
+            .from("student_plans")
+            .insert([payload])
+            .select()
+            .single()
+
+      return writeQuery
+    }
+    let { data, error } = await executePlanWrite(extendedPlanPayload)
+
+    if (error && isMissingPreviousMemorizationRangesColumnError(error)) {
+      if (normalizedPreviousMemorizedRanges.length > 1) {
+        return NextResponse.json(
+          { error: "قاعدة البيانات الحالية تحتاج تحديثًا لدعم أكثر من محفوظ سابق. طبّق ملف الترحيل الخاص بالعمود previous_memorization_ranges أولاً." },
+          { status: 400 },
+        )
+      }
+
+      ;({ data, error } = await executePlanWrite(basePlanPayload))
+    }
 
     if (error) throw error
 
-    const oldPlanIds = (existingPlans || []).map((plan) => plan.id).filter(Boolean)
-    if (oldPlanIds.length > 0) {
+    if (redundantPlanIds.length > 0) {
       const { error: cleanupError } = await supabase
         .from("student_plans")
         .delete()
-        .in("id", oldPlanIds)
+        .in("id", redundantPlanIds)
 
       if (cleanupError) {
         console.error("[plans] cleanup old plans error:", cleanupError)
@@ -918,7 +1027,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
   } catch (error) {
     console.error("[plans] POST error:", error)
-    return NextResponse.json({ error: "حدث خطأ في حفظ الخطة" }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 500 })
   }
 }
 
