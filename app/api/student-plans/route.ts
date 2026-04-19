@@ -311,7 +311,7 @@ async function buildStudentPlanSummary(params: {
 
   let reportsQuery = supabase
     .from("student_daily_reports")
-    .select("report_date, plan_session_number")
+    .select("report_date, plan_session_number, memorization_done")
     .eq("student_id", studentId)
     .order("report_date", { ascending: true })
 
@@ -395,7 +395,7 @@ async function buildStudentPlanSummary(params: {
 function buildStudentPlanSummaryFromResolvedData(params: {
   studentData: any
   rawPlan: any | null
-  studentDailyReports: Array<{ report_date: string; plan_session_number?: number | null }>
+  studentDailyReports: Array<{ report_date: string; plan_session_number?: number | null; memorization_done?: boolean | null }>
   attendanceRecords: any[]
 }) {
   const { studentData, rawPlan, studentDailyReports, attendanceRecords } = params

@@ -1044,9 +1044,12 @@ export default function HalaqahManagement() {
 					const localStudent = localStudentsMap.get(student.id)
 					const latestSavedRecord = (savedRecordsByStudent[student.id] || [])[0]
 					const hasUnsavedLocalChanges = !editMode && !!localStudent && !localStudent.savedToday
-					const selfReports = (reportsByStudent[student.id] || []).filter((report) => report.memorization_done)
+					const selfReports = reportsByStudent[student.id] || []
+					const actionableSelfReports = selfReports.filter((report) => report.memorization_done)
 					const savedReportDates = savedReportDatesMap[student.id] || []
-					const allReportDatesSaved = selfReports.length > 0 ? selfReports.every((report) => savedReportDates.includes(report.report_date)) : !!latestSavedRecord
+					const allReportDatesSaved = actionableSelfReports.length > 0
+						? actionableSelfReports.every((report) => savedReportDates.includes(report.report_date))
+						: !!latestSavedRecord
 					const baseReportEvaluations = hasUnsavedLocalChanges
 						? { ...(savedReportEvaluationMap[student.id] || {}), ...(localStudent.reportEvaluations || {}) }
 						: savedReportEvaluationMap[student.id] || {}
@@ -1095,10 +1098,8 @@ export default function HalaqahManagement() {
 				setStudents(eligibleStudents)
 				setHasSavedToday(eligibleStudents.some((student) => student.savedToday))
 			}
-			if (requestId === fetchStudentsRequestIdRef.current) {
 				setIsLoading(false)
 				setIsModeSwitchLoading(false)
-			}
 		} catch (error) {
 			console.error("Error fetching students:", error)
 			if (requestId === fetchStudentsRequestIdRef.current) {
@@ -1107,7 +1108,6 @@ export default function HalaqahManagement() {
 			}
 		}
 	}
-
 	const handleToggleEditMode = () => {
 		setIsModeSwitchLoading(true)
 		setIsEditMode((current) => !current)
@@ -1648,6 +1648,7 @@ export default function HalaqahManagement() {
 																		<div className="rounded-[14px] border border-[#3453a7]/15 bg-[#f5f9ff] px-2 py-1.5">
 																			<p className="mb-1 text-right text-[10px] font-bold tracking-[0.06em] text-[#3453a7]">التقييم</p>
 																			{(() => {
+																				const isMemorizationEvaluationDisabled = !report.memorization_done
 																				const reportEvaluationOptions = getReportEvaluationOptions(student, report.report_date, student.reportEvaluations?.[report.report_date])
 																				const reportKey = getReportSaveKey(student.id, report.report_date)
 																				const isReportSaving = savingReportKeys.includes(reportKey)
@@ -1657,16 +1658,19 @@ export default function HalaqahManagement() {
 																				<Select
 																					value={student.reportEvaluations?.[report.report_date] ?? UNSET_REPORT_EVALUATION}
 																					onValueChange={(value) => {
+																						if (isMemorizationEvaluationDisabled) {
+																							return
+																						}
 																						void handleReportEvaluationChange(
 																							student.id,
 																							report.report_date,
 																							value === UNSET_REPORT_EVALUATION ? undefined : (value as EvaluationLevel),
 																						)
 																					}}
-																					disabled={isReportSaving || ((student.savedReportDates || []).includes(report.report_date) && !isEditMode)}
+																					disabled={isMemorizationEvaluationDisabled || isReportSaving || ((student.savedReportDates || []).includes(report.report_date) && !isEditMode)}
 																				>
-																					<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
-																						<SelectValue />
+																					<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20 disabled:opacity-70" dir="rtl">
+																						<SelectValue placeholder={isMemorizationEvaluationDisabled ? "غير قابل للتقييم" : undefined} />
 																					</SelectTrigger>
 																					<SelectContent dir="rtl">
 																						<SelectItem value={UNSET_REPORT_EVALUATION} className="text-right text-sm">
@@ -1683,6 +1687,9 @@ export default function HalaqahManagement() {
 																					<div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-white/88">
 																						<Check className="h-5 w-5 text-[#3453a7]" />
 																					</div>
+																				) : null}
+																				{isMemorizationEvaluationDisabled ? (
+																					<p className="mt-1 text-right text-[10px] font-semibold text-[#4d6b76]">هذا التقرير مسجل كـ لم أنفذ، لذلك لا يوجد تقييم حفظ.</p>
 																				) : null}
 																			</div>
 																				)

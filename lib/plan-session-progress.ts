@@ -3,6 +3,7 @@ import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 type SessionNumberCarrier = {
   report_date: string
   plan_session_number?: number | null
+  memorization_done?: boolean | null
 }
 
 type AttendanceLike = {
@@ -135,7 +136,7 @@ export function buildPlanSessionProgress<TReport extends SessionNumberCarrier, T
     .map((value) => normalizeSessionNumber(value))
     .filter((value): value is number => value !== null),
   )
-  const latestReportDateBySession = new Map<number, string>()
+  const latestReportStateBySession = new Map<number, { date: string; memorizationDone: boolean | null }>()
 
   reports.forEach((report) => {
     const normalizedSessionNumber = normalizeSessionNumber(reportSessionNumbersByDate[report.report_date])
@@ -143,9 +144,12 @@ export function buildPlanSessionProgress<TReport extends SessionNumberCarrier, T
       return
     }
 
-    const currentLatestReportDate = latestReportDateBySession.get(normalizedSessionNumber)
-    if (!currentLatestReportDate || report.report_date > currentLatestReportDate) {
-      latestReportDateBySession.set(normalizedSessionNumber, report.report_date)
+    const currentLatestReportState = latestReportStateBySession.get(normalizedSessionNumber)
+    if (!currentLatestReportState || report.report_date > currentLatestReportState.date) {
+      latestReportStateBySession.set(normalizedSessionNumber, {
+        date: report.report_date,
+        memorizationDone: typeof report.memorization_done === "boolean" ? report.memorization_done : null,
+      })
     }
   })
 
@@ -179,13 +183,19 @@ export function buildPlanSessionProgress<TReport extends SessionNumberCarrier, T
 
   const successfulSessionNumbers = new Set<number>()
   const failedSessionNumberSet = new Set<number>()
+  const pendingExecutionSessionNumberSet = new Set<number>()
   const awaitingHearingSessionNumberSet = new Set<number>()
 
   assignedSessionNumbers.forEach((sessionNumber) => {
-    const latestReportDate = latestReportDateBySession.get(sessionNumber)
+    const latestReportState = latestReportStateBySession.get(sessionNumber)
     const latestAttendanceState = latestAttendanceStateBySession.get(sessionNumber)
 
-    if (!latestAttendanceState || (latestReportDate && latestReportDate > latestAttendanceState.date)) {
+    if (!latestAttendanceState || (latestReportState && latestReportState.date > latestAttendanceState.date)) {
+      if (latestReportState?.memorizationDone === false) {
+        pendingExecutionSessionNumberSet.add(sessionNumber)
+        return
+      }
+
       awaitingHearingSessionNumberSet.add(sessionNumber)
       return
     }
@@ -200,9 +210,11 @@ export function buildPlanSessionProgress<TReport extends SessionNumberCarrier, T
 
   const completedSessionNumbers = [...successfulSessionNumbers].sort((left, right) => left - right)
   const failedSessionNumbers = [...failedSessionNumberSet].sort((left, right) => left - right)
-  const progressedDays = assignedSessionNumbers.size
+  const pendingExecutionSessionNumbers = [...pendingExecutionSessionNumberSet].sort((left, right) => left - right)
+  const progressedDays = assignedSessionNumbers.size - pendingExecutionSessionNumbers.length
   const awaitingHearingSessionNumbers = [...awaitingHearingSessionNumberSet].sort((left, right) => left - right)
-  const rawNextSessionNumber = failedSessionNumbers[0] || getFirstMissingAssignedSessionNumber(assignedSessionNumbers)
+  const blockedSessionNumbers = [...pendingExecutionSessionNumbers, ...failedSessionNumbers].sort((left, right) => left - right)
+  const rawNextSessionNumber = blockedSessionNumbers[0] || getFirstMissingAssignedSessionNumber(assignedSessionNumbers)
   const nextSessionNumber = totalDays > 0 ? Math.min(rawNextSessionNumber, totalDays) : rawNextSessionNumber
 
   return {

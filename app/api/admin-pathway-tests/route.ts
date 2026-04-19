@@ -108,7 +108,7 @@ async function getActivePlanCompletedDays(
 
   let reportsQuery = supabase
     .from("student_daily_reports")
-    .select("report_date, plan_session_number")
+    .select("report_date, plan_session_number, memorization_done")
     .eq("student_id", studentId)
     .order("report_date", { ascending: true })
 
