@@ -347,24 +347,6 @@ export async function POST(request: NextRequest) {
       }
 
       attendanceRecord = updatedRecord
-
-      if (previousPoints > 0 && previousPointsStudentId) {
-        const { data: currentStudent, error: fetchStudentError } = await supabase
-          .from("students")
-          .select("points, store_points")
-          .eq("id", previousPointsStudentId)
-          .single()
-
-        if (!fetchStudentError && currentStudent) {
-          await supabase
-            .from("students")
-            .update({
-              points: Math.max(0, (currentStudent.points || 0) - previousPoints),
-              store_points: Math.max(0, (currentStudent.store_points || 0) - previousPoints),
-            })
-            .eq("id", previousPointsStudentId)
-        }
-      }
     } else {
       const { data: newRecord, error: attendanceError } = await supabase
         .from("attendance_records")
@@ -473,7 +455,9 @@ export async function POST(request: NextRequest) {
 
       if (evaluationError) {
         console.error("[v0] Error creating evaluation:", evaluationError)
-        await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
+        if (!existingRecord) {
+          await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
+        }
         return NextResponse.json(
           { error: "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور" },
           { status: 500 },
@@ -481,6 +465,24 @@ export async function POST(request: NextRequest) {
       }
 
       console.log("[v0] Evaluation created:", evaluation.id)
+
+      if (previousPoints > 0 && previousPointsStudentId) {
+        const { data: currentStudent, error: fetchStudentError } = await supabase
+          .from("students")
+          .select("points, store_points")
+          .eq("id", previousPointsStudentId)
+          .single()
+
+        if (!fetchStudentError && currentStudent) {
+          await supabase
+            .from("students")
+            .update({
+              points: Math.max(0, (currentStudent.points || 0) - previousPoints),
+              store_points: Math.max(0, (currentStudent.store_points || 0) - previousPoints),
+            })
+            .eq("id", previousPointsStudentId)
+        }
+      }
 
       if (totalPoints > 0) {
         const { data: studentData, error: fetchError } = await supabase

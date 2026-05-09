@@ -569,6 +569,12 @@ const buildAutoSupportEvaluation = (reports?: StudentDailyReport[]) => {
 	}
 }
 
+const getEvaluationOptionsForType = (student: StudentAttendance, type: EvaluationType) =>
+	appendCurrentEvaluationOption(
+		getMemorizationEvaluationOptions(type === "hafiz" && !!student.failedSessionNumbers?.length),
+		student.evaluation?.[type],
+	)
+
 export default function HalaqahManagement() {
 	const [isLoading, setIsLoading] = useState(true)
 	const [isModeSwitchLoading, setIsModeSwitchLoading] = useState(false)
@@ -745,13 +751,31 @@ export default function HalaqahManagement() {
 		}
 	}
 
-	const saveTodayEvaluation = async (studentId: string, level: EvaluationLevel) => {
+	const saveTodayEvaluation = async (studentId: string, overrides?: Partial<EvaluationOption>) => {
 		const student = studentsRef.current.find((entry) => entry.id === studentId)
 		const directSaveKey = getReportSaveKey(studentId, todayKsaDate)
 
 		if (!student || !teacherData?.id || !teacherHalaqah || !isEvaluatedAttendance(student.attendance)) {
 			return
 		}
+
+		const previousEvaluation = { ...(student.evaluation || {}) }
+		const nextEvaluation = { ...previousEvaluation, ...(overrides || {}) }
+
+		if (!nextEvaluation.hafiz) {
+			return
+		}
+
+		updateStudentsState((current) =>
+			current.map((entry) =>
+				entry.id === studentId
+					? {
+							...entry,
+							evaluation: nextEvaluation,
+						}
+					: entry,
+			),
+		)
 
 		setSavingReportKeys((current) => (current.includes(directSaveKey) ? current : [...current, directSaveKey]))
 		flashReportSaved(directSaveKey)
@@ -766,10 +790,10 @@ export default function HalaqahManagement() {
 					halaqah: teacherHalaqah,
 					status: student.attendance,
 					report_date: todayKsaDate,
-					hafiz_level: level,
-					tikrar_level: student.evaluation?.tikrar || "0",
-					samaa_level: student.evaluation?.samaa || "0",
-					rabet_level: student.evaluation?.rabet || "0",
+					hafiz_level: nextEvaluation.hafiz,
+					tikrar_level: nextEvaluation.tikrar || "0",
+					samaa_level: nextEvaluation.samaa || "0",
+					rabet_level: nextEvaluation.rabet || "0",
 					hafiz_from_surah: student.readingDetails?.hafiz?.fromSurah?.trim() || null,
 					hafiz_from_verse: student.readingDetails?.hafiz?.fromVerse?.trim() || null,
 					hafiz_to_surah: student.readingDetails?.hafiz?.toSurah?.trim() || null,
@@ -796,13 +820,23 @@ export default function HalaqahManagement() {
 					entry.id === studentId
 						? {
 								...entry,
-								evaluation: { ...(entry.evaluation || {}), hafiz: level },
+								evaluation: nextEvaluation,
 								savedToday: true,
 							}
 						: entry,
 				),
 			)
 		} catch (error) {
+			updateStudentsState((current) =>
+				current.map((entry) =>
+					entry.id === studentId
+						? {
+								...entry,
+								evaluation: previousEvaluation,
+							}
+						: entry,
+				),
+			)
 			setRecentlySavedReportKeys((current) => current.filter((key) => key !== directSaveKey))
 			delete reportSuccessTimersRef.current[directSaveKey]
 			await showAlert(error instanceof Error ? error.message : "حدث خطأ أثناء تحديث تقييم اليوم", "خطأ")
@@ -1099,8 +1133,8 @@ export default function HalaqahManagement() {
 					const localStudent = localStudentsMap.get(student.id)
 					const latestSavedRecord = (savedRecordsByStudent[student.id] || [])[0]
 					const hasUnsavedLocalChanges = !editMode && !!localStudent && !localStudent.savedToday
-					const selfReports = reportsByStudent[student.id] || []
-					const actionableSelfReports = selfReports.filter((report) => report.memorization_done)
+					const selfReports = (reportsByStudent[student.id] || []).filter((report) => report.memorization_done)
+					const actionableSelfReports = selfReports
 					const savedReportDates = savedReportDatesMap[student.id] || []
 					const allReportDatesSaved = actionableSelfReports.length > 0
 						? actionableSelfReports.every((report) => savedReportDates.includes(report.report_date))
@@ -1137,7 +1171,18 @@ export default function HalaqahManagement() {
 				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
 				const eligibleStudents = nextStudents.filter((student) => {
 					if (editMode) {
-						return (student.selfReports || []).length > 0 || (student.savedToday && isEvaluatedAttendance(student.attendance))
+						const hasSavedSelfReports = (student.selfReports || []).length > 0
+						const hasSavedReadingDetails = Boolean(
+							student.readingDetails?.hafiz || student.readingDetails?.samaa || student.readingDetails?.rabet,
+						)
+						const hasSavedDirectEvaluation = Boolean(
+							student.savedToday &&
+							isEvaluatedAttendance(student.attendance) &&
+							student.evaluation?.hafiz &&
+							hasSavedReadingDetails,
+						)
+
+						return hasSavedSelfReports || hasSavedDirectEvaluation
 					}
 
 					if (student.hasPlan) {
@@ -1604,24 +1649,8 @@ export default function HalaqahManagement() {
 								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">التقييم اليومي</p>
 								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
-							<Button
-								type="button"
-								variant={isEditMode ? "default" : "outline"}
-								className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
-								onClick={handleToggleEditMode}
-								disabled={isModeSwitchLoading}
-							>
-								{isModeSwitchLoading ? "جاري التحميل..." : isEditMode ? "إنهاء التعديل" : "تعديل التقييمات المحفوظة"}
-							</Button>
 						</div>
 					</section>
-
-					{isEditMode ? (
-						<section className="rounded-[24px] border border-[#3453a7]/15 bg-[#f7fbff] px-4 py-3 text-right shadow-sm">
-							<p className="text-sm font-extrabold tracking-[0.08em] text-[#3453a7]">وضع التعديل</p>
-							<p className="mt-1 text-sm font-semibold text-[#1a2332]">تظهر هنا فقط التقييمات المحفوظة سابقًا. عند تعديل الدرجة تُلغى الدرجة القديمة ويُعتمد التقييم الجديد مباشرة.</p>
-						</section>
-					) : null}
 
 					{students.length === 0 ? (
 						<div className="rounded-[28px] border border-[#3453a7]/15 bg-white/90 px-6 py-12 text-center shadow-sm">
@@ -1783,15 +1812,7 @@ export default function HalaqahManagement() {
 																						if (!nextLevel) {
 																							return
 																						}
-
-																						updateStudentsState((current) =>
-																							current.map((entry) =>
-																								entry.id === student.id
-																									? { ...entry, evaluation: { ...(entry.evaluation || {}), hafiz: nextLevel } }
-																									: entry,
-																							),
-																						)
-																						void saveTodayEvaluation(student.id, nextLevel)
+																						void saveTodayEvaluation(student.id, { hafiz: nextLevel })
 																					}}
 																					disabled={isDirectSaving}
 																				>
@@ -1817,6 +1838,41 @@ export default function HalaqahManagement() {
 																			</div>
 																		)
 																	})()}
+																	<div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+																		{([
+																			{ type: "tikrar", label: "التكرار" },
+																			{ type: "samaa", label: "المراجعة" },
+																			{ type: "rabet", label: "الربط" },
+																		] as const).map(({ type, label }) => {
+																			const supportOptions = getEvaluationOptionsForType(student, type)
+																			const currentSupportLevel = student.evaluation?.[type]
+																			const currentSupportLevelValue = currentSupportLevel ? normalizeEvaluationLevel(currentSupportLevel) : "0"
+
+																			return (
+																				<div key={`${student.id}-direct-${type}`} className="rounded-[12px] border border-[#3453a7]/12 bg-white px-2 py-1.5">
+																					<p className="mb-1 text-right text-[10px] font-bold text-[#3453a7]">{label}</p>
+																					<Select
+																						value={currentSupportLevelValue}
+																						onValueChange={(value) => {
+																							void saveTodayEvaluation(student.id, { [type]: value as EvaluationLevel })
+																						}}
+																						disabled={savingReportKeys.includes(getReportSaveKey(student.id, todayKsaDate))}
+																					>
+																						<SelectTrigger className="h-8 w-full rounded-lg border-[#3453a7]/30 bg-white px-2 text-[12px] font-semibold leading-4 text-[#1a2332] shadow-none [&>span]:leading-4 focus:ring-[#3453a7]/20" dir="rtl">
+																							<SelectValue />
+																						</SelectTrigger>
+																						<SelectContent dir="rtl">
+																							{supportOptions.map((option) => (
+																								<SelectItem key={`${student.id}-support-${type}-${option.level}`} value={option.level} className="text-right text-sm">
+																									{option.label}
+																								</SelectItem>
+																							))}
+																						</SelectContent>
+																					</Select>
+																				</div>
+																			)
+																		})}
+																	</div>
 																</div>
 															</div>
 														</div>
@@ -1827,6 +1883,18 @@ export default function HalaqahManagement() {
 										</Card>
 									)
 								})}
+							</div>
+
+							<div className="flex justify-start pt-2">
+								<Button
+									type="button"
+									variant={isEditMode ? "default" : "outline"}
+									className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
+									onClick={handleToggleEditMode}
+									disabled={isModeSwitchLoading}
+								>
+									{isModeSwitchLoading ? "جاري الحفظ..." : isEditMode ? "حفظ" : "تعديل التقييمات المحفوظة"}
+								</Button>
 							</div>
 
 						</>

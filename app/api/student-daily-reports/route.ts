@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { buildPlanSessionProgress, deriveReportSessionNumbersByDate, isMemorizationOffDay } from "@/lib/plan-session-progress"
 import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
+import type { SessionPlanBounds } from "@/lib/quran-data"
 import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
 import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 import { notifyGuardian } from "@/lib/guardian-notifications"
@@ -185,13 +186,15 @@ async function resolveExecutionPageCounts(params: {
   isReviewOnlyDay: boolean
 }) {
   const { supabase, studentId, reportDate, hasMemorizationDone, hasTikrarDone, hasReviewDone, hasLinkingDone, isReviewOnlyDay } = params
-  const { data: plan } = await supabase
+  const { data: planData } = await supabase
     .from("student_plans")
-    .select("start_date, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages")
+    .select("start_surah_number, start_verse, end_surah_number, end_verse, total_pages, daily_pages, direction, total_days, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages, review_start_mode, start_date, created_at")
     .eq("student_id", studentId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()
+
+  const plan = planData as SessionPlanBounds | null
 
   const dailyPages = normalizePageCount(Number(plan?.daily_pages) || 0)
 
@@ -515,7 +518,7 @@ export async function POST(request: NextRequest) {
       !isReviewOnlyDay && !tikrarRewardClaimed && nextTikrarDone ? "tikrar_done" : null,
       !reviewRewardClaimed && nextReviewDone ? "review_done" : null,
       !linkingRewardClaimed && nextLinkingDone ? "linking_done" : null,
-    ].filter(Boolean)
+    ].filter((field): field is keyof typeof SELF_REPORT_REWARD_POINTS => field !== null)
 
     const { data, error } = await supabase
       .from("student_daily_reports")
@@ -567,10 +570,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const awardedFields = newlyCompletedFields.filter(
-      (field): field is keyof typeof SELF_REPORT_REWARD_POINTS => field in SELF_REPORT_REWARD_POINTS,
-    )
-    const pointsAwarded = awardedFields.reduce((total, field) => total + SELF_REPORT_REWARD_POINTS[field], 0)
+    const pointsAwarded = newlyCompletedFields.reduce((total, field) => total + SELF_REPORT_REWARD_POINTS[field], 0)
 
     let updatedPoints: number | null = null
     let updatedStorePoints: number | null = null
