@@ -152,7 +152,7 @@ export default function AdminProfilePage() {
           </div>
         </main>
         <Footer />
-      </div>
+                  تعديل
     )
   }
 
@@ -176,7 +176,7 @@ export default function AdminProfilePage() {
                   className="bg-[#3453a7] hover:bg-[#27428d] text-white font-bold"
                 >
                   <Edit2 className="w-4 h-4 ml-2" />
-                  تعديل البيانات
+                  تعديل
                 </Button>
               )}
             </CardHeader>

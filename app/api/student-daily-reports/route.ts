@@ -248,6 +248,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams
     const studentId = searchParams.get("student_id")?.trim() || ""
     const targetDateParam = searchParams.get("date")?.trim() || ""
+    const includeAll = searchParams.get("all") === "true"
     const studentIds = (searchParams.get("student_ids") || "")
       .split(",")
       .map((value) => value.trim())
@@ -277,7 +278,9 @@ export async function GET(request: NextRequest) {
       .order("report_date", { ascending: false })
 
     if (!pendingOnly) {
-      query = query.gte("report_date", fromDate)
+      if (!includeAll) {
+        query = query.gte("report_date", fromDate)
+      }
     }
 
     if (studentId) {
@@ -385,9 +388,11 @@ export async function GET(request: NextRequest) {
       finalReportsByStudent = Object.fromEntries(
         Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
           currentStudentId,
-          studentReports
-            .sort((left, right) => right.report_date.localeCompare(left.report_date))
-            .slice(0, days),
+          includeAll
+            ? studentReports.sort((left, right) => right.report_date.localeCompare(left.report_date))
+            : studentReports
+                .sort((left, right) => right.report_date.localeCompare(left.report_date))
+                .slice(0, days),
         ]),
       )
     }

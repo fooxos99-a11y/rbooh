@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { createAdminClient } from "@/lib/supabase/admin"
 import { createClient } from "@/lib/supabase/server"
 import { circleNamesMatch } from "@/lib/circle-name"
-import { getRequestActor, isAdminRole } from "@/lib/request-auth"
+import { canManageHalaqah, getRequestActor } from "@/lib/request-auth"
 import { getSaudiDateString, getSaudiWeekday } from "@/lib/saudi-time"
 import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
 import { isPassingMemorizationLevel, type EvaluationLevelValue } from "@/lib/student-attendance"
@@ -198,12 +198,11 @@ export async function GET(request: NextRequest) {
   try {
     const authClient = await createClient()
     const actor = await getRequestActor(request, authClient as never)
+    const circleName = request.nextUrl.searchParams.get("circle") || ""
 
-    if (!actor || !isAdminRole(actor.role)) {
+    if (!actor || !canManageHalaqah(actor, circleName)) {
       return NextResponse.json({ error: "غير مصرح لك بعرض تقارير الحلقة" }, { status: 403 })
     }
-
-    const circleName = request.nextUrl.searchParams.get("circle") || ""
     const weekOffset = Math.max(0, Number(request.nextUrl.searchParams.get("weekOffset") || 0))
 
     if (!circleName.trim()) {

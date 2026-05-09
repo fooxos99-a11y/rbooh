@@ -15,7 +15,7 @@ import { useResumeRefresh } from "@/hooks/use-resume-refresh"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { getClientAccountNumber, getClientAuthHeaders } from "@/lib/client-auth"
 import { getActivePlanDayNumber, getPlanSessionContent, getPlanSessionContentRange, getPlanSupportSessionContent, resolvePlanTotalDays, resolvePlanTotalPages, SURAHS } from "@/lib/quran-data"
-import { getSaudiAttendanceAnchorDate, getSaudiWeekday, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import { resolveCircleName } from "@/lib/circle-name"
 import {
 	type AttendanceStatus,
@@ -542,11 +542,6 @@ const getUnsavedSelfReports = (student: StudentAttendance) => {
 	return (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
 }
 
-const getAttendanceAnchorLabel = (date: string) => {
-	const effectiveDate = getSaudiAttendanceAnchorDate(date)
-	return getSaudiWeekday(effectiveDate) === 0 ? "الأحد" : "الأربعاء"
-}
-
 const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
 	const selectedLevel = student.reportEvaluations?.[reportDate]
 	return selectedLevel !== null && selectedLevel !== undefined
@@ -582,8 +577,6 @@ export default function HalaqahManagement() {
 	const params = useParams()
 	const isAttendanceEntryAllowedToday = isSaudiAttendanceWindowOpen()
 	const todayKsaDate = getKsaDateString()
-	const todayAttendanceAnchorDate = getSaudiAttendanceAnchorDate(todayKsaDate)
-	const todayAttendanceAnchorLabel = getAttendanceAnchorLabel(todayKsaDate)
 
 	const [teacherData, setTeacherData] = useState<any>(null)
 	const [teacherHalaqah, setTeacherHalaqah] = useState("")
@@ -965,7 +958,7 @@ export default function HalaqahManagement() {
 						if (editMode) {
 							const [reportsResponse, savedTodayResponse, attendanceHistoryResults] = await Promise.all([
 								fetch(
-									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&days=14`,
+									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&all=true`,
 									{ cache: "no-store" },
 								),
 								fetch(
@@ -1640,11 +1633,19 @@ export default function HalaqahManagement() {
 			<Header />
 			<main className="flex-1 py-4 px-4">
 				<div className="container mx-auto max-w-7xl space-y-6">
-					<div className="rounded-2xl border border-[#3453a7]/12 bg-white/85 px-4 py-3 text-right text-sm font-semibold text-[#4d6b76] shadow-sm">
-						تقييم اليوم يُحتسب على {todayAttendanceAnchorLabel} ({todayAttendanceAnchorDate}).
-					</div>
 					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+							<div className="flex justify-start xl:order-1">
+								<Button
+									type="button"
+									variant={isEditMode ? "default" : "outline"}
+									className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
+									onClick={handleToggleEditMode}
+									disabled={isModeSwitchLoading}
+								>
+									{isModeSwitchLoading ? "جاري الحفظ..." : isEditMode ? "حفظ" : "تعديل"}
+								</Button>
+							</div>
 							<div className="text-right">
 								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">التقييم اليومي</p>
 								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
@@ -1665,7 +1666,6 @@ export default function HalaqahManagement() {
 									const shouldShowDirectTodayEvaluation =
 										isEditMode &&
 										student.savedToday &&
-										!shouldShowReportEvaluations &&
 										isEvaluatedAttendance(student.attendance)
 									const shouldExpandCard =
 										student.savedToday ||
@@ -1787,7 +1787,9 @@ export default function HalaqahManagement() {
 																	))}
 															</div>
 														</div>
-													) : shouldExpandCard && !isNoPlanLocked && shouldShowDirectTodayEvaluation ? (
+													) : null}
+
+													{shouldExpandCard && !isNoPlanLocked && shouldShowDirectTodayEvaluation ? (
 														<div className="rounded-[18px] bg-[#f7fbff] px-2 py-2 sm:px-2.5">
 															<div className="grid gap-2 rounded-[16px] bg-white px-2.5 py-2 shadow-sm ring-1 ring-[#3453a7]/10 md:grid-cols-[minmax(0,1fr)_102px] md:items-center">
 																<div className="min-w-0 text-right">
@@ -1883,18 +1885,6 @@ export default function HalaqahManagement() {
 										</Card>
 									)
 								})}
-							</div>
-
-							<div className="flex justify-start pt-2">
-								<Button
-									type="button"
-									variant={isEditMode ? "default" : "outline"}
-									className={isEditMode ? "bg-[#3453a7] text-white hover:bg-[#27428d]" : "border-[#3453a7]/35 text-[#1a2332] hover:bg-[#3453a7]/8"}
-									onClick={handleToggleEditMode}
-									disabled={isModeSwitchLoading}
-								>
-									{isModeSwitchLoading ? "جاري الحفظ..." : isEditMode ? "حفظ" : "تعديل التقييمات المحفوظة"}
-								</Button>
 							</div>
 
 						</>
