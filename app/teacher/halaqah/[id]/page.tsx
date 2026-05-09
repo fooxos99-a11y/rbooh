@@ -1163,23 +1163,24 @@ export default function HalaqahManagement() {
 				})
 				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
 				const eligibleStudents = nextStudents.filter((student) => {
+					const hasReadingDetails = Boolean(
+						student.readingDetails?.hafiz || student.readingDetails?.samaa || student.readingDetails?.rabet,
+					)
+
 					if (editMode) {
 						const hasSavedSelfReports = (student.selfReports || []).length > 0
-						const hasSavedReadingDetails = Boolean(
-							student.readingDetails?.hafiz || student.readingDetails?.samaa || student.readingDetails?.rabet,
-						)
 						const hasSavedDirectEvaluation = Boolean(
 							student.savedToday &&
 							isEvaluatedAttendance(student.attendance) &&
 							student.evaluation?.hafiz &&
-							hasSavedReadingDetails,
+							hasReadingDetails,
 						)
 
 						return hasSavedSelfReports || hasSavedDirectEvaluation
 					}
 
 					if (student.hasPlan) {
-						return true
+						return hasReadingDetails || (student.selfReports || []).length > 0
 					}
 
 					return isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0
