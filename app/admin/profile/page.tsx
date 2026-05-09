@@ -152,7 +152,7 @@ export default function AdminProfilePage() {
           </div>
         </main>
         <Footer />
-                  تعديل
+		</div>
     )
   }
 
