@@ -35,6 +35,17 @@ function hasCompleteEvaluation(levels: {
   return !!levels.hafiz_level
 }
 
+function resolveEvaluationReportDate(reportDate: string | null | undefined, fallbackDate: string) {
+  return typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : fallbackDate
+}
+
+function calculateStoredEvaluationPoints(level: string | null | undefined, status: string | null | undefined) {
+  return applyAttendancePointsAdjustment(
+    calculateEvaluationLevelPoints((level || null) as any),
+    status || "present",
+  )
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -116,18 +127,41 @@ export async function GET(request: NextRequest) {
           .from("evaluations")
           .select("*")
           .eq("attendance_record_id", record.id)
-          .order("created_at", { ascending: true });
+          .order("created_at", { ascending: true })
+
+        const evaluationEntries = Array.isArray(evaluations)
+          ? evaluations.map((evaluation) => ({
+              report_date: resolveEvaluationReportDate(evaluation?.report_date, record.date),
+              hafiz_level: evaluation?.hafiz_level || null,
+              tikrar_level: evaluation?.tikrar_level || null,
+              samaa_level: evaluation?.samaa_level || null,
+              rabet_level: evaluation?.rabet_level || null,
+              hafiz_from_surah: evaluation?.hafiz_from_surah || null,
+              hafiz_from_verse: evaluation?.hafiz_from_verse || null,
+              hafiz_to_surah: evaluation?.hafiz_to_surah || null,
+              hafiz_to_verse: evaluation?.hafiz_to_verse || null,
+              samaa_from_surah: evaluation?.samaa_from_surah || null,
+              samaa_from_verse: evaluation?.samaa_from_verse || null,
+              samaa_to_surah: evaluation?.samaa_to_surah || null,
+              samaa_to_verse: evaluation?.samaa_to_verse || null,
+              rabet_from_surah: evaluation?.rabet_from_surah || null,
+              rabet_from_verse: evaluation?.rabet_from_verse || null,
+              rabet_to_surah: evaluation?.rabet_to_surah || null,
+              rabet_to_verse: evaluation?.rabet_to_verse || null,
+            }))
+          : []
 
         // اختر آخر تقييم (الأحدث)
         const lastEval = Array.isArray(evaluations) && evaluations.length > 0
           ? evaluations[evaluations.length - 1]
-          : null;
+          : null
 
         const isAbsent = isNonEvaluatedAttendance(record.status)
         return {
           id: record.id,
           date: record.date,
           status: record.status,
+          report_date: lastEval ? resolveEvaluationReportDate(lastEval.report_date, record.date) : record.date,
           hafiz_level: isAbsent ? "not_completed" : (lastEval?.hafiz_level || null),
           tikrar_level: isAbsent ? "not_completed" : (lastEval?.tikrar_level || null),
           samaa_level: isAbsent ? "not_completed" : (lastEval?.samaa_level || null),
@@ -144,6 +178,7 @@ export async function GET(request: NextRequest) {
           rabet_from_verse: lastEval?.rabet_from_verse || null,
           rabet_to_surah: lastEval?.rabet_to_surah || null,
           rabet_to_verse: lastEval?.rabet_to_verse || null,
+          evaluations: evaluationEntries,
         }
       }),
     )
@@ -259,23 +294,39 @@ export async function POST(request: NextRequest) {
     let attendanceRecord
     const isUpdate = !!existingRecord
     let previousPoints = 0
+    let previousPointsStudentId: string | null = null
+    let matchedEvaluationId: string | null = null
+
+    const reportDateCandidates = new Set([reportDateInput, targetDate])
 
     if (existingRecord) {
       console.log("[v0] Attendance already exists for student today, updating record:", existingRecord.id)
 
-      const { data: oldEvaluation } = await supabase
+      const { data: existingEvaluations } = await supabase
         .from("evaluations")
-        .select("hafiz_level, tikrar_level, samaa_level, rabet_level")
+        .select("id, report_date, hafiz_level")
         .eq("attendance_record_id", existingRecord.id)
-        .maybeSingle()
+        .order("created_at", { ascending: true })
 
-      if (oldEvaluation) {
-        previousPoints = applyAttendancePointsAdjustment(
-          calculateEvaluationLevelPoints(oldEvaluation.hafiz_level as any),
-          existingRecord.status,
+      if (!isEvaluatedAttendance(normalizedStatus)) {
+        previousPoints = (existingEvaluations || []).reduce((total, evaluation) => {
+          return total + calculateStoredEvaluationPoints(evaluation?.hafiz_level, existingRecord.status)
+        }, 0)
+
+        if ((existingEvaluations || []).length > 0) {
+          await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id)
+          previousPointsStudentId = student_id
+        }
+      } else {
+        const matchedEvaluation = (existingEvaluations || []).find((evaluation) =>
+          reportDateCandidates.has(resolveEvaluationReportDate(evaluation?.report_date, targetDate)),
         )
 
-        await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id)
+        if (matchedEvaluation) {
+          matchedEvaluationId = matchedEvaluation.id
+          previousPoints = calculateStoredEvaluationPoints(matchedEvaluation.hafiz_level, existingRecord.status)
+          previousPointsStudentId = student_id
+        }
       }
 
       const { data: updatedRecord, error: attendanceUpdateError } = await supabase
@@ -297,11 +348,11 @@ export async function POST(request: NextRequest) {
 
       attendanceRecord = updatedRecord
 
-      if (previousPoints > 0) {
+      if (previousPoints > 0 && previousPointsStudentId) {
         const { data: currentStudent, error: fetchStudentError } = await supabase
           .from("students")
           .select("points, store_points")
-          .eq("id", student_id)
+          .eq("id", previousPointsStudentId)
           .single()
 
         if (!fetchStudentError && currentStudent) {
@@ -311,7 +362,7 @@ export async function POST(request: NextRequest) {
               points: Math.max(0, (currentStudent.points || 0) - previousPoints),
               store_points: Math.max(0, (currentStudent.store_points || 0) - previousPoints),
             })
-            .eq("id", student_id)
+            .eq("id", previousPointsStudentId)
         }
       }
     } else {
@@ -384,29 +435,41 @@ export async function POST(request: NextRequest) {
         total: totalPoints,
       })
 
-      const { data: evaluation, error: evaluationError } = await supabase
-        .from("evaluations")
-        .insert({
-          attendance_record_id: attendanceRecord.id,
-          hafiz_level,
-          tikrar_level,
-          samaa_level,
-          rabet_level,
-          hafiz_from_surah,
-          hafiz_from_verse,
-          hafiz_to_surah,
-          hafiz_to_verse,
-          samaa_from_surah,
-          samaa_from_verse,
-          samaa_to_surah,
-          samaa_to_verse,
-          rabet_from_surah,
-          rabet_from_verse,
-          rabet_to_surah,
-          rabet_to_verse,
-        })
-        .select()
-        .single()
+      const evaluationPayload = {
+        attendance_record_id: attendanceRecord.id,
+        report_date: reportDateInput,
+        hafiz_level,
+        tikrar_level,
+        samaa_level,
+        rabet_level,
+        hafiz_from_surah,
+        hafiz_from_verse,
+        hafiz_to_surah,
+        hafiz_to_verse,
+        samaa_from_surah,
+        samaa_from_verse,
+        samaa_to_surah,
+        samaa_to_verse,
+        rabet_from_surah,
+        rabet_from_verse,
+        rabet_to_surah,
+        rabet_to_verse,
+      }
+
+      const evaluationQuery = matchedEvaluationId
+        ? supabase
+            .from("evaluations")
+            .update(evaluationPayload)
+            .eq("id", matchedEvaluationId)
+            .select()
+            .single()
+        : supabase
+            .from("evaluations")
+            .insert(evaluationPayload)
+            .select()
+            .single()
+
+      const { data: evaluation, error: evaluationError } = await evaluationQuery
 
       if (evaluationError) {
         console.error("[v0] Error creating evaluation:", evaluationError)

@@ -169,6 +169,7 @@ interface PlanProgressResponse {
 interface SavedAttendanceRecord {
 	student_id: string
 	date?: string
+	report_date?: string
 	created_at?: string | null
 	updated_at?: string | null
 	status: AttendanceStatus
@@ -188,6 +189,7 @@ interface SavedAttendanceRecord {
 	rabet_from_verse?: string | null
 	rabet_to_surah?: string | null
 	rabet_to_verse?: string | null
+	evaluations?: SavedAttendanceRecord[]
 }
 
 function getKsaDateString(baseDate = new Date()) {
@@ -547,7 +549,7 @@ const getAttendanceAnchorLabel = (date: string) => {
 
 const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
 	const selectedLevel = student.reportEvaluations?.[reportDate]
-	return selectedLevel !== null && selectedLevel !== undefined && selectedLevel !== UNSET_REPORT_EVALUATION
+	return selectedLevel !== null && selectedLevel !== undefined
 }
 
 const getSelectedUnsavedSelfReports = (student: StudentAttendance) => {
@@ -969,9 +971,38 @@ export default function HalaqahManagement() {
 							}, {})
 
 							attendanceRecordsByStudent = attendanceHistoryResults.reduce<Record<string, SavedAttendanceRecord[]>>((acc, result) => {
-								acc[result.studentId] = (result.records || []).filter(
-									(record: SavedAttendanceRecord) => isEvaluatedAttendance(record.status) && !!record.hafiz_level,
-								)
+								acc[result.studentId] = (result.records || []).flatMap((record: SavedAttendanceRecord) => {
+									if (!isEvaluatedAttendance(record.status)) {
+										return []
+									}
+
+									const expandedEvaluations = Array.isArray(record.evaluations) && record.evaluations.length > 0
+										? record.evaluations
+										: [record]
+
+									return expandedEvaluations
+										.filter((evaluation) => !!evaluation.hafiz_level)
+										.map((evaluation) => ({
+											...record,
+											report_date: evaluation.report_date || record.report_date || record.date,
+											hafiz_level: evaluation.hafiz_level,
+											tikrar_level: evaluation.tikrar_level,
+											samaa_level: evaluation.samaa_level,
+											rabet_level: evaluation.rabet_level,
+											hafiz_from_surah: evaluation.hafiz_from_surah,
+											hafiz_from_verse: evaluation.hafiz_from_verse,
+											hafiz_to_surah: evaluation.hafiz_to_surah,
+											hafiz_to_verse: evaluation.hafiz_to_verse,
+											samaa_from_surah: evaluation.samaa_from_surah,
+											samaa_from_verse: evaluation.samaa_from_verse,
+											samaa_to_surah: evaluation.samaa_to_surah,
+											samaa_to_verse: evaluation.samaa_to_verse,
+											rabet_from_surah: evaluation.rabet_from_surah,
+											rabet_from_verse: evaluation.rabet_from_verse,
+											rabet_to_surah: evaluation.rabet_to_surah,
+											rabet_to_verse: evaluation.rabet_to_verse,
+										}))
+								})
 								return acc
 							}, {})
 
@@ -980,15 +1011,26 @@ export default function HalaqahManagement() {
 
 								savedReportDatesMap = Object.fromEntries(
 									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
-										const savedAnchorDates = new Set(
-											(attendanceRecordsByStudent[currentStudentId] || [])
+										const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
+										const savedExactDates = new Set(
+											studentAttendanceRecords
+												.map((record) => record.report_date)
+												.filter((value): value is string => !!value),
+										)
+										const savedLegacyAnchorDates = new Set(
+											studentAttendanceRecords
+												.filter((record) => !record.report_date)
 												.map((record) => record.date)
 												.filter((value): value is string => !!value),
 										)
 										return [
 											currentStudentId,
 											reports
-												.filter((report) => savedAnchorDates.has(getSaudiAttendanceAnchorDate(report.report_date)))
+												.filter(
+													(report) =>
+														savedExactDates.has(report.report_date) ||
+														savedLegacyAnchorDates.has(getSaudiAttendanceAnchorDate(report.report_date)),
+												)
 												.map((report) => report.report_date)
 												.sort((left, right) => left.localeCompare(right)),
 										]
@@ -997,9 +1039,15 @@ export default function HalaqahManagement() {
 
 								savedReportEvaluationMap = Object.fromEntries(
 									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
-										const recordsByAnchorDate = new Map(
-											(attendanceRecordsByStudent[currentStudentId] || [])
-												.filter((record) => !!record.date && !!record.hafiz_level)
+										const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
+										const recordsByExactDate = new Map(
+											studentAttendanceRecords
+												.filter((record) => !!record.report_date && !!record.hafiz_level)
+												.map((record) => [record.report_date as string, record.hafiz_level as EvaluationLevel] as const),
+										)
+										const recordsByLegacyAnchorDate = new Map(
+											studentAttendanceRecords
+												.filter((record) => !record.report_date && !!record.date && !!record.hafiz_level)
 												.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel] as const),
 										)
 
@@ -1007,7 +1055,14 @@ export default function HalaqahManagement() {
 											currentStudentId,
 											Object.fromEntries(
 												reports
-													.map((report) => [report.report_date, recordsByAnchorDate.get(getSaudiAttendanceAnchorDate(report.report_date))] as const)
+													.map(
+														(report) =>
+															[
+																report.report_date,
+																recordsByExactDate.get(report.report_date) ||
+																	recordsByLegacyAnchorDate.get(getSaudiAttendanceAnchorDate(report.report_date)),
+															] as const,
+													)
 													.filter((entry): entry is [string, EvaluationLevel] => !!entry[1]),
 											),
 										]
@@ -1081,12 +1136,12 @@ export default function HalaqahManagement() {
 				})
 				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
 				const eligibleStudents = nextStudents.filter((student) => {
-					if (student.hasPlan) {
-						return true
-					}
-
 					if (editMode) {
 						return (student.selfReports || []).length > 0 || (student.savedToday && isEvaluatedAttendance(student.attendance))
+					}
+
+					if (student.hasPlan) {
+						return true
 					}
 
 					return isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0
@@ -1236,12 +1291,9 @@ export default function HalaqahManagement() {
 	}
 
 	const handleSave = async () => {
-		const refreshedStudents = ((await loadSavedStudentsForToday(teacherHalaqah, students)) ?? students).filter(
-			(student) => isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0,
-		)
-
-		const studentsToSave = refreshedStudents.filter(isStudentReadyToSave)
-		const hasIncompletePresentStudents = refreshedStudents.some(
+		const currentStudents = [...studentsRef.current]
+		const studentsToSave = currentStudents.filter(isStudentReadyToSave)
+		const hasIncompletePresentStudents = currentStudents.some(
 			(student) =>
 				(student.selfReports || []).length > 0
 					? false
@@ -1559,14 +1611,21 @@ export default function HalaqahManagement() {
 								onClick={handleToggleEditMode}
 								disabled={isModeSwitchLoading}
 							>
-								{isModeSwitchLoading ? "جاري التحميل..." : isEditMode ? "إلغاء التعديل" : "تعديل"}
+								{isModeSwitchLoading ? "جاري التحميل..." : isEditMode ? "إنهاء التعديل" : "تعديل التقييمات المحفوظة"}
 							</Button>
 						</div>
 					</section>
 
+					{isEditMode ? (
+						<section className="rounded-[24px] border border-[#3453a7]/15 bg-[#f7fbff] px-4 py-3 text-right shadow-sm">
+							<p className="text-sm font-extrabold tracking-[0.08em] text-[#3453a7]">وضع التعديل</p>
+							<p className="mt-1 text-sm font-semibold text-[#1a2332]">تظهر هنا فقط التقييمات المحفوظة سابقًا. عند تعديل الدرجة تُلغى الدرجة القديمة ويُعتمد التقييم الجديد مباشرة.</p>
+						</section>
+					) : null}
+
 					{students.length === 0 ? (
 						<div className="rounded-[28px] border border-[#3453a7]/15 bg-white/90 px-6 py-12 text-center shadow-sm">
-							<p className="text-lg font-bold text-[#1a2332]">{isEditMode ? "لاتوجد تقارير للتسميع" : "لا توجد مقاطع للتسميع"}</p>
+							<p className="text-lg font-bold text-[#1a2332]">{isEditMode ? "لا توجد تقييمات محفوظة قابلة للتعديل" : "لا توجد مقاطع للتسميع"}</p>
 						</div>
 					) : (
 						<>

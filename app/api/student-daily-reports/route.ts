@@ -329,7 +329,7 @@ export async function GET(request: NextRequest) {
     if (pendingOnly) {
       let attendanceQuery = supabase
         .from("attendance_records")
-        .select("student_id, date, evaluations(hafiz_level)")
+        .select("student_id, date, evaluations(report_date, hafiz_level)")
         .lte("date", queryEndDate)
 
       if (studentId) {
@@ -351,24 +351,31 @@ export async function GET(request: NextRequest) {
           : record.evaluations
             ? [record.evaluations]
             : []
-        const latestHafizLevel = evaluations.length > 0 ? evaluations[evaluations.length - 1]?.hafiz_level ?? null : null
-
-        if (latestHafizLevel === null || latestHafizLevel === undefined) {
-          return acc
-        }
 
         if (!acc[record.student_id]) {
           acc[record.student_id] = new Set<string>()
         }
 
-        acc[record.student_id].add(record.date)
+        evaluations.forEach((evaluation) => {
+          if (evaluation?.hafiz_level === null || evaluation?.hafiz_level === undefined) {
+            return
+          }
+
+          const savedReportDate = typeof evaluation?.report_date === "string" && evaluation.report_date.trim()
+            ? evaluation.report_date.trim()
+            : record.date
+
+          if (savedReportDate) {
+            acc[record.student_id].add(savedReportDate)
+          }
+        })
         return acc
       }, {})
 
       finalReportsByStudent = Object.fromEntries(
         Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
           currentStudentId,
-          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(getSaudiAttendanceAnchorDate(report.report_date))),
+          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(report.report_date)),
         ]),
       )
     } else {

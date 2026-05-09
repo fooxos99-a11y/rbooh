@@ -21,6 +21,10 @@ function getSavedOnRange(savedOn: string) {
   }
 }
 
+function resolveEvaluationReportDate(reportDate: string | null | undefined, fallbackDate: string) {
+  return typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : fallbackDate
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -104,7 +108,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch attendance records" }, { status: 500 })
     }
 
-    const attendanceRecords = records || []
+    const attendanceRecords = (records || []) as any[]
     if (attendanceRecords.length === 0) {
       const response = NextResponse.json({ records: [], count: 0 })
       response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
@@ -121,7 +125,7 @@ export async function GET(request: NextRequest) {
       attendanceRecordIds.length > 0
         ? supabase
             .from("evaluations")
-            .select("attendance_record_id, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
+          .select("attendance_record_id, report_date, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
             .in("attendance_record_id", attendanceRecordIds)
         : Promise.resolve({ data: [], error: null }),
     ])
@@ -131,19 +135,17 @@ export async function GET(request: NextRequest) {
     }
 
     const studentNameById = new Map((students || []).map((student: any) => [student.id, student.name] as const))
-    const evaluationByAttendanceId = new Map<string, any>()
+    const evaluationsByAttendanceId = new Map<string, any[]>()
 
-    ;(evaluations || [])
-      .sort((left: any, right: any) => String(right?.created_at || "").localeCompare(String(left?.created_at || "")))
-      .forEach((evaluation: any) => {
+    ;(evaluations || []).forEach((evaluation: any) => {
       if (!evaluation?.attendance_record_id) {
         return
       }
 
-      if (!evaluationByAttendanceId.has(evaluation.attendance_record_id)) {
-        evaluationByAttendanceId.set(evaluation.attendance_record_id, evaluation)
-      }
-      })
+      const existing = evaluationsByAttendanceId.get(evaluation.attendance_record_id) || []
+      existing.push(evaluation)
+      evaluationsByAttendanceId.set(evaluation.attendance_record_id, existing)
+    })
 
     const latestRecordByStudentDate = new Map<string, any>()
 
@@ -159,12 +161,24 @@ export async function GET(request: NextRequest) {
     }
 
     const formattedRecords = Array.from(latestRecordByStudentDate.values()).map((record: any) => {
-      const evaluation = evaluationByAttendanceId.get(record.id)
+      const orderedEvaluations = (evaluationsByAttendanceId.get(record.id) || []).sort((left: any, right: any) => {
+        const exactDateMatch = date
+          ? Number(resolveEvaluationReportDate(right?.report_date, record.date) === date) - Number(resolveEvaluationReportDate(left?.report_date, record.date) === date)
+          : 0
+
+        if (exactDateMatch !== 0) {
+          return exactDateMatch
+        }
+
+        return String(right?.created_at || "").localeCompare(String(left?.created_at || ""))
+      })
+      const evaluation = orderedEvaluations[0]
 
       return {
         student_id: record.student_id,
         student_name: studentNameById.get(record.student_id) || "Unknown",
         date: record.date,
+        report_date: evaluation ? resolveEvaluationReportDate(evaluation.report_date, record.date) : record.date,
         created_at: record.created_at || null,
         updated_at: record.updated_at || null,
         status: record.status,
