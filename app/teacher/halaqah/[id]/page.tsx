@@ -1494,7 +1494,7 @@ export default function HalaqahManagement() {
 			console.error("Error saving data:", error)
 			setSaveStatus("idle")
 			setIsSaving(false)
-			await showAlert("حدث خطأ أثناء حفظ البيانات", "خطأ")
+			await showAlert(error instanceof Error && error.message ? error.message : "حدث خطأ أثناء حفظ البيانات", "خطأ")
 		}
 	}
 

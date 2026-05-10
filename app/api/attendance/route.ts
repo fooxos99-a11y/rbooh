@@ -46,6 +46,21 @@ function calculateStoredEvaluationPoints(level: string | null | undefined, statu
   )
 }
 
+function isMissingEvaluationReportDateColumnError(error: {
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+  code?: string | null
+} | null | undefined) {
+  const content = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""} ${error?.code ?? ""}`
+  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+}
+
+function omitEvaluationReportDate<T extends { report_date?: string | null }>(payload: T): Omit<T, "report_date"> {
+  const { report_date: _reportDate, ...legacyPayload } = payload
+  return legacyPayload
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -302,11 +317,38 @@ export async function POST(request: NextRequest) {
     if (existingRecord) {
       console.log("[v0] Attendance already exists for student today, updating record:", existingRecord.id)
 
-      const { data: existingEvaluations } = await supabase
+      let existingEvaluations: Array<{ id: string; report_date?: string | null; hafiz_level?: string | null }> | null = null
+      let existingEvaluationsError: {
+        message?: string | null
+        details?: string | null
+        hint?: string | null
+        code?: string | null
+      } | null = null
+
+      const existingEvaluationsResult = await supabase
         .from("evaluations")
         .select("id, report_date, hafiz_level")
         .eq("attendance_record_id", existingRecord.id)
         .order("created_at", { ascending: true })
+
+      existingEvaluations = existingEvaluationsResult.data as Array<{ id: string; report_date?: string | null; hafiz_level?: string | null }> | null
+      existingEvaluationsError = existingEvaluationsResult.error
+
+      if (isMissingEvaluationReportDateColumnError(existingEvaluationsError)) {
+        const legacyEvaluationsResult = await supabase
+          .from("evaluations")
+          .select("id, hafiz_level")
+          .eq("attendance_record_id", existingRecord.id)
+          .order("created_at", { ascending: true })
+
+        existingEvaluations = legacyEvaluationsResult.data as Array<{ id: string; hafiz_level?: string | null }> | null
+        existingEvaluationsError = legacyEvaluationsResult.error
+      }
+
+      if (existingEvaluationsError) {
+        console.error("[v0] Error loading existing evaluations:", existingEvaluationsError)
+        return NextResponse.json({ error: "فشل في تحميل تقييمات الطالب الحالية" }, { status: 500 })
+      }
 
       if (!isEvaluatedAttendance(normalizedStatus)) {
         previousPoints = (existingEvaluations || []).reduce((total, evaluation) => {
@@ -438,26 +480,39 @@ export async function POST(request: NextRequest) {
         rabet_to_verse,
       }
 
-      const evaluationQuery = matchedEvaluationId
-        ? supabase
-            .from("evaluations")
-            .update(evaluationPayload)
-            .eq("id", matchedEvaluationId)
-            .select()
-            .single()
-        : supabase
-            .from("evaluations")
-            .insert(evaluationPayload)
-            .select()
-            .single()
+      const legacyEvaluationPayload = omitEvaluationReportDate(evaluationPayload)
 
-      const { data: evaluation, error: evaluationError } = await evaluationQuery
+      const runEvaluationQuery = (useLegacyPayload = false) => {
+        const payload = useLegacyPayload ? legacyEvaluationPayload : evaluationPayload
+
+        return matchedEvaluationId
+          ? supabase
+              .from("evaluations")
+              .update(payload)
+              .eq("id", matchedEvaluationId)
+              .select()
+              .single()
+          : supabase
+              .from("evaluations")
+              .insert(payload)
+              .select()
+              .single()
+      }
+
+      let { data: evaluation, error: evaluationError } = await runEvaluationQuery(false)
+
+      if (isMissingEvaluationReportDateColumnError(evaluationError)) {
+        const legacyEvaluationResult = await runEvaluationQuery(true)
+        evaluation = legacyEvaluationResult.data
+        evaluationError = legacyEvaluationResult.error
+      }
 
       if (evaluationError) {
         console.error("[v0] Error creating evaluation:", evaluationError)
         if (!existingRecord) {
           await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
         }
+
         return NextResponse.json(
           { error: "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور" },
           { status: 500 },

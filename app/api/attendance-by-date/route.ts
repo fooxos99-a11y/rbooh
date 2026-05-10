@@ -25,6 +25,17 @@ function resolveEvaluationReportDate(reportDate: string | null | undefined, fall
   return typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : fallbackDate
 }
 
+function isMissingEvaluationReportDateColumn(error: {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+} | null) {
+  if (!error) return false
+  const content = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
+  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -118,17 +129,35 @@ export async function GET(request: NextRequest) {
     const studentIds = Array.from(new Set(attendanceRecords.map((record: any) => record.student_id).filter(Boolean)))
     const attendanceRecordIds = attendanceRecords.map((record: any) => record.id).filter(Boolean)
 
-    const [{ data: students }, { data: evaluations, error: evaluationsError }] = await Promise.all([
-      studentIds.length > 0
-        ? supabase.from("students").select("id, name").in("id", studentIds)
-        : Promise.resolve({ data: [], error: null }),
-      attendanceRecordIds.length > 0
-        ? supabase
-            .from("evaluations")
-          .select("attendance_record_id, report_date, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse")
-            .in("attendance_record_id", attendanceRecordIds)
-        : Promise.resolve({ data: [], error: null }),
-    ])
+    const studentsPromise = studentIds.length > 0
+      ? supabase.from("students").select("id, name").in("id", studentIds)
+      : Promise.resolve({ data: [], error: null })
+
+    const loadEvaluations = async (includeReportDate: boolean) => {
+      if (attendanceRecordIds.length === 0) {
+        return { data: [], error: null }
+      }
+
+      return supabase
+        .from("evaluations")
+        .select(
+          includeReportDate
+            ? "attendance_record_id, report_date, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse"
+            : "attendance_record_id, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse",
+        )
+        .in("attendance_record_id", attendanceRecordIds)
+    }
+
+    const [{ data: students }, initialEvaluationsResult] = await Promise.all([studentsPromise, loadEvaluations(true)])
+
+    let evaluations = initialEvaluationsResult.data
+    let evaluationsError = initialEvaluationsResult.error
+
+    if (isMissingEvaluationReportDateColumn(evaluationsError)) {
+      const fallbackEvaluationsResult = await loadEvaluations(false)
+      evaluations = fallbackEvaluationsResult.data
+      evaluationsError = fallbackEvaluationsResult.error
+    }
 
     if (evaluationsError) {
       console.error("[attendance-by-date] Error fetching evaluations:", evaluationsError)

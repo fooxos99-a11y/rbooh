@@ -72,6 +72,12 @@ function isDuplicateDailyReportError(error: { message?: string | null; details?:
   return /PGRST116|multiple \(or no\) rows returned|more than 1 row|multiple rows/i.test(content)
 }
 
+function isMissingEvaluationReportDateColumn(error: { message?: string | null; details?: string | null; hint?: string | null; code?: string | null } | null) {
+  if (!error) return false
+  const content = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
+  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+}
+
 async function resolvePlanSessionNumber(params: {
   supabase: Awaited<ReturnType<typeof createClient>>
   studentId: string
@@ -333,18 +339,28 @@ export async function GET(request: NextRequest) {
     let finalReportsByStudent = reportsByStudent
 
     if (pendingOnly) {
-      let attendanceQuery = supabase
-        .from("attendance_records")
-        .select("student_id, date, evaluations(report_date, hafiz_level)")
-        .lte("date", queryEndDate)
+      const buildAttendanceQuery = (includeReportDate: boolean) => {
+        let attendanceQuery = supabase
+          .from("attendance_records")
+          .select(includeReportDate ? "student_id, date, evaluations(report_date, hafiz_level)" : "student_id, date, evaluations(hafiz_level)")
+          .lte("date", queryEndDate)
 
-      if (studentId) {
-        attendanceQuery = attendanceQuery.eq("student_id", studentId)
-      } else {
-        attendanceQuery = attendanceQuery.in("student_id", studentIds)
+        if (studentId) {
+          attendanceQuery = attendanceQuery.eq("student_id", studentId)
+        } else {
+          attendanceQuery = attendanceQuery.in("student_id", studentIds)
+        }
+
+        return attendanceQuery
       }
 
-      const { data: attendanceRecords, error: attendanceError } = await attendanceQuery
+      let { data: attendanceRecords, error: attendanceError } = await buildAttendanceQuery(true)
+
+      if (isMissingEvaluationReportDateColumn(attendanceError)) {
+        const fallbackAttendanceResult = await buildAttendanceQuery(false)
+        attendanceRecords = fallbackAttendanceResult.data
+        attendanceError = fallbackAttendanceResult.error
+      }
 
       if (attendanceError) {
         console.error("[student-daily-reports][GET][pending]", attendanceError)

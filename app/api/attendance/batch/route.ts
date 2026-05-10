@@ -32,6 +32,21 @@ function hasCompleteEvaluation(levels: {
   return !!levels.hafiz_level
 }
 
+function isMissingEvaluationReportDateColumnError(error: {
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+  code?: string | null
+} | null | undefined) {
+  const content = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""} ${error?.code ?? ""}`
+  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+}
+
+function omitEvaluationReportDate<T extends { report_date?: string | null }>(payload: T): Omit<T, "report_date"> {
+  const { report_date: _reportDate, ...legacyPayload } = payload
+  return legacyPayload
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -147,17 +162,29 @@ export async function POST(request: NextRequest) {
           calculateEvaluationLevelPoints(hafiz_level as any),
           status,
         )
-        const { data: evaluationResult, error: evaluationError } = await supabase
-          .from("evaluations")
-          .insert({
-            attendance_record_id: attendanceRecord.id,
-            hafiz_level,
-            tikrar_level,
-            samaa_level,
-            rabet_level,
-          })
-          .select()
-          .single();
+        const evaluationPayload = {
+          attendance_record_id: attendanceRecord.id,
+          report_date: todayDate,
+          hafiz_level,
+          tikrar_level,
+          samaa_level,
+          rabet_level,
+        }
+        const legacyEvaluationPayload = omitEvaluationReportDate(evaluationPayload)
+        const runEvaluationInsert = (useLegacyPayload = false) =>
+          supabase
+            .from("evaluations")
+            .insert(useLegacyPayload ? legacyEvaluationPayload : evaluationPayload)
+            .select()
+            .single()
+
+        let { data: evaluationResult, error: evaluationError } = await runEvaluationInsert(false)
+
+        if (isMissingEvaluationReportDateColumnError(evaluationError)) {
+          const legacyEvaluationResult = await runEvaluationInsert(true)
+          evaluationResult = legacyEvaluationResult.data
+          evaluationError = legacyEvaluationResult.error
+        }
 
         if (evaluationError) {
           if (!existingRecord) {
