@@ -564,8 +564,21 @@ export async function POST(request: NextRequest) {
           await supabase.from("attendance_records").delete().eq("id", attendanceRecord.id)
         }
 
+        const evaluationErrorDetails = [
+          evaluationError.message,
+          evaluationError.details,
+          evaluationError.hint,
+          evaluationError.code,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+
         return NextResponse.json(
-          { error: "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور" },
+          {
+            error: evaluationErrorDetails
+              ? `فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور: ${evaluationErrorDetails}`
+              : "فشل في حفظ تقييم الطالب وتم التراجع عن سجل الحضور",
+          },
           { status: 500 },
         )
       }
