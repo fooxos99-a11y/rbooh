@@ -150,6 +150,36 @@ function formatReportDateLabel(dateValue: string) {
   return `${year}/${month}/${day}`
 }
 
+function dedupeDailyReportsByStudentDate<T extends {
+  id?: string | null
+  student_id?: string | null
+  report_date?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}>(reports: T[]) {
+  const latestReportByStudentDate = new Map<string, T>()
+
+  for (const report of reports) {
+    const studentId = report.student_id || ""
+    const reportDate = report.report_date || ""
+
+    if (!studentId || !reportDate) {
+      continue
+    }
+
+    const key = `${studentId}:${reportDate}`
+    const current = latestReportByStudentDate.get(key)
+    const currentStamp = `${current?.updated_at || current?.created_at || ""}:${current?.id || ""}`
+    const nextStamp = `${report.updated_at || report.created_at || ""}:${report.id || ""}`
+
+    if (!current || nextStamp >= currentStamp) {
+      latestReportByStudentDate.set(key, report)
+    }
+  }
+
+  return Array.from(latestReportByStudentDate.values())
+}
+
 function buildDailyExecutionGuardianMessage(params: {
   studentName: string
   halaqah?: string | null
@@ -330,7 +360,9 @@ export async function GET(request: NextRequest) {
       return true
     })
 
-    const reportsByStudent = filteredReports.reduce<Record<string, typeof filteredReports>>((acc, report) => {
+    const uniqueReports = dedupeDailyReportsByStudentDate(filteredReports)
+
+    const reportsByStudent = uniqueReports.reduce<Record<string, typeof uniqueReports>>((acc, report) => {
       if (!acc[report.student_id]) acc[report.student_id] = []
       acc[report.student_id].push(report)
       return acc
