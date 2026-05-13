@@ -183,6 +183,41 @@ function dedupeDailyReportsByStudentDate<T extends {
   return Array.from(latestReportByStudentDate.values())
 }
 
+function dedupePendingReportsByStudentSession<T extends {
+  id?: string | null
+  student_id?: string | null
+  report_date?: string | null
+  plan_session_number?: number | null
+  created_at?: string | null
+  updated_at?: string | null
+}>(reports: T[]) {
+  const latestReportByStudentSession = new Map<string, T>()
+
+  for (const report of reports) {
+    const studentId = report.student_id || ""
+    const sessionNumber = Number(report.plan_session_number)
+
+    if (!studentId || !Number.isFinite(sessionNumber) || sessionNumber <= 0) {
+      const fallbackKey = `${studentId}:${report.report_date || report.id || ""}`
+      if (!latestReportByStudentSession.has(fallbackKey)) {
+        latestReportByStudentSession.set(fallbackKey, report)
+      }
+      continue
+    }
+
+    const key = `${studentId}:${Math.floor(sessionNumber)}`
+    const current = latestReportByStudentSession.get(key)
+    const currentStamp = `${current?.report_date || ""}:${current?.updated_at || current?.created_at || ""}:${current?.id || ""}`
+    const nextStamp = `${report.report_date || ""}:${report.updated_at || report.created_at || ""}:${report.id || ""}`
+
+    if (!current || nextStamp >= currentStamp) {
+      latestReportByStudentSession.set(key, report)
+    }
+  }
+
+  return Array.from(latestReportByStudentSession.values())
+}
+
 function buildDailyExecutionGuardianMessage(params: {
   studentName: string
   halaqah?: string | null
@@ -487,7 +522,9 @@ export async function GET(request: NextRequest) {
       finalReportsByStudent = Object.fromEntries(
         Object.entries(reportsByStudent).map(([currentStudentId, studentReports]) => [
           currentStudentId,
-          studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(report.report_date)),
+          dedupePendingReportsByStudentSession(
+            studentReports.filter((report) => !savedReportDatesByStudent[currentStudentId]?.has(report.report_date)),
+          ).sort((left, right) => right.report_date.localeCompare(left.report_date)),
         ]),
       )
     } else {
