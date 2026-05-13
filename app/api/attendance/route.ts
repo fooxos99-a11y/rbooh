@@ -56,6 +56,51 @@ function isMissingEvaluationReportDateColumnError(error: {
   return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
 }
 
+const EVALUATION_READING_RANGE_FIELDS = [
+  "hafiz_from_surah",
+  "hafiz_from_verse",
+  "hafiz_to_surah",
+  "hafiz_to_verse",
+  "samaa_from_surah",
+  "samaa_from_verse",
+  "samaa_to_surah",
+  "samaa_to_verse",
+  "rabet_from_surah",
+  "rabet_from_verse",
+  "rabet_to_surah",
+  "rabet_to_verse",
+] as const
+
+function omitUnsupportedEvaluationFields<T extends Record<string, any>>(
+  payload: T,
+  error: {
+    message?: string | null
+    details?: string | null
+    hint?: string | null
+    code?: string | null
+  } | null | undefined,
+) {
+  const content = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""} ${error?.code ?? ""}`
+  const nextPayload = { ...payload }
+  let didOmitField = false
+
+  if (/report_date/i.test(content) && "report_date" in nextPayload) {
+    delete nextPayload.report_date
+    didOmitField = true
+  }
+
+  if (new RegExp(EVALUATION_READING_RANGE_FIELDS.join("|"), "i").test(content)) {
+    for (const field of EVALUATION_READING_RANGE_FIELDS) {
+      if (field in nextPayload) {
+        delete nextPayload[field]
+        didOmitField = true
+      }
+    }
+  }
+
+  return didOmitField ? nextPayload : payload
+}
+
 function omitEvaluationReportDate<T extends { report_date?: string | null }>(payload: T): Omit<T, "report_date"> {
   const { report_date: _reportDate, ...legacyPayload } = payload
   return legacyPayload
@@ -480,11 +525,7 @@ export async function POST(request: NextRequest) {
         rabet_to_verse,
       }
 
-      const legacyEvaluationPayload = omitEvaluationReportDate(evaluationPayload)
-
-      const runEvaluationQuery = (useLegacyPayload = false) => {
-        const payload = useLegacyPayload ? legacyEvaluationPayload : evaluationPayload
-
+      const runEvaluationQuery = (payload: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date">) => {
         return matchedEvaluationId
           ? supabase
               .from("evaluations")
@@ -499,12 +540,22 @@ export async function POST(request: NextRequest) {
               .single()
       }
 
-      let { data: evaluation, error: evaluationError } = await runEvaluationQuery(false)
+      let evaluationPayloadAttempt: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date"> = evaluationPayload
+      let { data: evaluation, error: evaluationError } = await runEvaluationQuery(evaluationPayloadAttempt)
 
-      if (isMissingEvaluationReportDateColumnError(evaluationError)) {
-        const legacyEvaluationResult = await runEvaluationQuery(true)
-        evaluation = legacyEvaluationResult.data
-        evaluationError = legacyEvaluationResult.error
+      while (evaluationError) {
+        const fallbackPayload = isMissingEvaluationReportDateColumnError(evaluationError)
+          ? omitEvaluationReportDate(evaluationPayloadAttempt)
+          : omitUnsupportedEvaluationFields(evaluationPayloadAttempt, evaluationError)
+
+        if (Object.keys(fallbackPayload).length === Object.keys(evaluationPayloadAttempt).length) {
+          break
+        }
+
+        evaluationPayloadAttempt = fallbackPayload
+        const fallbackEvaluationResult = await runEvaluationQuery(evaluationPayloadAttempt)
+        evaluation = fallbackEvaluationResult.data
+        evaluationError = fallbackEvaluationResult.error
       }
 
       if (evaluationError) {
