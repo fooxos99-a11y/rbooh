@@ -1,12 +1,15 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/admin"
+import { canAccessStudent, canManageHalaqah, getRequestActor, isAdminRole } from "@/lib/request-auth"
 import { buildPlanSessionProgress, deriveReportSessionNumbersByDate, isMemorizationOffDay } from "@/lib/plan-session-progress"
 import { getSaudiAttendanceAnchorDate } from "@/lib/saudi-time"
 import type { SessionPlanBounds } from "@/lib/quran-data"
 import { calculatePreviousMemorizedPages, resolvePlanLinkingPagesPreference, resolvePlanReviewPagesPreference, resolvePlanReviewPoolPages } from "@/lib/quran-data"
 import { isPassingMemorizationLevel } from "@/lib/student-attendance"
 import { notifyGuardian } from "@/lib/guardian-notifications"
+
+type SupabaseQueryClient = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>
 
 const SELF_REPORT_REWARD_POINTS = {
   memorization_done: 10,
@@ -79,7 +82,7 @@ function isMissingEvaluationReportDateColumn(error: { message?: string | null; d
 }
 
 async function resolvePlanSessionNumber(params: {
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: SupabaseQueryClient
   studentId: string
   reportDate: string
 }) {
@@ -212,7 +215,7 @@ function buildDailyExecutionGuardianMessage(params: {
 }
 
 async function resolveExecutionPageCounts(params: {
-  supabase: Awaited<ReturnType<typeof createClient>>
+  supabase: SupabaseQueryClient
   studentId: string
   reportDate: string
   hasMemorizationDone: boolean
@@ -279,6 +282,30 @@ async function resolveExecutionPageCounts(params: {
   }
 }
 
+async function canAccessStudentSet(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  actor: Awaited<ReturnType<typeof getRequestActor>>
+  studentIds: string[]
+}) {
+  const { supabase, actor, studentIds } = params
+
+  if (!actor) return false
+  if (studentIds.length === 0) return true
+  if (isAdminRole(actor.role)) return true
+
+  const uniqueStudentIds = Array.from(new Set(studentIds))
+  const { data: students, error } = await supabase
+    .from("students")
+    .select("id, halaqah")
+    .in("id", uniqueStudentIds)
+
+  if (error || !students || students.length !== uniqueStudentIds.length) {
+    return false
+  }
+
+  return students.every((student) => canManageHalaqah(actor, student.halaqah))
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -299,7 +326,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "student_id أو student_ids مطلوب" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const authClient = await createClient()
+    const actor = await getRequestActor(request, authClient)
+
+    if (!actor) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 })
+    }
+
+    if (studentId) {
+      const canViewStudent = await canAccessStudent({
+        supabase: authClient,
+        actor,
+        studentId,
+        allowStudentSelf: true,
+        allowTeacher: true,
+      })
+
+      if (!canViewStudent) {
+        return NextResponse.json({ error: "غير مصرح لك بعرض تقارير هذا الطالب" }, { status: 403 })
+      }
+    } else {
+      const canViewStudents = await canAccessStudentSet({
+        supabase: authClient,
+        actor,
+        studentIds,
+      })
+
+      if (!canViewStudents) {
+        return NextResponse.json({ error: "غير مصرح لك بعرض تقارير هؤلاء الطلاب" }, { status: 403 })
+      }
+    }
+
+    const supabase = createAdminClient()
     const todayDate = getKsaDateString()
   const normalizedTargetDate = /^\d{4}-\d{2}-\d{2}$/.test(targetDateParam) ? targetDateParam : ""
   const baseDate = normalizedTargetDate || todayDate
@@ -456,6 +514,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const authClient = await createClient()
+    const actor = await getRequestActor(request, authClient)
+
+    if (!actor) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 })
+    }
+
     const body = await request.json()
     const studentId = typeof body.student_id === "string" ? body.student_id.trim() : ""
     const reportDate = typeof body.report_date === "string" && body.report_date.trim() ? body.report_date.trim() : getKsaDateString()
@@ -464,6 +529,18 @@ export async function POST(request: NextRequest) {
 
     if (!studentId) {
       return NextResponse.json({ error: "student_id مطلوب" }, { status: 400 })
+    }
+
+    const canManageStudent = await canAccessStudent({
+      supabase: authClient,
+      actor,
+      studentId,
+      allowStudentSelf: true,
+      allowTeacher: true,
+    })
+
+    if (!canManageStudent) {
+      return NextResponse.json({ error: "غير مصرح لك بحفظ تقرير هذا الطالب" }, { status: 403 })
     }
 
     const hasMemorizationValue = !isReviewOnlyDay && typeof body.memorization_done === "boolean"
@@ -478,7 +555,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const nowIso = new Date().toISOString()
 
     const { data: existingReport, error: existingReportError } = await supabase
@@ -627,6 +704,7 @@ export async function POST(request: NextRequest) {
 
     let updatedPoints: number | null = null
     let updatedStorePoints: number | null = null
+    let warning: string | null = null
 
     if (pointsAwarded > 0) {
       const { data: studentData, error: studentError } = await supabase
@@ -637,36 +715,22 @@ export async function POST(request: NextRequest) {
 
       if (studentError) {
         console.error("[student-daily-reports][POST][student-points][select]", studentError)
-        return NextResponse.json(
-          {
-            error: "تم حفظ التنفيذ اليومي، لكن تعذر تحديث نقاط الطالب",
-            report: data,
-            newlyCompletedFields,
-          },
-          { status: 500 },
-        )
-      }
+        warning = "تم حفظ التنفيذ اليومي، لكن تعذر تحديث نقاط الطالب"
+      } else {
+        const nextPoints = (studentData?.points || 0) + pointsAwarded
+        const nextStorePoints = (studentData?.store_points || 0) + pointsAwarded
+        updatedPoints = nextPoints
+        updatedStorePoints = nextStorePoints
 
-      const nextPoints = (studentData?.points || 0) + pointsAwarded
-      const nextStorePoints = (studentData?.store_points || 0) + pointsAwarded
-      updatedPoints = nextPoints
-      updatedStorePoints = nextStorePoints
+        const { error: updateStudentError } = await supabase
+          .from("students")
+          .update({ points: nextPoints, store_points: nextStorePoints })
+          .eq("id", studentId)
 
-      const { error: updateStudentError } = await supabase
-        .from("students")
-        .update({ points: nextPoints, store_points: nextStorePoints })
-        .eq("id", studentId)
-
-      if (updateStudentError) {
-        console.error("[student-daily-reports][POST][student-points][update]", updateStudentError)
-        return NextResponse.json(
-          {
-            error: "تم حفظ التنفيذ اليومي، لكن تعذر تحديث نقاط الطالب",
-            report: data,
-            newlyCompletedFields,
-          },
-          { status: 500 },
-        )
+        if (updateStudentError) {
+          console.error("[student-daily-reports][POST][student-points][update]", updateStudentError)
+          warning = "تم حفظ التنفيذ اليومي، لكن تعذر تحديث نقاط الطالب"
+        }
       }
     }
 
@@ -708,7 +772,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, report: data, newlyCompletedFields, pointsAwarded, updatedPoints, updatedStorePoints })
+    return NextResponse.json({ success: true, report: data, newlyCompletedFields, pointsAwarded, updatedPoints, updatedStorePoints, warning })
   } catch (error) {
     console.error("[student-daily-reports][POST][fatal]", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

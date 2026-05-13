@@ -16,6 +16,7 @@ import { BellRing, Eye, Pencil, ShieldAlert, Trash2 } from "lucide-react"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { SiteLoader } from "@/components/ui/site-loader"
 import { useToast } from "@/hooks/use-toast"
+import { getClientAuthHeaders } from "@/lib/client-auth"
 import {
 	DEFAULT_STUDENT_ISSUE_NOTIFICATION_TEMPLATES,
 	formatStudentIssueNotificationMessage,
@@ -337,7 +338,7 @@ export default function StudentDailyAttendancePage() {
 
       const reportsResponse = await fetch(
         `/api/student-daily-reports?student_ids=${encodeURIComponent(students.map((student: { id: string }) => student.id).join(","))}&days=1&date=${encodeURIComponent(effectiveSelectedDate)}`,
-        { cache: "no-store" },
+        { cache: "no-store", headers: getClientAuthHeaders() },
       )
       const reportsData = await reportsResponse.json()
 

@@ -474,7 +474,10 @@ function ProfilePage() {
     dailyReportsRequestIdRef.current = requestId
     setIsLoadingDailyReports(true)
     try {
-      const response = await fetch(`/api/student-daily-reports?student_id=${studentId}&days=3`, { cache: "no-store" })
+      const response = await fetch(`/api/student-daily-reports?student_id=${studentId}&days=3`, {
+        cache: "no-store",
+        headers: getClientAuthHeaders(),
+      })
       const data = await response.json()
 
       if (requestId !== dailyReportsRequestIdRef.current) {
@@ -570,7 +573,7 @@ function ProfilePage() {
     try {
       const response = await fetch("/api/student-daily-reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...getClientAuthHeaders() },
         body: JSON.stringify({
           student_id: studentData.id,
           ...(typeof memorization_done === "boolean" ? { memorization_done } : {}),
@@ -611,7 +614,10 @@ function ProfilePage() {
       if (typeof data.updatedPoints === "number") {
         setStudentData((prev) => (prev ? { ...prev, points: data.updatedPoints } : prev))
       }
-      setDailyReportFeedback({ type: "success", message: "تم حفظ تنفيذك اليومي بنجاح" })
+      setDailyReportFeedback({
+        type: data.warning ? "error" : "success",
+        message: data.warning || "تم حفظ تنفيذك اليومي بنجاح",
+      })
       fetchRankingData(studentData.id)
       await fetchPlanData(studentData.id)
       await fetchDailyReports(studentData.id, { preserveDirtySelection: false })

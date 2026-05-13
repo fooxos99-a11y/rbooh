@@ -1215,7 +1215,8 @@ export default function HalaqahManagement() {
 					}
 
 					if (student.hasPlan) {
-						return hasReadingDetails || visibleSelfReports.length > 0
+						const hasAnySelfReports = (student.selfReports || []).length > 0
+						return hasAnySelfReports ? visibleSelfReports.length > 0 : (!student.savedToday && hasReadingDetails)
 					}
 
 					return isEvaluatedAttendance(student.attendance) && visibleSelfReports.length > 0
