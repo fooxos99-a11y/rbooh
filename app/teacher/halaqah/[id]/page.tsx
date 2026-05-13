@@ -1065,7 +1065,7 @@ export default function HalaqahManagement() {
 							const [reportsResponse, savedTodayResponse, attendanceHistoryResults] = await Promise.all([
 								fetch(
 									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&all=true`,
-									{ cache: "no-store" },
+									{ cache: "no-store", headers: getClientAuthHeaders() },
 								),
 								fetch(
 									`/api/attendance-by-date?date=${todayKsaDate}&circle=${encodeURIComponent(halaqah)}`,
@@ -1121,7 +1121,7 @@ export default function HalaqahManagement() {
 							const [reportsResponse, attendanceHistoryResults] = await Promise.all([
 								fetch(
 									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
-									{ cache: "no-store" },
+									{ cache: "no-store", headers: getClientAuthHeaders() },
 								),
 								Promise.all(
 									studentIds.map(async (studentId) => {
