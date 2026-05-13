@@ -33,7 +33,21 @@ function isMissingEvaluationReportDateColumn(error: {
 } | null) {
   if (!error) return false
   const content = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
-  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+  return /report_date/i.test(content)
+}
+
+const EVALUATION_READING_RANGE_SELECT =
+  "hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse"
+
+function isMissingEvaluationReadingRangeColumn(error: {
+  code?: string | null
+  message?: string | null
+  details?: string | null
+  hint?: string | null
+} | null) {
+  if (!error) return false
+  const content = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`
+  return /hafiz_from_surah|hafiz_from_verse|hafiz_to_surah|hafiz_to_verse|samaa_from_surah|samaa_from_verse|samaa_to_surah|samaa_to_verse|rabet_from_surah|rabet_from_verse|rabet_to_surah|rabet_to_verse/i.test(content)
 }
 
 export async function GET(request: NextRequest) {
@@ -133,28 +147,46 @@ export async function GET(request: NextRequest) {
       ? supabase.from("students").select("id, name").in("id", studentIds)
       : Promise.resolve({ data: [], error: null })
 
-    const loadEvaluations = async (includeReportDate: boolean) => {
+    const loadEvaluations = async (includeReportDate: boolean, includeReadingRanges: boolean) => {
       if (attendanceRecordIds.length === 0) {
         return { data: [], error: null }
       }
 
+      const baseSelection = includeReportDate
+        ? "attendance_record_id, report_date, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level"
+        : "attendance_record_id, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level"
+
+      const selection = includeReadingRanges
+        ? `${baseSelection}, ${EVALUATION_READING_RANGE_SELECT}`
+        : baseSelection
+
       return supabase
         .from("evaluations")
-        .select(
-          includeReportDate
-            ? "attendance_record_id, report_date, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse"
-            : "attendance_record_id, created_at, hafiz_level, tikrar_level, samaa_level, rabet_level, hafiz_from_surah, hafiz_from_verse, hafiz_to_surah, hafiz_to_verse, samaa_from_surah, samaa_from_verse, samaa_to_surah, samaa_to_verse, rabet_from_surah, rabet_from_verse, rabet_to_surah, rabet_to_verse",
-        )
+        .select(selection)
         .in("attendance_record_id", attendanceRecordIds)
     }
 
-    const [{ data: students }, initialEvaluationsResult] = await Promise.all([studentsPromise, loadEvaluations(true)])
+    let includeEvaluationReportDate = true
+    let includeEvaluationReadingRanges = true
+
+    const [{ data: students }, initialEvaluationsResult] = await Promise.all([
+      studentsPromise,
+      loadEvaluations(includeEvaluationReportDate, includeEvaluationReadingRanges),
+    ])
 
     let evaluations = initialEvaluationsResult.data
     let evaluationsError = initialEvaluationsResult.error
 
     if (isMissingEvaluationReportDateColumn(evaluationsError)) {
-      const fallbackEvaluationsResult = await loadEvaluations(false)
+      includeEvaluationReportDate = false
+      const fallbackEvaluationsResult = await loadEvaluations(includeEvaluationReportDate, includeEvaluationReadingRanges)
+      evaluations = fallbackEvaluationsResult.data
+      evaluationsError = fallbackEvaluationsResult.error
+    }
+
+    if (isMissingEvaluationReadingRangeColumn(evaluationsError)) {
+      includeEvaluationReadingRanges = false
+      const fallbackEvaluationsResult = await loadEvaluations(includeEvaluationReportDate, includeEvaluationReadingRanges)
       evaluations = fallbackEvaluationsResult.data
       evaluationsError = fallbackEvaluationsResult.error
     }
