@@ -46,6 +46,7 @@ import {
 } from "lucide-react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { createClient } from "@/lib/supabase/client"
+import { getClientAuthHeaders } from "@/lib/client-auth"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -1085,43 +1086,34 @@ function AdminDashboard() {
     studentRecordsRequestRef.current = requestId
     setIsLoadingRecords(true)
     try {
-      const supabase = createClient()
+      const authHeaders = getClientAuthHeaders()
 
       const [attendanceResponse, dailyReportsResponse] = await Promise.all([
-        supabase
-          .from("attendance_records")
-          .select(`
-            id,
-            date,
-            status,
-            evaluations (
-              hafiz_level,
-              tikrar_level,
-              samaa_level,
-              rabet_level
-            )
-          `)
-          .eq("student_id", studentId)
-          .order("date", { ascending: false }),
-        supabase
-          .from("student_daily_reports")
-          .select("id, report_date, memorization_done, tikrar_done, review_done, linking_done, notes, updated_at")
-          .eq("student_id", studentId)
-          .order("report_date", { ascending: false }),
+        fetch(`/api/attendance?student_id=${encodeURIComponent(studentId)}`, {
+          cache: "no-store",
+          headers: authHeaders,
+        }),
+        fetch(`/api/student-daily-reports?student_id=${encodeURIComponent(studentId)}&all=true`, {
+          cache: "no-store",
+          headers: authHeaders,
+        }),
       ])
 
-      if (attendanceResponse.error) {
-        console.error("[dashboard] Error fetching attendance records:", attendanceResponse.error)
+      const attendanceJson = await attendanceResponse.json().catch(() => ({}))
+      const dailyReportsJson = await dailyReportsResponse.json().catch(() => ({}))
+
+      if (!attendanceResponse.ok) {
+        console.error("[dashboard] Error fetching attendance records:", attendanceJson)
         return
       }
 
-      if (dailyReportsResponse.error) {
-        console.error("[dashboard] Error fetching daily execution records:", dailyReportsResponse.error)
+      if (!dailyReportsResponse.ok) {
+        console.error("[dashboard] Error fetching daily execution records:", dailyReportsJson)
         return
       }
 
-      const attendanceRecords = (attendanceResponse.data || []) as AttendanceRecordWithEvaluations[]
-      const dailyReports = (dailyReportsResponse.data || []) as DailyExecutionRecord[]
+      const attendanceRecords = (attendanceJson.records || []) as AttendanceRecordWithEvaluations[]
+      const dailyReports = (dailyReportsJson.reports || []) as DailyExecutionRecord[]
 
       const attendanceByDate = new Map<string, AttendanceRecordWithEvaluations>()
       for (const record of attendanceRecords) {

@@ -1,9 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
+import { canManageHalaqah, getRequestActor, isAdminRole, isTeacherRole } from "@/lib/request-auth"
 import {
   applyAttendancePointsAdjustment,
   calculateEvaluationLevelPoints,
-  calculateTotalEvaluationPoints,
   isEvaluatedAttendance,
   isNonEvaluatedAttendance,
 } from "@/lib/student-attendance"
@@ -92,6 +93,38 @@ function omitEvaluationReportDate<T extends { report_date?: string | null }>(pay
   return legacyPayload
 }
 
+function resolveEvaluationReportDate(reportDate: string | null | undefined, fallbackDate: string) {
+  return typeof reportDate === "string" && reportDate.trim() ? reportDate.trim() : fallbackDate
+}
+
+function calculateStoredEvaluationPoints(level: string | null | undefined, status: string | null | undefined) {
+  return applyAttendancePointsAdjustment(calculateEvaluationLevelPoints(level as any), status || "present")
+}
+
+async function canAccessStudentSet(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>
+  actor: Awaited<ReturnType<typeof getRequestActor>>
+  studentIds: string[]
+}) {
+  const { supabase, actor, studentIds } = params
+
+  if (!actor) return false
+  if (studentIds.length === 0) return true
+  if (isAdminRole(actor.role)) return true
+
+  const uniqueStudentIds = Array.from(new Set(studentIds))
+  const { data: students, error } = await supabase
+    .from("students")
+    .select("id, halaqah")
+    .in("id", uniqueStudentIds)
+
+  if (error || !students || students.length !== uniqueStudentIds.length) {
+    return false
+  }
+
+  return students.every((student) => canManageHalaqah(actor, student.halaqah))
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -119,7 +152,32 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const supabase = await createClient()
+    const authClient = await createClient()
+    const actor = await getRequestActor(request, authClient)
+
+    if (!actor) {
+      return NextResponse.json({ error: "غير مصرح" }, { status: 401 })
+    }
+
+    const studentIds = students
+      .map((student) => String(student?.id || "").trim())
+      .filter(Boolean)
+
+    const isAuthorizedForStudents = await canAccessStudentSet({
+      supabase: authClient,
+      actor,
+      studentIds,
+    })
+
+    if (!canManageHalaqah(actor, halaqah) || !isAuthorizedForStudents) {
+      return NextResponse.json({ error: "غير مصرح لك بتسجيل حضور هؤلاء الطلاب" }, { status: 403 })
+    }
+
+    if (isTeacherRole(actor.role) && actor.id !== teacher_id) {
+      return NextResponse.json({ error: "لا يمكنك التسجيل باسم معلم آخر" }, { status: 403 })
+    }
+
+    const supabase = createAdminClient()
     const todayDate = getKsaDateString()
     const results = []
     for (const student of students) {
@@ -133,44 +191,82 @@ export async function POST(request: NextRequest) {
       console.log(`[DEBUG][API] الطالب: ${student_id}, الحضور: ${status}, التقييمات المدخلة:`, evaluation);
       console.log(`[DEBUG][API] القيم التي سيتم حفظها: hafiz=${hafiz_level}, tikrar=${tikrar_level}, samaa=${samaa_level}, rabet=${rabet_level}`);
       // تحقق من وجود سجل حضور لهذا اليوم
-      const { data: existingRecord } = await supabase
+      const { data: existingRecord, error: existingRecordError } = await supabase
         .from("attendance_records")
           .select("id, status")
         .eq("student_id", student_id)
         .eq("date", todayDate)
         .maybeSingle();
+      if (existingRecordError) {
+        return NextResponse.json({ error: "فشل في التحقق من سجل الحضور الحالي", student_id }, { status: 500 })
+      }
+
       let attendanceRecord;
-      let oldPoints = 0;
+      let previousPoints = 0;
+      let matchedEvaluationId: string | null = null
+      let canMatchByExactReportDate = true
 
       if (existingRecord) {
-        // حذف التقييم القديم وخصم النقاط القديمة
-        const { data: oldEvaluation } = await supabase
+        let existingEvaluations: Array<{ id: string; report_date?: string | null; hafiz_level?: string | null }> | null = null
+        let existingEvaluationsError: {
+          message?: string | null
+          details?: string | null
+          hint?: string | null
+          code?: string | null
+        } | null = null
+
+        const existingEvaluationsResult = await supabase
           .from("evaluations")
-          .select("*")
+          .select("id, report_date, hafiz_level")
           .eq("attendance_record_id", existingRecord.id)
-          .maybeSingle();
-        if (oldEvaluation) {
-          oldPoints = applyAttendancePointsAdjustment(
-            calculateEvaluationLevelPoints(oldEvaluation.hafiz_level as any),
-            existingRecord?.status,
-          )
-          await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id);
+          .order("created_at", { ascending: true })
+
+        existingEvaluations = existingEvaluationsResult.data as Array<{ id: string; report_date?: string | null; hafiz_level?: string | null }> | null
+        existingEvaluationsError = existingEvaluationsResult.error
+
+        if (isMissingEvaluationReportDateColumnError(existingEvaluationsError)) {
+          canMatchByExactReportDate = false
+          const legacyEvaluationsResult = await supabase
+            .from("evaluations")
+            .select("id, hafiz_level")
+            .eq("attendance_record_id", existingRecord.id)
+            .order("created_at", { ascending: true })
+
+          existingEvaluations = legacyEvaluationsResult.data as Array<{ id: string; hafiz_level?: string | null }> | null
+          existingEvaluationsError = legacyEvaluationsResult.error
         }
-        await supabase
-          .from("attendance_records")
-          .update({ status })
-          .eq("id", existingRecord.id);
-        attendanceRecord = existingRecord;
-        if (oldPoints > 0) {
-          const { data: studentData } = await supabase.from("students").select("points, store_points").eq("id", student_id).single();
-          if (studentData) {
-            const currentPoints = studentData.points || 0;
-            const currentStorePoints = studentData.store_points || 0;
-            const newPoints = Math.max(0, currentPoints - oldPoints);
-            const newStorePoints = Math.max(0, currentStorePoints - oldPoints);
-            await supabase.from("students").update({ points: newPoints, store_points: newStorePoints }).eq("id", student_id);
+
+        if (existingEvaluationsError) {
+          return NextResponse.json({ error: "فشل في تحميل تقييمات الطالب الحالية", student_id }, { status: 500 })
+        }
+
+        if (!isEvaluatedAttendance(status)) {
+          previousPoints = (existingEvaluations || []).reduce((total, currentEvaluation) => {
+            return total + calculateStoredEvaluationPoints(currentEvaluation?.hafiz_level, existingRecord.status)
+          }, 0)
+
+          if ((existingEvaluations || []).length > 0) {
+            await supabase.from("evaluations").delete().eq("attendance_record_id", existingRecord.id)
+          }
+        } else {
+          const matchedEvaluation = canMatchByExactReportDate
+            ? (existingEvaluations || []).find((currentEvaluation) => {
+                const normalizedReportDate = typeof currentEvaluation?.report_date === "string" ? currentEvaluation.report_date.trim() : ""
+                return normalizedReportDate === todayDate
+              })
+            : (existingEvaluations || []).find((currentEvaluation) => resolveEvaluationReportDate(currentEvaluation?.report_date, todayDate) === todayDate)
+
+          if (matchedEvaluation) {
+            matchedEvaluationId = matchedEvaluation.id
+            previousPoints = calculateStoredEvaluationPoints(matchedEvaluation.hafiz_level, existingRecord.status)
           }
         }
+
+        await supabase
+          .from("attendance_records")
+          .update({ teacher_id, halaqah, status })
+          .eq("id", existingRecord.id);
+        attendanceRecord = existingRecord;
       } else {
         const { data: newRecord, error: attendanceInsertError } = await supabase
           .from("attendance_records")
@@ -215,15 +311,22 @@ export async function POST(request: NextRequest) {
           samaa_level,
           rabet_level,
         }
-        const runEvaluationInsert = (payload: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date">) =>
-          supabase
-            .from("evaluations")
-            .insert(payload)
-            .select()
-            .maybeSingle()
+        const runEvaluationQuery = (payload: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date">) =>
+          matchedEvaluationId
+            ? supabase
+                .from("evaluations")
+                .update(payload)
+                .eq("id", matchedEvaluationId)
+                .select()
+                .maybeSingle()
+            : supabase
+                .from("evaluations")
+                .insert(payload)
+                .select()
+                .maybeSingle()
 
         let evaluationPayloadAttempt: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date"> = evaluationPayload
-        let { data: evaluationResult, error: evaluationError } = await runEvaluationInsert(evaluationPayloadAttempt)
+        let { data: evaluationResult, error: evaluationError } = await runEvaluationQuery(evaluationPayloadAttempt)
 
         while (evaluationError) {
           const fallbackPayload = isMissingEvaluationReportDateColumnError(evaluationError)
@@ -235,7 +338,7 @@ export async function POST(request: NextRequest) {
           }
 
           evaluationPayloadAttempt = fallbackPayload
-          const legacyEvaluationResult = await runEvaluationInsert(evaluationPayloadAttempt)
+          const legacyEvaluationResult = await runEvaluationQuery(evaluationPayloadAttempt)
           evaluationResult = legacyEvaluationResult.data
           evaluationError = legacyEvaluationResult.error
         }
@@ -266,20 +369,30 @@ export async function POST(request: NextRequest) {
         }
 
         console.log(`[DEBUG][API] التقييم المخزن في قاعدة البيانات:`, evaluationResult);
-        if (totalPoints > 0) {
+        const pointsDelta = totalPoints - previousPoints
+        if (pointsDelta !== 0) {
           const { data: studentData } = await supabase.from("students").select("points, store_points").eq("id", student_id).single();
           if (studentData) {
             const currentPoints = studentData.points || 0;
             const currentStorePoints = studentData.store_points || 0;
-            const newPoints = currentPoints + totalPoints;
-            const newStorePoints = currentStorePoints + totalPoints;
+            const newPoints = Math.max(0, currentPoints + pointsDelta);
+            const newStorePoints = Math.max(0, currentStorePoints + pointsDelta);
             await supabase.from("students").update({ points: newPoints, store_points: newStorePoints }).eq("id", student_id);
           }
         }
         results.push({ student_id, success: true, pointsAdded: totalPoints });
       } else {
         // إذا كان غائب أو مستأذن لا يتم إضافة تقييمات ولا نقاط، ويتم حذف أي تقييمات قديمة
-        await supabase.from("evaluations").delete().eq("attendance_record_id", attendanceRecord.id);
+        if (previousPoints > 0) {
+          const { data: studentData } = await supabase.from("students").select("points, store_points").eq("id", student_id).single();
+          if (studentData) {
+            const currentPoints = studentData.points || 0;
+            const currentStorePoints = studentData.store_points || 0;
+            const newPoints = Math.max(0, currentPoints - previousPoints);
+            const newStorePoints = Math.max(0, currentStorePoints - previousPoints);
+            await supabase.from("students").update({ points: newPoints, store_points: newStorePoints }).eq("id", student_id);
+          }
+        }
         results.push({ student_id, success: true, pointsAdded: 0 });
       }
     }
