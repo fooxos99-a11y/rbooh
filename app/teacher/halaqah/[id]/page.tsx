@@ -542,6 +542,9 @@ const getUnsavedSelfReports = (student: StudentAttendance) => {
 	return (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
 }
 
+const getVisibleSelfReports = (student: StudentAttendance, editMode: boolean) =>
+	editMode ? student.selfReports || [] : getUnsavedSelfReports(student)
+
 const hasSelectedReportEvaluation = (student: StudentAttendance, reportDate: string) => {
 	const selectedLevel = student.reportEvaluations?.[reportDate]
 	return selectedLevel !== null && selectedLevel !== undefined
@@ -1163,6 +1166,7 @@ export default function HalaqahManagement() {
 				})
 				const nextStudents = editMode ? mappedStudents : (await loadSavedStudentsForToday(halaqah, mappedStudents)) ?? mappedStudents
 				const eligibleStudents = nextStudents.filter((student) => {
+					const visibleSelfReports = getVisibleSelfReports(student, editMode)
 					const hasReadingDetails = Boolean(
 						student.readingDetails?.hafiz || student.readingDetails?.samaa || student.readingDetails?.rabet,
 					)
@@ -1180,10 +1184,10 @@ export default function HalaqahManagement() {
 					}
 
 					if (student.hasPlan) {
-						return hasReadingDetails || (student.selfReports || []).length > 0
+						return hasReadingDetails || visibleSelfReports.length > 0
 					}
 
-					return isEvaluatedAttendance(student.attendance) && (student.selfReports || []).length > 0
+					return isEvaluatedAttendance(student.attendance) && visibleSelfReports.length > 0
 				})
 				if (requestId !== fetchStudentsRequestIdRef.current) {
 					return
@@ -1663,7 +1667,8 @@ export default function HalaqahManagement() {
 							<div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3">
 								{students.map((student) => {
 									const isNoPlanLocked = !student.savedToday && !student.hasPlan
-									const shouldShowReportEvaluations = (student.selfReports || []).length > 0
+									const visibleSelfReports = getVisibleSelfReports(student, isEditMode)
+									const shouldShowReportEvaluations = visibleSelfReports.length > 0
 									const shouldShowDirectTodayEvaluation =
 										isEditMode &&
 										student.savedToday &&
@@ -1721,7 +1726,7 @@ export default function HalaqahManagement() {
 													) : shouldExpandCard && !isNoPlanLocked && shouldShowReportEvaluations ? (
 														<div className="rounded-[18px] bg-[#f7fbff] px-2 py-2 sm:px-2.5">
 															<div className="space-y-2">
-																{[...(student.selfReports || [])]
+																{[...visibleSelfReports]
 																	.sort((left, right) => left.report_date.localeCompare(right.report_date))
 																	.map((report) => (
 																	<div key={report.id} className="grid gap-2 rounded-[16px] bg-white px-2.5 py-2 shadow-sm ring-1 ring-[#3453a7]/10 md:grid-cols-[minmax(0,1fr)_102px] md:items-center">
