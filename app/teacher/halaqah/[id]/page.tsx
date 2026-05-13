@@ -642,7 +642,29 @@ const buildAutoSupportEvaluationForReport = (report: StudentDailyReport) => ({
 
 const getUnsavedSelfReports = (student: StudentAttendance) => {
 	const savedDates = new Set(student.savedReportDates || [])
-	return (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
+	const unsavedReports = (student.selfReports || []).filter((report) => !savedDates.has(report.report_date))
+
+	if (!student.plan || unsavedReports.length <= 1) {
+		return unsavedReports
+	}
+
+	const displaySessionNumbersByDate = getDisplayReportSessionNumbersByDate(student)
+	const latestUnsavedReportByKey = new Map<string, StudentDailyReport>()
+
+	for (const report of unsavedReports) {
+		const sessionNumber =
+			normalizePlanSessionNumber(report.plan_session_number) || displaySessionNumbersByDate[report.report_date] || null
+		const dedupeKey = report.memorization_done && sessionNumber ? `session:${sessionNumber}` : `date:${report.report_date}`
+		const current = latestUnsavedReportByKey.get(dedupeKey)
+		const currentStamp = `${current?.report_date || ""}:${current?.updated_at || current?.created_at || ""}:${current?.id || ""}`
+		const nextStamp = `${report.report_date || ""}:${report.updated_at || report.created_at || ""}:${report.id || ""}`
+
+		if (!current || nextStamp >= currentStamp) {
+			latestUnsavedReportByKey.set(dedupeKey, report)
+		}
+	}
+
+	return Array.from(latestUnsavedReportByKey.values()).sort((left, right) => left.report_date.localeCompare(right.report_date))
 }
 
 const getVisibleSelfReports = (student: StudentAttendance, editMode: boolean) =>
@@ -1672,7 +1694,7 @@ export default function HalaqahManagement() {
 				<div className="container mx-auto max-w-7xl space-y-6">
 					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-							<div className="flex justify-start xl:order-1">
+								<div className="flex justify-start">
 								<Button
 									type="button"
 									variant={isEditMode ? "default" : "outline"}
@@ -1680,7 +1702,7 @@ export default function HalaqahManagement() {
 									onClick={handleToggleEditMode}
 									disabled={isModeSwitchLoading}
 								>
-									{isModeSwitchLoading ? "جاري الحفظ..." : isEditMode ? "حفظ" : "تعديل"}
+									{isModeSwitchLoading ? "جاري التبديل..." : isEditMode ? "إنهاء التعديل" : "تعديل"}
 								</Button>
 							</div>
 							<div className="text-right">
