@@ -468,7 +468,7 @@ export async function GET(request: NextRequest) {
         let attendanceQuery = supabase
           .from("attendance_records")
           .select(includeReportDate ? "student_id, date, evaluations(report_date, hafiz_level)" : "student_id, date, evaluations(hafiz_level)")
-          .lte("date", queryEndDate)
+          .lte("date", todayDate)
 
         if (studentId) {
           attendanceQuery = attendanceQuery.eq("student_id", studentId)

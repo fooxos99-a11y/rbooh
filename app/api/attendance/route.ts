@@ -357,7 +357,7 @@ export async function POST(request: NextRequest) {
     let previousPointsStudentId: string | null = null
     let matchedEvaluationId: string | null = null
 
-    const reportDateCandidates = new Set([reportDateInput, targetDate])
+    let canMatchByExactReportDate = true
 
     if (existingRecord) {
       console.log("[v0] Attendance already exists for student today, updating record:", existingRecord.id)
@@ -380,6 +380,7 @@ export async function POST(request: NextRequest) {
       existingEvaluationsError = existingEvaluationsResult.error
 
       if (isMissingEvaluationReportDateColumnError(existingEvaluationsError)) {
+        canMatchByExactReportDate = false
         const legacyEvaluationsResult = await supabase
           .from("evaluations")
           .select("id, hafiz_level")
@@ -405,9 +406,12 @@ export async function POST(request: NextRequest) {
           previousPointsStudentId = student_id
         }
       } else {
-        const matchedEvaluation = (existingEvaluations || []).find((evaluation) =>
-          reportDateCandidates.has(resolveEvaluationReportDate(evaluation?.report_date, targetDate)),
-        )
+        const matchedEvaluation = canMatchByExactReportDate
+          ? (existingEvaluations || []).find((evaluation) => {
+              const normalizedReportDate = typeof evaluation?.report_date === "string" ? evaluation.report_date.trim() : ""
+              return normalizedReportDate === reportDateInput
+            })
+          : (existingEvaluations || []).find((evaluation) => resolveEvaluationReportDate(evaluation?.report_date, targetDate) === targetDate)
 
         if (matchedEvaluation) {
           matchedEvaluationId = matchedEvaluation.id
