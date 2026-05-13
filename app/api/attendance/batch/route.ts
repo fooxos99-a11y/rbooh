@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
             .from("evaluations")
             .insert(payload)
             .select()
-            .single()
+            .maybeSingle()
 
         let evaluationPayloadAttempt: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date"> = evaluationPayload
         let { data: evaluationResult, error: evaluationError } = await runEvaluationInsert(evaluationPayloadAttempt)

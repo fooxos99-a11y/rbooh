@@ -532,12 +532,12 @@ export async function POST(request: NextRequest) {
               .update(payload)
               .eq("id", matchedEvaluationId)
               .select()
-              .single()
+              .maybeSingle()
           : supabase
               .from("evaluations")
               .insert(payload)
               .select()
-              .single()
+              .maybeSingle()
       }
 
       let evaluationPayloadAttempt: typeof evaluationPayload | Omit<typeof evaluationPayload, "report_date"> = evaluationPayload
@@ -583,7 +583,7 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log("[v0] Evaluation created:", evaluation.id)
+      console.log("[v0] Evaluation created:", evaluation?.id ?? "no-row-returned")
 
       if (previousPoints > 0 && previousPointsStudentId) {
         const { data: currentStudent, error: fetchStudentError } = await supabase
