@@ -53,7 +53,7 @@ function isMissingEvaluationReportDateColumnError(error: {
   code?: string | null
 } | null | undefined) {
   const content = `${error?.message ?? ""} ${error?.details ?? ""} ${error?.hint ?? ""} ${error?.code ?? ""}`
-  return /report_date|column .* does not exist|schema cache|PGRST204/i.test(content)
+  return /report_date/i.test(content)
 }
 
 const EVALUATION_READING_RANGE_FIELDS = [
