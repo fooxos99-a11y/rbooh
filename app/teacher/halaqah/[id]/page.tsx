@@ -487,6 +487,109 @@ const getReportEvaluationOptions = (student: StudentAttendance, reportDate: stri
 	return appendCurrentEvaluationOption(baseOptions, currentLevel)
 }
 
+const buildSavedReportState = (
+	rawReportsByStudent: Record<string, StudentDailyReport[]>,
+	attendanceHistoryResults: Array<{ studentId: string; records: SavedAttendanceRecord[] }>,
+) => {
+	const attendanceRecordsByStudent = attendanceHistoryResults.reduce<Record<string, SavedAttendanceRecord[]>>((acc, result) => {
+		acc[result.studentId] = (result.records || []).flatMap((record: SavedAttendanceRecord) => {
+			if (!isEvaluatedAttendance(record.status)) {
+				return []
+			}
+
+			const expandedEvaluations = Array.isArray(record.evaluations) && record.evaluations.length > 0
+				? record.evaluations
+				: [record]
+
+			return expandedEvaluations
+				.filter((evaluation) => !!evaluation.hafiz_level)
+				.map((evaluation) => ({
+					...record,
+					report_date: evaluation.report_date || record.report_date || record.date,
+					hafiz_level: evaluation.hafiz_level,
+					tikrar_level: evaluation.tikrar_level,
+					samaa_level: evaluation.samaa_level,
+					rabet_level: evaluation.rabet_level,
+					hafiz_from_surah: evaluation.hafiz_from_surah,
+					hafiz_from_verse: evaluation.hafiz_from_verse,
+					hafiz_to_surah: evaluation.hafiz_to_surah,
+					hafiz_to_verse: evaluation.hafiz_to_verse,
+					samaa_from_surah: evaluation.samaa_from_surah,
+					samaa_from_verse: evaluation.samaa_from_verse,
+					samaa_to_surah: evaluation.samaa_to_surah,
+					samaa_to_verse: evaluation.samaa_to_verse,
+					rabet_from_surah: evaluation.rabet_from_surah,
+					rabet_from_verse: evaluation.rabet_from_verse,
+					rabet_to_surah: evaluation.rabet_to_surah,
+					rabet_to_verse: evaluation.rabet_to_verse,
+				}))
+		})
+		return acc
+	}, {})
+
+	const savedReportDatesMap = Object.fromEntries(
+		Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
+			const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
+			const savedExactDates = new Set(
+				studentAttendanceRecords
+					.map((record) => record.report_date)
+					.filter((value): value is string => !!value),
+			)
+			const savedLegacyAnchorDates = new Set(
+				studentAttendanceRecords
+					.filter((record) => !record.report_date)
+					.map((record) => record.date)
+					.filter((value): value is string => !!value),
+			)
+			return [
+				currentStudentId,
+				reports
+					.filter(
+						(report) =>
+							savedExactDates.has(report.report_date) ||
+							savedLegacyAnchorDates.has(getSaudiAttendanceAnchorDate(report.report_date)),
+					)
+					.map((report) => report.report_date)
+					.sort((left, right) => left.localeCompare(right)),
+			]
+		}),
+	)
+
+	const savedReportEvaluationMap = Object.fromEntries(
+		Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
+			const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
+			const recordsByExactDate = new Map(
+				studentAttendanceRecords
+					.filter((record) => !!record.report_date && !!record.hafiz_level)
+					.map((record) => [record.report_date as string, record.hafiz_level as EvaluationLevel] as const),
+			)
+			const recordsByLegacyAnchorDate = new Map(
+				studentAttendanceRecords
+					.filter((record) => !record.report_date && !!record.date && !!record.hafiz_level)
+					.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel] as const),
+			)
+
+			return [
+				currentStudentId,
+				Object.fromEntries(
+					reports
+						.map(
+							(report) =>
+								[
+									report.report_date,
+									recordsByExactDate.get(report.report_date) ||
+										recordsByLegacyAnchorDate.get(getSaudiAttendanceAnchorDate(report.report_date)),
+								] as const,
+						)
+						.filter((entry): entry is [string, EvaluationLevel] => !!entry[1]),
+				),
+			]
+		}),
+	)
+
+	return { attendanceRecordsByStudent, savedReportDatesMap, savedReportEvaluationMap }
+}
+
 const getReportMemorizationContent = (student: StudentAttendance, reportDate: string): EvaluationContent | null => {
     if (isSaturdayReviewOnlyDate(reportDate)) {
 		return null
@@ -1000,104 +1103,12 @@ export default function HalaqahManagement() {
 								return acc
 							}, {})
 
-							attendanceRecordsByStudent = attendanceHistoryResults.reduce<Record<string, SavedAttendanceRecord[]>>((acc, result) => {
-								acc[result.studentId] = (result.records || []).flatMap((record: SavedAttendanceRecord) => {
-									if (!isEvaluatedAttendance(record.status)) {
-										return []
-									}
-
-									const expandedEvaluations = Array.isArray(record.evaluations) && record.evaluations.length > 0
-										? record.evaluations
-										: [record]
-
-									return expandedEvaluations
-										.filter((evaluation) => !!evaluation.hafiz_level)
-										.map((evaluation) => ({
-											...record,
-											report_date: evaluation.report_date || record.report_date || record.date,
-											hafiz_level: evaluation.hafiz_level,
-											tikrar_level: evaluation.tikrar_level,
-											samaa_level: evaluation.samaa_level,
-											rabet_level: evaluation.rabet_level,
-											hafiz_from_surah: evaluation.hafiz_from_surah,
-											hafiz_from_verse: evaluation.hafiz_from_verse,
-											hafiz_to_surah: evaluation.hafiz_to_surah,
-											hafiz_to_verse: evaluation.hafiz_to_verse,
-											samaa_from_surah: evaluation.samaa_from_surah,
-											samaa_from_verse: evaluation.samaa_from_verse,
-											samaa_to_surah: evaluation.samaa_to_surah,
-											samaa_to_verse: evaluation.samaa_to_verse,
-											rabet_from_surah: evaluation.rabet_from_surah,
-											rabet_from_verse: evaluation.rabet_from_verse,
-											rabet_to_surah: evaluation.rabet_to_surah,
-											rabet_to_verse: evaluation.rabet_to_verse,
-										}))
-								})
-								return acc
-							}, {})
-
 							if (reportsResponse.ok && reportsData.reportsByStudent) {
 								const rawReportsByStudent = reportsData.reportsByStudent as Record<string, StudentDailyReport[]>
-
-								savedReportDatesMap = Object.fromEntries(
-									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
-										const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
-										const savedExactDates = new Set(
-											studentAttendanceRecords
-												.map((record) => record.report_date)
-												.filter((value): value is string => !!value),
-										)
-										const savedLegacyAnchorDates = new Set(
-											studentAttendanceRecords
-												.filter((record) => !record.report_date)
-												.map((record) => record.date)
-												.filter((value): value is string => !!value),
-										)
-										return [
-											currentStudentId,
-											reports
-												.filter(
-													(report) =>
-														savedExactDates.has(report.report_date) ||
-														savedLegacyAnchorDates.has(getSaudiAttendanceAnchorDate(report.report_date)),
-												)
-												.map((report) => report.report_date)
-												.sort((left, right) => left.localeCompare(right)),
-										]
-									}),
-								)
-
-								savedReportEvaluationMap = Object.fromEntries(
-									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => {
-										const studentAttendanceRecords = attendanceRecordsByStudent[currentStudentId] || []
-										const recordsByExactDate = new Map(
-											studentAttendanceRecords
-												.filter((record) => !!record.report_date && !!record.hafiz_level)
-												.map((record) => [record.report_date as string, record.hafiz_level as EvaluationLevel] as const),
-										)
-										const recordsByLegacyAnchorDate = new Map(
-											studentAttendanceRecords
-												.filter((record) => !record.report_date && !!record.date && !!record.hafiz_level)
-												.map((record) => [record.date as string, record.hafiz_level as EvaluationLevel] as const),
-										)
-
-										return [
-											currentStudentId,
-											Object.fromEntries(
-												reports
-													.map(
-														(report) =>
-															[
-																report.report_date,
-																recordsByExactDate.get(report.report_date) ||
-																	recordsByLegacyAnchorDate.get(getSaudiAttendanceAnchorDate(report.report_date)),
-															] as const,
-													)
-													.filter((entry): entry is [string, EvaluationLevel] => !!entry[1]),
-											),
-										]
-									}),
-								)
+								const savedReportState = buildSavedReportState(rawReportsByStudent, attendanceHistoryResults)
+								attendanceRecordsByStudent = savedReportState.attendanceRecordsByStudent
+								savedReportDatesMap = savedReportState.savedReportDatesMap
+								savedReportEvaluationMap = savedReportState.savedReportEvaluationMap
 
 								reportsByStudent = Object.fromEntries(
 									Object.entries(rawReportsByStudent).map(([currentStudentId, reports]) => [
@@ -1107,13 +1118,33 @@ export default function HalaqahManagement() {
 								)
 							}
 						} else {
-							const reportsResponse = await fetch(
-								`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
-								{ cache: "no-store" },
-							)
+							const [reportsResponse, attendanceHistoryResults] = await Promise.all([
+								fetch(
+									`/api/student-daily-reports?student_ids=${encodeURIComponent(studentIds.join(","))}&exclude_today=true&skip_memorization_off_days=true&pending_only=true`,
+									{ cache: "no-store" },
+								),
+								Promise.all(
+									studentIds.map(async (studentId) => {
+										const response = await fetch(`/api/attendance?student_id=${encodeURIComponent(studentId)}`, {
+											cache: "no-store",
+											headers: getClientAuthHeaders(),
+										})
+										const payload = await response.json().catch(() => ({}))
+										return {
+											studentId,
+											records: Array.isArray(payload.records) ? payload.records : [],
+										}
+									}),
+								),
+							])
 							const reportsData = await reportsResponse.json()
 							if (reportsResponse.ok && reportsData.reportsByStudent) {
-								reportsByStudent = reportsData.reportsByStudent
+								const rawReportsByStudent = reportsData.reportsByStudent as Record<string, StudentDailyReport[]>
+								const savedReportState = buildSavedReportState(rawReportsByStudent, attendanceHistoryResults)
+								attendanceRecordsByStudent = savedReportState.attendanceRecordsByStudent
+								savedReportDatesMap = savedReportState.savedReportDatesMap
+								savedReportEvaluationMap = savedReportState.savedReportEvaluationMap
+								reportsByStudent = rawReportsByStudent
 							}
 						}
 					} catch (reportsError) {
