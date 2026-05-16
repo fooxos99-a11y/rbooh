@@ -15,6 +15,7 @@ type StudentRow = {
   id: string
   name: string | null
   halaqah: string | null
+  completed_juzs?: number[] | null
 }
 
 type PreviousMemorizationRange = {
@@ -213,7 +214,7 @@ export async function GET(request: NextRequest) {
     const previousWeek = getStudyWeek(weekOffset + 1)
     const supabase = createAdminClient()
 
-    const studentsResult = await supabase.from("students").select("id, name, halaqah")
+    const studentsResult = await supabase.from("students").select("id, name, halaqah, completed_juzs")
     if (studentsResult.error) throw studentsResult.error
 
     const studentRows = ((studentsResult.data ?? []) as StudentRow[])
@@ -226,7 +227,7 @@ export async function GET(request: NextRequest) {
     }
 
     const [plansResult, attendanceResult, dailyReportsResult, previousWeekAttendanceResult, previousWeekReportsResult] = await Promise.all([
-      supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
+      supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
       supabase
         .from("attendance_records")
         .select(`
@@ -265,7 +266,11 @@ export async function GET(request: NextRequest) {
     if (previousWeekAttendanceResult.error) throw previousWeekAttendanceResult.error
     if (previousWeekReportsResult.error) throw previousWeekReportsResult.error
 
-    const plans = (plansResult.data ?? []) as PlanRow[]
+    const studentCompletedJuzs = new Map(studentRows.map((student) => [student.id, student.completed_juzs ?? null]))
+    const plans = ((plansResult.data ?? []) as PlanRow[]).map((plan) => ({
+      ...plan,
+      completed_juzs: studentCompletedJuzs.get(plan.student_id) ?? null,
+    }))
     const attendanceRows = ((attendanceResult.data ?? []) as AttendanceRow[]).filter((record) => studyWeek.dates.includes(record.date))
     const dailyReports = ((dailyReportsResult.data ?? []) as DailyReportRow[]).filter((report) => studyWeek.dates.includes(report.report_date))
 

@@ -27,6 +27,7 @@ type StudentRow = {
   id: string
   name: string | null
   halaqah: string | null
+  completed_juzs?: number[] | null
 }
 
 type CircleRow = {
@@ -260,9 +261,9 @@ export async function GET(request: NextRequest) {
     const { start, end } = getDateRange(filterValue, customStart, customEnd)
 
     const [studentsResult, circlesResult, plansResult] = await Promise.all([
-      supabase.from("students").select("id, name, halaqah"),
+      supabase.from("students").select("id, name, halaqah, completed_juzs"),
       supabase.from("circles").select("id, name"),
-      supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, completed_juzs, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
+      supabase.from("student_plans").select("student_id, start_surah_number, start_verse, end_surah_number, end_verse, total_pages, total_days, start_date, created_at, direction, has_previous, prev_start_surah, prev_start_verse, prev_end_surah, prev_end_verse, previous_memorization_ranges, daily_pages, muraajaa_pages, rabt_pages, review_distribution_mode, review_distribution_days, review_minimum_pages"),
     ])
 
     if (studentsResult.error) throw studentsResult.error
@@ -299,7 +300,11 @@ export async function GET(request: NextRequest) {
 
     const students = (studentsResult.data ?? []) as StudentRow[]
     const circles = (circlesResult.data ?? []) as CircleRow[]
-    const plans = (plansResult.data ?? []) as PlanRow[]
+    const studentCompletedJuzs = new Map(students.map((student) => [student.id, student.completed_juzs ?? null]))
+    const plans = ((plansResult.data ?? []) as PlanRow[]).map((plan) => ({
+      ...plan,
+      completed_juzs: studentCompletedJuzs.get(plan.student_id) ?? null,
+    }))
     const plannedStudentIds = new Set(plans.map((plan) => plan.student_id).filter(Boolean))
     const attendance = ((attendanceResult.data ?? []) as AttendanceRow[]).filter(
       (record) => isStudyDay(record.date) && plannedStudentIds.has(record.student_id),
