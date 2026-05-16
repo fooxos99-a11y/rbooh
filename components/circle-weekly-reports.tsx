@@ -402,7 +402,7 @@ export function CircleWeeklyReports({ circleName, backHref, backLabel }: CircleW
               {backHref ? (
                 <Link
                   href={backHref}
-                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#dccba0] bg-white text-[#1a2332] shadow-sm transition hover:border-[#d8a355]"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-[#3453a7] bg-white text-[#1a2332] shadow-sm transition hover:border-[#27428d]"
                   aria-label={backLabel}
                 >
                   <ArrowRight className="h-4.5 w-4.5" />

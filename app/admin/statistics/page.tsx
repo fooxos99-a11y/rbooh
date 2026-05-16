@@ -550,7 +550,7 @@ export default function StatisticsPage() {
                     }
                   />
                   <select
-                    className="w-full appearance-none rounded-2xl border border-[#d8c79f] bg-white py-3 pl-12 pr-4 text-center text-base font-extrabold text-[#1a2332] outline-none transition focus:border-[#0f766e]"
+                    className="w-full appearance-none rounded-2xl border border-[#3453a7] bg-white py-3 pl-12 pr-4 text-center text-base font-extrabold text-[#1a2332] outline-none transition focus:border-[#27428d]"
                     value={dateFilter}
                     onChange={(event) => handleDateFilterChange(event.target.value as DateFilter)}
                   >
@@ -566,7 +566,7 @@ export default function StatisticsPage() {
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <button
                       type="button"
-                      className="rounded-2xl border border-[#d8c79f] bg-white px-4 py-3 text-right text-sm font-bold text-[#1a2332] transition hover:border-[#0f766e]"
+                      className="rounded-2xl border border-[#3453a7] bg-white px-4 py-3 text-right text-sm font-bold text-[#1a2332] transition hover:border-[#27428d]"
                       onClick={() => openDatePicker(customStartRef.current)}
                     >
                       <span className="block text-xs text-[#6b7280]">{TEXT.fromDate}</span>
@@ -576,7 +576,7 @@ export default function StatisticsPage() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-2xl border border-[#d8c79f] bg-white px-4 py-3 text-right text-sm font-bold text-[#1a2332] transition hover:border-[#0f766e]"
+                      className="rounded-2xl border border-[#3453a7] bg-white px-4 py-3 text-right text-sm font-bold text-[#1a2332] transition hover:border-[#27428d]"
                       onClick={() => openDatePicker(customEndRef.current)}
                     >
                       <span className="block text-xs text-[#6b7280]">{TEXT.toDate}</span>
