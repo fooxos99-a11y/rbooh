@@ -59,6 +59,8 @@ function formatRatio(done: number, total: number) {
   return `${done}/${total}`
 }
 
+const ALL_CIRCLES_VALUE = "all"
+
 export default function CircleShortReportPage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير")
   const router = useRouter()
@@ -163,7 +165,6 @@ export default function CircleShortReportPage() {
           <div className="flex items-center justify-start gap-3 border-b border-[#3453a7]/15 pb-6">
             <div className="text-right">
               <h1 className="text-3xl font-black text-[#1f2937]">تقرير الحلقات المختصر</h1>
-              <p className="mt-2 text-sm font-semibold text-[#6b7280]">اختر الحلقة والفترة لعرض بيانات الطلاب بشكل مختصر ودقيق.</p>
             </div>
           </div>
 
@@ -209,6 +210,7 @@ export default function CircleShortReportPage() {
                       <SelectValue placeholder="اختر الحلقة" />
                     </SelectTrigger>
                     <SelectContent dir="rtl">
+                      <SelectItem value={ALL_CIRCLES_VALUE}>جميع الحلق</SelectItem>
                       {circles.map((circle) => (
                         <SelectItem key={circle.name} value={circle.name}>
                           {circle.name}

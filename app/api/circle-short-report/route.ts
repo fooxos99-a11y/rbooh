@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
     const circle = searchParams.get("circle")?.trim() || ""
     const startDate = searchParams.get("start")?.trim() || ""
     const endDate = searchParams.get("end")?.trim() || ""
+    const shouldFetchAllCircles = circle === "all"
 
     if (!circle) {
       return NextResponse.json({ error: "اسم الحلقة مطلوب" }, { status: 400 })
@@ -162,11 +163,16 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createClient()
 
-    const { data: students, error: studentsError } = await supabase
+    let studentsQuery = supabase
       .from("students")
       .select("id, name, halaqah")
-      .eq("halaqah", circle)
       .order("name", { ascending: true })
+
+    if (!shouldFetchAllCircles) {
+      studentsQuery = studentsQuery.eq("halaqah", circle)
+    }
+
+    const { data: students, error: studentsError } = await studentsQuery
 
     if (studentsError) {
       throw studentsError
@@ -176,7 +182,7 @@ export async function GET(request: NextRequest) {
 
     if (safeStudents.length === 0) {
       return NextResponse.json({
-        circle,
+        circle: shouldFetchAllCircles ? "all" : circle,
         startDate,
         endDate,
         rows: [],
@@ -318,7 +324,7 @@ export async function GET(request: NextRequest) {
       .sort((left, right) => left.studentName.localeCompare(right.studentName, "ar"))
 
     return NextResponse.json({
-      circle,
+      circle: shouldFetchAllCircles ? "all" : circle,
       startDate,
       endDate,
       rows,

@@ -7,6 +7,7 @@ import { BookOpen, ChevronDown, ClipboardCheck, Link2, Orbit, Percent, Trophy, U
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { SiteLoader } from "@/components/ui/site-loader";
+import { useAdminAuth } from "@/hooks/use-admin-auth";
 import { getClientAuthHeaders } from "@/lib/client-auth";
 
 type DateFilter = "today" | "currentWeek" | "currentMonth" | "all" | "custom";
@@ -383,6 +384,7 @@ function CircleRowItem({
 }
 
 export default function StatisticsPage() {
+  const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth("التقارير");
   const initialCustomRange = {
     start: getDateInputValue(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
     end: getDateInputValue(new Date()),
@@ -413,8 +415,20 @@ export default function StatisticsPage() {
   const customEndRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (authLoading || !authVerified) {
+      return;
+    }
+
     void fetchStatistics();
-  }, [dateFilter, customRange.end, customRange.start]);
+  }, [authLoading, authVerified, dateFilter, customRange.end, customRange.start]);
+
+  if (authLoading || !authVerified) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafaf9]">
+        <SiteLoader size="md" />
+      </div>
+    );
+  }
 
   function openDatePicker(input: HTMLInputElement | null) {
     if (!input) {
