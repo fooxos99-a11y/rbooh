@@ -12,7 +12,7 @@ import { SiteLoader } from "@/components/ui/site-loader"
 import { Textarea } from "@/components/ui/textarea"
 import { useAdminAuth } from "@/hooks/use-admin-auth"
 import { useAlertDialog } from "@/hooks/use-confirm-dialog"
-import { getSaudiAttendanceAnchorDate, getSaudiDateString, getSaudiTimeString, getSaudiWeekday, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
+import { getSaudiAttendanceAnchorDate, getSaudiDateString, getSaudiTimeParts, getSaudiTimeString, getSaudiWeekday, isSaudiAttendanceDateAllowed, isSaudiAttendanceWindowOpen } from "@/lib/saudi-time"
 import { DEFAULT_ABSENCE_TEMPLATE_SETTINGS, normalizeAbsenceTemplateSettings, STUDENT_ABSENCE_ALERT_SETTING_ID, type AbsenceTemplateSettings } from "@/lib/student-absence"
 import { Calendar as CalendarIcon, Check } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -85,7 +85,9 @@ const STATUS_OPTIONS: Array<{ value: Exclude<AttendanceStatus, null>; label: str
 ]
 
 function buildAttendanceTimestamp(date: string) {
-  return new Date(`${date}T12:00:00+03:00`).toISOString()
+  const { hour, minute, second } = getSaudiTimeParts()
+  const pad = (value: number) => String(value).padStart(2, "0")
+  return new Date(`${date}T${pad(hour)}:${pad(minute)}:${pad(second)}+03:00`).toISOString()
 }
 
 function getAttendanceAnchorLabel(date: string) {

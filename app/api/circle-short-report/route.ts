@@ -141,6 +141,64 @@ function countPlannedExecutions(plan: PlanRow | null | undefined, rangeStart: st
   }
 }
 
+function calculateExecutionPercentage({
+  presentCount,
+  attendanceTotal,
+  tasmeePassed,
+  tasmeeTotal,
+  memorizationExecuted,
+  memorizationRequired,
+  tikrarExecuted,
+  tikrarRequired,
+  reviewExecuted,
+  reviewRequired,
+  linkingExecuted,
+  linkingRequired,
+}: {
+  presentCount: number
+  attendanceTotal: number
+  tasmeePassed: number
+  tasmeeTotal: number
+  memorizationExecuted: number
+  memorizationRequired: number
+  tikrarExecuted: number
+  tikrarRequired: number
+  reviewExecuted: number
+  reviewRequired: number
+  linkingExecuted: number
+  linkingRequired: number
+}) {
+  const getBoundedExecution = (executed: number, required: number) => {
+    if (required <= 0) {
+      return 0
+    }
+
+    return Math.min(executed, required)
+  }
+
+  const executedTotal =
+    getBoundedExecution(presentCount, attendanceTotal) +
+    getBoundedExecution(tasmeePassed, tasmeeTotal) +
+    getBoundedExecution(memorizationExecuted, memorizationRequired) +
+    getBoundedExecution(tikrarExecuted, tikrarRequired) +
+    getBoundedExecution(reviewExecuted, reviewRequired) +
+    getBoundedExecution(linkingExecuted, linkingRequired)
+
+  const requiredTotal =
+    attendanceTotal +
+    tasmeeTotal +
+    memorizationRequired +
+    tikrarRequired +
+    reviewRequired +
+    linkingRequired
+
+  if (requiredTotal <= 0) {
+    return null
+  }
+
+  return Math.min((executedTotal / requiredTotal) * 100, 100)
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams
@@ -300,6 +358,20 @@ export async function GET(request: NextRequest) {
         const linkingExecuted = studentReports.filter(
           (report) => report.linking_done && !isMemorizationOffDay(report.report_date),
         ).length
+        const executionPercentage = calculateExecutionPercentage({
+          presentCount,
+          attendanceTotal,
+          tasmeePassed,
+          tasmeeTotal: tasmeeAttempts.length,
+          memorizationExecuted,
+          memorizationRequired: plannedExecutions.memorizationRequired,
+          tikrarExecuted,
+          tikrarRequired: plannedExecutions.memorizationRequired,
+          reviewExecuted,
+          reviewRequired: plannedExecutions.reviewRequired,
+          linkingExecuted,
+          linkingRequired: plannedExecutions.memorizationRequired,
+        })
 
         return {
           studentId: student.id,
@@ -319,6 +391,7 @@ export async function GET(request: NextRequest) {
           reviewRequired: plannedExecutions.reviewRequired,
           linkingExecuted,
           linkingRequired: plannedExecutions.memorizationRequired,
+          executionPercentage,
         }
       })
       .sort((left, right) => left.studentName.localeCompare(right.studentName, "ar"))

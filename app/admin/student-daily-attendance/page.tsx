@@ -204,6 +204,18 @@ function hasExecutedMemorizationTask(row: ExecutionStudentRow) {
   return row.memorizationDone && row.memorizationPagesCount > 0
 }
 
+function getInclusiveDateDiffInDays(startDate: string, endDate: string) {
+  const start = new Date(`${startDate}T12:00:00+03:00`)
+  const end = new Date(`${endDate}T12:00:00+03:00`)
+  const diffMs = end.getTime() - start.getTime()
+
+  if (Number.isNaN(diffMs) || diffMs < 0) {
+    return 1
+  }
+
+  return Math.floor(diffMs / 86400000) + 1
+}
+
 export default function StudentDailyAttendancePage() {
   const { isLoading: authLoading, isVerified: authVerified } = useAdminAuth(["يوم السرد", "التقارير"])
   const { toast } = useToast()
@@ -284,8 +296,14 @@ export default function StudentDailyAttendancePage() {
       const response = await fetch(`/api/student-issues?${searchParams.toString()}`, {
         cache: "no-store",
       })
-      if (!response.ok) throw new Error("فشل في جلب مشاكل الطلاب")
-      const data = await response.json()
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string" && data.error.trim()
+            ? data.error
+            : `فشل في جلب مشاكل الطلاب (${response.status})`,
+        )
+      }
       setIssueRows(Array.isArray(data.rows) ? data.rows : [])
       setCircles(Array.isArray(data.circles) ? data.circles : [])
       setDailyReportsAvailable(data.dailyReportsAvailable !== false)
@@ -336,8 +354,14 @@ export default function StudentDailyAttendancePage() {
         ] as const),
       )
 
+      const executionRangeStart = rangeStartDate || effectiveSelectedDate
+      const executionRangeEnd = rangeEndDate || effectiveSelectedDate
+      const executionDays = effectiveScope === "total"
+        ? getInclusiveDateDiffInDays(executionRangeStart, executionRangeEnd)
+        : 1
+
       const reportsResponse = await fetch(
-        `/api/student-daily-reports?student_ids=${encodeURIComponent(students.map((student: { id: string }) => student.id).join(","))}&days=1&date=${encodeURIComponent(effectiveSelectedDate)}`,
+        `/api/student-daily-reports?student_ids=${encodeURIComponent(students.map((student: { id: string }) => student.id).join(","))}&days=${executionDays}&date=${encodeURIComponent(executionRangeEnd)}`,
         { cache: "no-store", headers: getClientAuthHeaders() },
       )
       const reportsData = await reportsResponse.json()
@@ -346,28 +370,41 @@ export default function StudentDailyAttendancePage() {
         throw new Error(reportsData.error || "تعذر جلب تنفيذ اليوم")
       }
 
-      const nextExecutionRows = (Array.isArray(reportsData.reports) ? reportsData.reports : [])
-        .map((report: {
-          student_id: string
-          report_date: string
-          memorization_done?: boolean | null
-          memorization_pages_count?: number | null
-          review_done?: boolean | null
-          review_pages_count?: number | null
-          linking_done?: boolean | null
-          linking_pages_count?: number | null
-          tikrar_done?: boolean | null
-        }) => {
-          const student = studentMap.get(report.student_id)
-          if (!student) {
-            return null
+      const reports = (Array.isArray(reportsData.reports) ? reportsData.reports : [])
+        .filter((report: { report_date: string }) => {
+          if (effectiveScope !== "total") {
+            return report.report_date === effectiveSelectedDate
           }
 
-          return {
+          return report.report_date >= executionRangeStart && report.report_date <= executionRangeEnd
+        })
+
+      const aggregatedExecutionRows = new Map<string, ExecutionStudentRow>()
+
+      for (const report of reports as Array<{
+        student_id: string
+        report_date: string
+        memorization_done?: boolean | null
+        memorization_pages_count?: number | null
+        review_done?: boolean | null
+        review_pages_count?: number | null
+        linking_done?: boolean | null
+        linking_pages_count?: number | null
+        tikrar_done?: boolean | null
+      }>) {
+        const student = studentMap.get(report.student_id)
+        if (!student) {
+          continue
+        }
+
+        const currentRow = aggregatedExecutionRows.get(report.student_id)
+
+        if (!currentRow) {
+          aggregatedExecutionRows.set(report.student_id, {
             studentId: report.student_id,
             studentName: student.name,
             circleName: student.circleName,
-            reportDate: report.report_date,
+            reportDate: effectiveScope === "total" ? executionRangeEnd : report.report_date,
             memorizationDone: Boolean(report.memorization_done),
             memorizationPagesCount: Math.max(Number(report.memorization_pages_count) || 0, 0),
             reviewDone: Boolean(report.review_done),
@@ -375,9 +412,20 @@ export default function StudentDailyAttendancePage() {
             linkingDone: Boolean(report.linking_done),
             linkingPagesCount: Math.max(Number(report.linking_pages_count) || 0, 0),
             tikrarDone: Boolean(report.tikrar_done),
-          } satisfies ExecutionStudentRow
-        })
-        .filter((row): row is ExecutionStudentRow => Boolean(row))
+          })
+          continue
+        }
+
+        currentRow.memorizationDone = currentRow.memorizationDone || Boolean(report.memorization_done)
+        currentRow.memorizationPagesCount += Math.max(Number(report.memorization_pages_count) || 0, 0)
+        currentRow.reviewDone = currentRow.reviewDone || Boolean(report.review_done)
+        currentRow.reviewPagesCount += Math.max(Number(report.review_pages_count) || 0, 0)
+        currentRow.linkingDone = currentRow.linkingDone || Boolean(report.linking_done)
+        currentRow.linkingPagesCount += Math.max(Number(report.linking_pages_count) || 0, 0)
+        currentRow.tikrarDone = currentRow.tikrarDone || Boolean(report.tikrar_done)
+      }
+
+      const nextExecutionRows = Array.from(aggregatedExecutionRows.values())
         .filter(hasExecutedMemorizationTask)
         .sort((left, right) => {
           const circleComparison = left.circleName.localeCompare(right.circleName, "ar")
@@ -751,7 +799,7 @@ export default function StudentDailyAttendancePage() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-[#1a2332]">الطلاب المنفذون</h2>
-                  <p className="text-sm text-gray-500">يظهر هنا فقط من نفّذ حفظ اليوم في التاريخ المحدد</p>
+                  <p className="text-sm text-gray-500">يظهر هنا مجموع ما نُفذ في التاريخ أو الفترة المحددة</p>
                 </div>
                 <div className="text-sm font-semibold text-[#3453a7]">{effectiveSelectedDate}</div>
               </div>
@@ -762,7 +810,7 @@ export default function StudentDailyAttendancePage() {
                     <TableRow className="bg-[#eef4ff] border-b border-[#c9d8ff] hover:bg-[#eef4ff]">
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">الحلقة</TableHead>
                       <TableHead className="text-right text-[#1a2332] font-bold text-base">اسم الطالب</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">حفظ اليوم</TableHead>
+                      <TableHead className="text-center text-[#1a2332] font-bold text-base">مقدار الحفظ</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">التكرار</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">المراجعة</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">الربط</TableHead>
@@ -790,7 +838,7 @@ export default function StudentDailyAttendancePage() {
                       </TableRow>
                     )) : (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-10 text-gray-400">لا يوجد طلاب نفذوا حفظ اليوم وفق الفلاتر الحالية</TableCell>
+                        <TableCell colSpan={6} className="text-center py-10 text-gray-400">لا يوجد طلاب نفذوا حفظًا وفق الفلاتر الحالية</TableCell>
                       </TableRow>
                     )}
                   </TableBody>

@@ -37,7 +37,10 @@ type ReportRow = {
   reviewRequired: number
   linkingExecuted: number
   linkingRequired: number
+  executionPercentage: number | null
 }
+
+type SortOption = "name-asc" | "execution-desc" | "execution-asc"
 
 function getKsaDateString(baseDate = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -59,6 +62,11 @@ function formatRatio(done: number, total: number) {
   return `${done}/${total}`
 }
 
+function formatPercentage(value: number | null) {
+  if (value === null) return "—"
+  return `${Math.round(value)}%`
+}
+
 const ALL_CIRCLES_VALUE = "all"
 
 export default function CircleShortReportPage() {
@@ -67,7 +75,7 @@ export default function CircleShortReportPage() {
 
   const today = useMemo(() => getKsaDateString(), [])
   const [circles, setCircles] = useState<Circle[]>([])
-  const [selectedCircle, setSelectedCircle] = useState("")
+  const [selectedCircle, setSelectedCircle] = useState(ALL_CIRCLES_VALUE)
   const [startDate, setStartDate] = useState(getMonthStart(today))
   const [endDate, setEndDate] = useState(today)
   const [rows, setRows] = useState<ReportRow[]>([])
@@ -75,6 +83,40 @@ export default function CircleShortReportPage() {
   const [isFetching, setIsFetching] = useState(false)
   const [error, setError] = useState("")
   const [hasSearched, setHasSearched] = useState(false)
+  const [sortOption, setSortOption] = useState<SortOption>("name-asc")
+
+  const sortedRows = useMemo(() => {
+    const safeRows = [...rows]
+
+    safeRows.sort((left, right) => {
+      if (sortOption === "name-asc") {
+        return left.studentName.localeCompare(right.studentName, "ar")
+      }
+
+      const leftValue = left.executionPercentage
+      const rightValue = right.executionPercentage
+
+      if (leftValue === null && rightValue === null) {
+        return left.studentName.localeCompare(right.studentName, "ar")
+      }
+
+      if (leftValue === null) {
+        return 1
+      }
+
+      if (rightValue === null) {
+        return -1
+      }
+
+      if (leftValue === rightValue) {
+        return left.studentName.localeCompare(right.studentName, "ar")
+      }
+
+      return sortOption === "execution-desc" ? rightValue - leftValue : leftValue - rightValue
+    })
+
+    return safeRows
+  }, [rows, sortOption])
 
   useEffect(() => {
     async function fetchCircles() {
@@ -202,6 +244,19 @@ export default function CircleShortReportPage() {
                   >
                     {isFetching ? "جاري التحميل..." : "عرض"}
                   </Button>
+
+                  <div className="w-full lg:w-[260px]">
+                    <Select value={sortOption} onValueChange={(value) => setSortOption(value as SortOption)}>
+                      <SelectTrigger className="h-11 w-full rounded-2xl border-[#8fb1ff] px-4 text-right text-base [&>span]:text-right [&>svg]:order-first [&>svg]:ml-0 [&>svg]:mr-3">
+                        <SelectValue placeholder="ترتيب النتائج" />
+                      </SelectTrigger>
+                      <SelectContent dir="rtl">
+                        <SelectItem value="name-asc">الاسم: أ إلى ي</SelectItem>
+                        <SelectItem value="execution-desc">نسبة التنفيذ: من الأعلى إلى الأقل</SelectItem>
+                        <SelectItem value="execution-asc">نسبة التنفيذ: من الأقل إلى الأعلى</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="w-full lg:w-[340px] lg:flex-none lg:self-start">
@@ -236,6 +291,7 @@ export default function CircleShortReportPage() {
                   <TableHeader>
                     <TableRow className="bg-[#f7faff] hover:bg-[#f7faff]">
                       <TableHead className="min-w-[220px] text-right font-black text-[#1f2937]">اسم الطالب</TableHead>
+                      <TableHead className="text-center font-black text-[#1f2937]">نسبة التنفيذ</TableHead>
                       <TableHead className="text-center font-black text-[#1f2937]">حضور</TableHead>
                       <TableHead className="text-center font-black text-[#1f2937]">غياب</TableHead>
                       <TableHead className="text-center font-black text-[#1f2937]">تأخر</TableHead>
@@ -250,22 +306,23 @@ export default function CircleShortReportPage() {
                   <TableBody>
                     {isFetching ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="py-14 text-center">
+                        <TableCell colSpan={11} className="py-14 text-center">
                           <div className="flex justify-center">
                             <SiteLoader size="md" />
                           </div>
                         </TableCell>
                       </TableRow>
-                    ) : rows.length === 0 ? (
+                    ) : sortedRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="py-14 text-center text-base font-semibold text-[#8a8f98]">
+                        <TableCell colSpan={11} className="py-14 text-center text-base font-semibold text-[#8a8f98]">
                           {hasSearched ? "لا توجد بيانات لهذه الفترة." : "اختر الحلقة والفترة ثم اضغط عرض."}
                         </TableCell>
                       </TableRow>
                     ) : (
-                      rows.map((row) => (
+                      sortedRows.map((row) => (
                         <TableRow key={row.studentId} className="hover:bg-[#f7faff]">
                           <TableCell className="font-black text-[#1f2937]">{row.studentName}</TableCell>
+                          <TableCell className="text-center font-black text-[#3453a7]">{formatPercentage(row.executionPercentage)}</TableCell>
                           <TableCell className="text-center font-bold text-[#2563eb]">{formatRatio(row.presentCount, row.attendanceTotal)}</TableCell>
                           <TableCell className="text-center font-bold text-red-600">{row.absentCount}</TableCell>
                           <TableCell className="text-center font-bold text-amber-600">{row.lateCount}</TableCell>
