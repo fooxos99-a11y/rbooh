@@ -713,8 +713,8 @@ export default function StudentDailyAttendancePage() {
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">مقدار حفظ اليوم</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">السبب</TableHead>
                       <TableHead className="text-center text-[#1a2332] font-bold text-base">{getIssueCountColumnTitle(effectiveScope)}</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">{getHistoryColumnTitle(effectiveScope)}</TableHead>
-                      <TableHead className="text-center text-[#1a2332] font-bold text-base">الإجراءات</TableHead>
+                      <TableHead className="min-w-[170px] text-center text-[#1a2332] font-bold text-base">{getHistoryColumnTitle(effectiveScope)}</TableHead>
+                      <TableHead className="min-w-[320px] text-center text-[#1a2332] font-bold text-base">الإجراءات</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -755,7 +755,7 @@ export default function StudentDailyAttendancePage() {
                             <span className="font-semibold text-[#27428d]">{getIssueReasonSummary(row)}</span>
                         </TableCell>
                         <TableCell className="text-center font-black text-[#1a2332]">{getIssueCountValue(row, effectiveScope)}</TableCell>
-                        <TableCell className="text-center text-sm leading-6">
+                        <TableCell className="min-w-[170px] text-center text-sm leading-6">
                           {getHistoryCountValue(row) > 0 ? (
                             <div className="space-y-1 text-[#4b5563]">
                               <div className="font-bold text-[#1a2332]">{row.alertCount} إنذار / {row.warningCount} تنبيه</div>
@@ -764,17 +764,17 @@ export default function StudentDailyAttendancePage() {
                             <span className="text-gray-300">لا يوجد</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex flex-wrap items-center justify-center gap-2">
-                            <Button size="sm" variant="outline" onClick={() => setDetailsRow(row)}>
+                        <TableCell className="min-w-[320px] text-center">
+                          <div className="flex items-center justify-center gap-2 whitespace-nowrap">
+                            <Button size="sm" variant="outline" className="shrink-0" onClick={() => setDetailsRow(row)}>
                               <Eye className="h-4 w-4" />
                               التفاصيل
                             </Button>
-                            <Button size="sm" className="bg-[#3453a7] text-white hover:bg-[#27428d]" onClick={() => openActionDialog(row, "warning")}>
+                            <Button size="sm" className="shrink-0 bg-[#3453a7] text-white hover:bg-[#27428d]" onClick={() => openActionDialog(row, "warning")}>
                               <BellRing className="h-4 w-4" />
                               تنبيه
                             </Button>
-                            <Button size="sm" className="bg-red-500 text-white hover:bg-red-600" onClick={() => openActionDialog(row, "alert")}>
+                            <Button size="sm" className="shrink-0 bg-red-500 text-white hover:bg-red-600" onClick={() => openActionDialog(row, "alert")}>
                               <ShieldAlert className="h-4 w-4" />
                               إنذار
                             </Button>
