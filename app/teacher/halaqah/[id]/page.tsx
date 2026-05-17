@@ -1694,7 +1694,11 @@ export default function HalaqahManagement() {
 				<div className="container mx-auto max-w-7xl space-y-6">
 					<section className="rounded-[32px] border border-[#3453a7]/15 bg-white/90 p-6 shadow-sm backdrop-blur-sm">
 						<div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-								<div className="flex justify-start">
+							<div className="text-right">
+								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">التقييم اليومي</p>
+								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
+							</div>
+							<div className="flex justify-start">
 								<Button
 									type="button"
 									variant={isEditMode ? "default" : "outline"}
@@ -1704,10 +1708,6 @@ export default function HalaqahManagement() {
 								>
 									{isModeSwitchLoading ? "جاري التبديل..." : isEditMode ? "إنهاء التعديل" : "تعديل"}
 								</Button>
-							</div>
-							<div className="text-right">
-								<p className="text-sm font-extrabold tracking-[0.18em] text-[#3453a7]">التقييم اليومي</p>
-								<h1 className="mt-2 text-4xl font-black text-[#1a2332]">{halaqahName}</h1>
 							</div>
 						</div>
 					</section>
